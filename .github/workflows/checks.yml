@@ -52,6 +52,9 @@ jobs:
       # and no dependencies. npm ci to honour the lockfile exactly.
       - run: npm ci
 
+      - name: Display case
+        run: node test_display_case.mjs
+
       - name: Router core
         run: node test_router.mjs
 
