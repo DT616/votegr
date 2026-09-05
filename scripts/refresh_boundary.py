@@ -13,6 +13,7 @@ import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from provenance import provenance
 
 MGF_CITIES = ("https://gisagocss.state.mi.us/arcgis/rest/services/OpenData/"
               "michigan_geographic_framework/MapServer/1/query")
@@ -71,6 +72,15 @@ def main():
         "meta": {"source": "Michigan Geographic Framework, cities layer",
                  "place_fips": PLACE_FIPS, "rings": len(out_rings),
                  "points": total},
+        "provenance": provenance(
+            source="State of Michigan, Michigan Geographic Framework "
+                   "(cities layer). The same civic boundaries NG-911 uses.",
+            source_url=MGF_CITIES,
+            licence="Public record of the State of Michigan, redistributed as published.",
+            made_by="refresh_boundary.py",
+            how_to_update="Run refresh_boundary.py. refresh_landcover.py reads "
+                          "this file for its bounding box, so re-run that after.",
+            place_fips=PLACE_FIPS),
         "rings": out_rings,
     }, separators=(",", ":")))
     print("wrote %d rings / %d points -> %s (%.1f KB)"
