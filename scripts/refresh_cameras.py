@@ -17,6 +17,7 @@ import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from provenance import provenance
 
 # GR city bbox with ~2km margin (S, W, N, E) for Overpass.
 BBOX = (42.87, -85.78, 43.05, -85.55)
@@ -123,6 +124,18 @@ def main():
             "count": len(cams),
             "source": "OpenStreetMap via Overpass (surveillance:type=ALPR)",
         },
+        "provenance": provenance(
+            source="OpenStreetMap, queried through Overpass for "
+                   "surveillance:type=ALPR. All operators and zones.",
+            source_url=ENDPOINTS[0],
+            licence="OpenStreetMap contributors, ODbL. Derived data must credit OSM.",
+            made_by="refresh_cameras.py",
+            how_to_update="Runs itself daily at 06:17 UTC via "
+                          ".github/workflows/refresh-cameras.yml, which commits "
+                          "only when the set changed. Run by hand to force it.",
+            endpoint_fallbacks=ENDPOINTS[1:],
+            floor_note="This file is the completeness FLOOR. The browser may "
+                       "add to it from a live query but must never show fewer."),
         "cameras": cams,
     }
     OUT.write_text(json.dumps(payload, separators=(",", ":")))
