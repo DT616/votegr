@@ -37,6 +37,13 @@
   --pin-ring: #12151b;
   --shadow: 0 2px 8px rgba(0,0,0,.45);
   --header-h: 72px;
+  /* One micro-label role. Seven sizes (.68 to .85rem) and five trackings
+     (.04 to .12em) had accumulated across this file for what is a single
+     job: the small uppercase label above or beside a value. Size and
+     tracking are fixed here; colour still varies by role, which is the part
+     that carries meaning. Two rules deliberately opt out and say why. */
+  --label-size: .74rem;
+  --label-track: .1em;
 }
 /* Light applies when the system asks for it AND the reader has not explicitly
    chosen dark, or when they have explicitly chosen light. Both rules carry the
@@ -144,7 +151,8 @@ body {
   border-radius: 6px;
   padding: 3px 9px;
   margin: 0 0 4px 4px;
-  font-size: .71rem; font-weight: 700; letter-spacing: .1em;
+  font-size: var(--label-size); font-weight: 700;
+  letter-spacing: var(--label-track);
   text-transform: uppercase; color: var(--accent); white-space: nowrap;
   box-shadow: 0 1px 5px rgba(0,0,0,.22);
 }
@@ -252,8 +260,11 @@ body {
 }
 
 .block { padding: 18px 0; border-top: 1px solid var(--line); }
+/* The block heading is a different role from the labels inside it, so it
+   sits off the label scale on purpose. Until now nothing in the page used
+   this rule: the answer block had no heading at all. */
 .block h2 {
-  margin: 0 0 14px; font-size: .71rem; font-weight: 700;
+  margin: 0 0 14px; font-size: 1rem; font-weight: 700;
   letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
 }
 
@@ -300,10 +311,46 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
 /* ---- polling place result ---- */
 /* Ward and precinct read as a line of fact, not as chips: bordered pills
    looked like buttons and invited a click that does nothing. */
-.wp-line {
-  font-size: .85rem; font-weight: 700; letter-spacing: .07em;
-  text-transform: uppercase; color: var(--accent); margin-bottom: 9px;
+/* ---- the voting info block ----
+   Labels above values throughout, so each fact is a pair the eye can take in
+   one line rather than a run-on sentence. Replaces the single .wp-line
+   eyebrow, which named the ward and precinct and nothing else. */
+.vi-rows { display: flex; flex-direction: column; gap: 16px; }
+.vi-lbl {
+  font-size: var(--label-size); font-weight: 700;
+  letter-spacing: var(--label-track); text-transform: uppercase;
+  color: var(--dim); line-height: 1.5; margin-bottom: 2px;
 }
+/* Early voting is the only group that is true right now, so it is the only
+   one that takes the accent. */
+.vi-lbl.live { color: var(--accent); }
+/* Ward and Precinct are two halves of one identifier, so they sit together
+   at a fixed gap. Two equal tracks put them 244px apart on a 504px column,
+   which is not a pair. */
+.vi-two-up { display: flex; gap: 64px; }
+/* The label is the wider of the two, so it sets the cell width and the
+   number centres under it rather than hanging off its left edge. */
+.vi-two-up > div { text-align: center; }
+.vi-num {
+  font-size: 1.42rem; font-weight: 700; letter-spacing: -.022em;
+  line-height: 1.22;
+}
+.vi-val { font-size: 1.05rem; font-weight: 600; line-height: 1.35; }
+.vi-lead { font-size: .93rem; color: var(--dim); margin-top: 10px; }
+/* One line, not the days-and-times grid early voting needs: the 7 AM to 8 PM
+   window is set by state law and is the same every day and every election, so
+   there is no weekday pattern to lay out. */
+.vi-hours { font-size: .88rem; color: var(--dim); margin-top: 4px; }
+
+/* Days left, times right, so the columns line up and the row that applies
+   today can be picked out. Matches .ev-hours on the /simple page, which
+   already renders these, rather than inventing a second treatment. */
+.ev-hours {
+  display: grid; grid-template-columns: auto 1fr;
+  gap: .25rem 1.1rem; margin-top: 12px;
+  font-size: .88rem; color: var(--dim);
+}
+.ev-hours .is-today { color: var(--fg); font-weight: 600; }
 /* The polling place block doubles as the show-on-map control. It should
    read as clickable without dressing up as a hyperlink. */
 .pp-place { cursor: pointer; border-radius: 8px; margin: 0 -8px; padding: 2px 8px; }
@@ -457,6 +504,9 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
 .ac-item:hover, .ac-item.active { background: var(--raise); }
 .ac-item .num { font-weight: 700; font-variant-numeric: tabular-nums; }
 .ac-item .st { flex: 1; }
+/* Off the shared label role on purpose: this is a hint inside a suggestion
+   list, not a heading over a value, and the looser .04em keeps it quiet
+   under the address it annotates. */
 .ac-item .why {
   font-size: .76rem; color: var(--dim); letter-spacing: .04em;
   text-transform: uppercase; white-space: nowrap;
@@ -500,7 +550,8 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
 .cam-popup a.leaflet-popup-close-button { color: var(--dim); }
 
 .campop .ctitle {
-  font-size: .74rem; font-weight: 700; letter-spacing: .1em;
+  font-size: var(--label-size); font-weight: 700;
+  letter-spacing: var(--label-track);
   text-transform: uppercase; color: var(--danger); margin-bottom: 9px;
 }
 .campop .cf {
@@ -559,11 +610,13 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
 }
 
 .elec-name {
-  font-weight: 700; font-size: .74rem; letter-spacing: .1em;
+  font-weight: 700; font-size: var(--label-size);
+  letter-spacing: var(--label-track);
   text-transform: uppercase; color: var(--accent);
 }
 .elec-date {
-  font-weight: 600; font-size: .74rem; letter-spacing: .1em;
+  font-weight: 600; font-size: var(--label-size);
+  letter-spacing: var(--label-track);
   text-transform: uppercase; color: var(--dim);
 }
 
@@ -791,8 +844,8 @@ ol.steps .scam {
 .modal-x:hover { color: var(--fg); background: var(--raise); }
 .modal-body { overflow-y: auto; padding: 20px 22px 26px; }
 .modal-body h3 {
-  font-size: .78rem; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--dim); margin: 22px 0 10px;
+  font-size: var(--label-size); letter-spacing: var(--label-track);
+  text-transform: uppercase; color: var(--dim); margin: 22px 0 10px;
 }
 .modal-body h3:first-child { margin-top: 0; }
 /* The numbered reasons. Numerals rather than bullets because the list is an
@@ -836,7 +889,8 @@ ol.steps .scam {
 
 /* ---- destination popup ---- */
 .destpop .dt {
-  font-size: .72rem; font-weight: 700; letter-spacing: .1em;
+  font-size: var(--label-size); font-weight: 700;
+  letter-spacing: var(--label-track);
   text-transform: uppercase; color: var(--warn); margin-bottom: 7px;
 }
 .destpop .dn { font-size: 1rem; font-weight: 700; line-height: 1.3; }
@@ -844,7 +898,8 @@ ol.steps .scam {
 .destpop .de { font-size: .88rem; color: var(--fg); margin-top: 5px; }
 .destpop .dw {
   margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line);
-  font-size: .78rem; font-weight: 700; letter-spacing: .06em;
+  font-size: var(--label-size); font-weight: 700;
+  letter-spacing: var(--label-track);
   text-transform: uppercase; color: var(--accent);
 }
 
@@ -1002,6 +1057,8 @@ ol.steps li .glyph {
 .gear-sec {
   margin: 10px 0 6px; padding-top: 9px;
   border-top: 1px solid var(--line);
+  /* Off the shared label role on purpose: the gear panel is a dense
+     settings surface where .74rem headings would crowd the controls. */
   font-size: .68rem; font-weight: 700; letter-spacing: .1em;
   text-transform: uppercase; color: var(--dim);
 }

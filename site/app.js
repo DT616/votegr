@@ -11,6 +11,7 @@
   var boundaryLayer, pollLayer, camLayer, routeLayer, pinLayer;
   var cachedCameras = null, cachedMeta = null, current = null;
   var elections = null, activeEl = null, destMode = 'auto', destChoice = null;
+  var electionDayHours = null;
   var cityRings = null, landcover = null, ownBase = null;
   var neighbors = null, precincts = null;
   var pinArmed = false;
@@ -264,12 +265,21 @@
   // One builder for "what precinct is this", fed by both input worlds:
   // the desktop hover chip and the touch tap-for-detail card. Content, not
   // an event handler, so the two cannot describe the same spot differently.
+  // Every polling place and early voting site in this data is in Grand
+  // Rapids, so the five digits tell a reader nothing they did not already
+  // know and cost a line of width on a phone. Stripped when drawing only.
+  // The stored value keeps its ZIP: /simple builds "..., Grand Rapids, MI
+  // 49504" from it to hand OpenStreetMap something it can geocode.
+  function addressForDisplay(a) {
+    return String(a || '').replace(/,\s*\d{5}(-\d{4})?\s*$/, '');
+  }
+
   function precinctInfoHtml(pr) {
     var place = P && P.pollingPlace(pr.precinct);
     return '<div class="destpop">' +
       '<div class="dt">Ward ' + esc(pr.ward) + ' \u00b7 Precinct ' + esc(pr.precinct) + '</div>' +
       (place ? '<div class="dn">' + esc(place.name) + '</div>' +
-               '<div class="da">' + esc(place.address) + '</div>' +
+               '<div class="da">' + esc(addressForDisplay(place.address)) + '</div>' +
                (place.entrance_note ? '<div class="de">' + esc(place.entrance_note) + '</div>' : '')
              : '<div class="da">No polling place on file.</div>') +
       '</div>';
@@ -484,6 +494,9 @@
       // the veil says this tool is about.
       cameras = cityCameras(cachedCameras);
       elections = (res[5] && res[5].elections) || [];
+      // Statewide and statutory, so it is one object beside the list
+      // rather than a field repeated on every election.
+      electionDayHours = (res[5] && res[5].election_day_hours) || null;
       activeEl = nextElection(elections);
       renderElectionBanner();
       graph.assignCameras(cameras);
@@ -630,7 +643,7 @@
         return '<div class="destpop">' +
           '<div class="dt">Polling place</div>' +
           '<div class="dn">' + esc(pl.name) + '</div>' +
-          '<div class="da">' + esc(pl.address) + '</div>' +
+          '<div class="da">' + esc(addressForDisplay(pl.address)) + '</div>' +
           (pl.entrance_note ? '<div class="de">' + esc(pl.entrance_note) + '</div>' : '') +
           '<div class="dw">Precinct' + (list.length > 1 ? 's ' : ' ') +
           esc(list.join(', ')) + '</div></div>';
@@ -1124,9 +1137,52 @@
     var place = r.place;
     $('resultBlock').hidden = false;
 
-    var html = '<div class="wp-line">' +
-      (r.ward ? 'Ward ' + esc(r.ward) + ' · ' : '') +
-      'Precinct ' + esc(r.precinct) + '</div>';
+    // The answer as labelled facts rather than one eyebrow line. Order is
+    // who you are, then what is true today, then where you vote on the day:
+    // during early voting there are TWO places you could go, and a block
+    // that names only the election-day one is wrong for the nine days it
+    // matters most.
+    var html = '<div class="vi-rows"><div class="vi-two-up">' +
+      (r.ward ? '<div><div class="vi-lbl">Ward</div>' +
+                '<div class="vi-num">' + esc(r.ward) + '</div></div>' : '') +
+      '<div><div class="vi-lbl">Precinct</div>' +
+      '<div class="vi-num">' + esc(r.precinct) + '</div></div></div>';
+
+    // The site is named only when the window is actually open. Note ev can
+    // still come back empty then: destinations() also wants sites with
+    // coordinates and an origin to measure from, and with the window open
+    // and our site list short, the honest thing is to say the window is open
+    // and name nothing, rather than blame the calendar for a gap of our own.
+    // destinations() already ranks by distance from this origin, so the
+    // nearest is read back from it rather than sorted a second time here.
+    var evState = earlyVotingForBlock();
+    if (evState) {
+      var ev = evState.site
+        ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
+        : null;
+      html += '<div>' +
+        '<div class="vi-lbl live">' + esc(evState.label) + '</div>' +
+        '<div class="vi-val">' + esc(evState.status) + '</div>';
+      if (ev) {
+        html += '<div class="vi-lead">Early Voting Site Nearest to You:</div>' +
+          '<div class="pp-name">' + esc(ev.place.name) + '</div>' +
+          '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
+          evHoursHtml(activeEl);
+      }
+      html += '</div>';
+    }
+
+    if (activeEl) {
+      html += '<div><div class="vi-lbl">Election day</div>' +
+        '<div class="vi-val">' + esc(prettyDate(activeEl.date)) + '</div>' +
+        (electionDayHours && electionDayHours.open && electionDayHours.close
+          ? '<div class="vi-hours">' + esc(electionDayHours.open) + ' to ' +
+            esc(electionDayHours.close) + '</div>'
+          : '') +
+        '</div>';
+    }
+
+    html += '<div><div class="vi-lbl">Election day polling place</div>';
     if (place) {
       // The name and address ARE the show-on-map control: clicking the place
       // takes you to the place. A separate link said in four words what the
@@ -1137,7 +1193,7 @@
             ' title="Show it on the map"'
           : '') + '>' +
         '<div class="pp-name">' + esc(place.name) + '</div>' +
-        '<div class="pp-addr">' + esc(place.address) +
+        '<div class="pp-addr">' + esc(addressForDisplay(place.address)) +
         (place.entrance_note ? '<br>' + esc(place.entrance_note) : '') + '</div>' +
         '</div>';
       if (place.consolidated_with) {
@@ -1148,6 +1204,7 @@
     } else {
       html += '<div class="err">No polling place on file for precinct ' + esc(r.precinct) + '.</div>';
     }
+    html += '</div></div>';
     $('precinctInfo').innerHTML = html;
     var spb = $('showPlaceBtn');
     if (spb) spb.onkeydown = function (e) {
@@ -1233,6 +1290,30 @@
     return months[Number(p[1]) - 1] + ' ' + Number(p[2]) + ', ' + p[0];
   }
 
+  // The clerk publishes early voting hours as a weekday pattern rather than
+  // as dated rows, so a rule is matched by weekday. Indexes line up with the
+  // abbreviations the data file uses.
+  var DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  // Days left, times right, with today's row picked out: where to go is the
+  // answer, when it is open is the detail that follows it. Same shape the
+  // /simple page renders, so hours read alike on both surfaces.
+  function evHoursHtml(e) {
+    var rules = (e && e.early_voting_hours) || [];
+    if (!rules.length) return '';
+    var today = DAY_ABBR[new Date().getDay()];
+    var out = '<div class="ev-hours">';
+    for (var i = 0; i < rules.length; i++) {
+      var days = rules[i].days || [];
+      var mark = days.indexOf(today) !== -1 ? ' class="is-today"' : '';
+      out += '<span' + mark + '>' + esc(days.join(', ')) +
+             (mark ? ' (today)' : '') + '</span>' +
+             '<span' + mark + '>' + esc(rules[i].open) + ' to ' +
+             esc(rules[i].close) + '</span>';
+    }
+    return out + '</div>';
+  }
+
   // Two lines in the header: election day, then early voting under it.
   //
   // The early voting sentence used to open the page as a paragraph above the
@@ -1262,6 +1343,38 @@
     // is still open and it is our data that is short. Saying nothing about the
     // dates would be blaming the calendar for a gap of our own.
     return 'Open through ' + prettyDate(to);
+  }
+
+  // What the BLOCK says about early voting, which is deliberately not what
+  // the footer bar says. The bar labels its row "Early voting" and lets the
+  // status carry the state; the block puts the state in the label, in the
+  // accent, where it is the first thing read. So the status here drops the
+  // state word rather than saying it twice, and the two callers stay
+  // independent instead of one wording being wrong for the other surface.
+  //
+  // Four states. The one that matters most is the third: after the window
+  // closes but before election day, a reader who saw a site listed last week
+  // has to be told it is no longer an option, or they drive to a locked door.
+  // activeEl is always the NEXT election, so if it exists at all then
+  // election day has not passed, and t > to means exactly "closed, with the
+  // election still ahead".
+  function earlyVotingForBlock() {
+    if (!activeEl) return null;
+    var from = activeEl.early_voting_from, to = activeEl.early_voting_to;
+    // A half-published window is not a window a voter can act on, so say
+    // nothing rather than describe a date range that does not exist yet.
+    if (!from || !to) return null;
+    var t = todayStr();
+    if (t > to) {
+      return { label: 'Early voting closed', status: 'Ended ' + prettyDate(to),
+               site: false };
+    }
+    if (t < from) {
+      return { label: 'Early voting upcoming',
+               status: prettyDate(from) + ' to ' + prettyDate(to), site: false };
+    }
+    return { label: 'Early voting open', status: 'Through ' + prettyDate(to),
+             site: true };
   }
 
   function renderElectionBanner() {
@@ -1447,7 +1560,7 @@
       '<div class="destpop">' +
       '<div class="dt">Finish</div>' +
       '<div class="dn">' + esc(p.name) + '</div>' +
-      '<div class="da">' + esc(p.address) + '</div>' +
+      '<div class="da">' + esc(addressForDisplay(p.address)) + '</div>' +
       (p.entrance_note ? '<div class="de">' + esc(p.entrance_note) + '</div>' : '') +
       '<div class="dw">' + esc(routes.destSub) + '</div>' +
       '</div>';

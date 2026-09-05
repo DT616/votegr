@@ -65,3 +65,8 @@ jobs:
 
       - name: The page in a browser
         run: node test_page.mjs
+
+      # Four early voting states, only one of which the committed data can
+      # reach on any given day, so this serves its own dated fixture.
+      - name: Early voting states
+        run: node test_early_voting_states.mjs
