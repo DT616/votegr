@@ -11,6 +11,7 @@
   var boundaryLayer, pollLayer, camLayer, routeLayer, pinLayer;
   var cachedCameras = null, cachedMeta = null, current = null;
   var elections = null, activeEl = null, destMode = 'auto', destChoice = null;
+  var electionDayHours = null;
   var cityRings = null, landcover = null, ownBase = null;
   var neighbors = null, precincts = null;
   var pinArmed = false;
@@ -493,6 +494,9 @@
       // the veil says this tool is about.
       cameras = cityCameras(cachedCameras);
       elections = (res[5] && res[5].elections) || [];
+      // Statewide and statutory, so it is one object beside the list
+      // rather than a field repeated on every election.
+      electionDayHours = (res[5] && res[5].election_day_hours) || null;
       activeEl = nextElection(elections);
       renderElectionBanner();
       graph.assignCameras(cameras);
@@ -1170,7 +1174,12 @@
 
     if (activeEl) {
       html += '<div><div class="vi-lbl">Election day</div>' +
-        '<div class="vi-val">' + esc(prettyDate(activeEl.date)) + '</div></div>';
+        '<div class="vi-val">' + esc(prettyDate(activeEl.date)) + '</div>' +
+        (electionDayHours && electionDayHours.open && electionDayHours.close
+          ? '<div class="vi-hours">' + esc(electionDayHours.open) + ' to ' +
+            esc(electionDayHours.close) + '</div>'
+          : '') +
+        '</div>';
     }
 
     html += '<div><div class="vi-lbl">Election day polling place</div>';

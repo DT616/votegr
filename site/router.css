@@ -337,6 +337,10 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
 }
 .vi-val { font-size: 1.05rem; font-weight: 600; line-height: 1.35; }
 .vi-lead { font-size: .93rem; color: var(--dim); margin-top: 10px; }
+/* One line, not the days-and-times grid early voting needs: the 7 AM to 8 PM
+   window is set by state law and is the same every day and every election, so
+   there is no weekday pattern to lay out. */
+.vi-hours { font-size: .88rem; color: var(--dim); margin-top: 4px; }
 
 /* Days left, times right, so the columns line up and the row that applies
    today can be picked out. Matches .ev-hours on the /simple page, which

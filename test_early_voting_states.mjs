@@ -21,8 +21,15 @@ const SITES = JSON.parse(await readFile(join(ROOT, 'data/elections.json'), 'utf8
 const HOURS = JSON.parse(await readFile(join(ROOT, 'data/elections.json'), 'utf8'))
   .elections[0].early_voting_hours;
 
-const base = extra => ({ elections: [Object.assign(
-  { date: iso(30), name: 'Test Election' }, extra)] });
+// Read the statewide hours from the real file rather than restating them, so
+// this fixture cannot drift from what ships if the SOS ever changes them.
+const POLL_HOURS = JSON.parse(await readFile(join(ROOT, 'data/elections.json'), 'utf8'))
+  .election_day_hours;
+
+const base = extra => ({
+  election_day_hours: POLL_HOURS,
+  elections: [Object.assign({ date: iso(30), name: 'Test Election' }, extra)],
+});
 
 const CASES = [
   ['open',     base({ early_voting_from: iso(-2), early_voting_to: iso(2),
@@ -73,6 +80,9 @@ for (const [name, data, want] of CASES) {
   await page.press('#addr', 'Enter');
   await page.waitForSelector('#precinctInfo .vi-lbl', { timeout: 10000 });
 
+  const hours = await page.evaluate(() =>
+    (document.querySelector('#precinctInfo .vi-hours') || {}).textContent || null);
+
   const got = await page.evaluate(() => {
     const labels = [...document.querySelectorAll('#precinctInfo .vi-lbl')];
     const live = labels.find(e => e.classList.contains('live'));
@@ -83,7 +93,11 @@ for (const [name, data, want] of CASES) {
              site: !!group.querySelector('.pp-name') };
   });
 
-  console.log(`\n[${name}] label=${JSON.stringify(got.label)} status=${JSON.stringify(got.status)} site=${got.site}`);
+  console.log(`\n[${name}] label=${JSON.stringify(got.label)} status=${JSON.stringify(got.status)} site=${got.site} pollHours=${JSON.stringify(hours)}`);
+  // Statewide and statutory, so it shows in every state including the ones
+  // where no early voting group renders at all.
+  ok(`${name}: election day hours shown`,
+     hours === `${POLL_HOURS.open} to ${POLL_HOURS.close}`);
   ok(`${name}: label`, want.label === null ? got.label === null
                                            : !!(got.label && want.label.test(got.label)));
   ok(`${name}: site ${want.site ? 'shown' : 'withheld'}`, got.site === want.site);

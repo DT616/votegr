@@ -6,7 +6,7 @@
     "early_voting_sites_source": "Michigan Voter Information Center early voting site listing for the City of Grand Rapids, read 2026-08-01.",
     "early_voting_hours_source": "City of Grand Rapids City Clerk, early voting page: https://www.grandrapidsmi.gov/departments/clerks-office/elections/early-voting/",
     "how_to_update": "Add the next election when it is announced. The page shows the first date that has not passed and ignores the rest, so an old entry is harmless. If every date has passed the page shows no election at all, which is deliberate: nothing is better than a stale date. Early voting sites and hours belong to the election they sit in. Check them against the clerk's posting for that election rather than carrying the previous election's forward.",
-    "fields": "date and name are required. early_voting_from and early_voting_to are optional; when present the page shows the window, and says it is open once the start date arrives. early_voting_hours is a list of weekday rules, each with days, open and close, which is how the clerk publishes hours rather than listing every date. early_voting_sites is a list of name and address, each with optional lat, lng and entrance_note; with no list, no sites are shown.",
+    "fields": "date and name are required. early_voting_from and early_voting_to are optional; when present the page shows the window, and says it is open once the start date arrives. early_voting_hours is a list of weekday rules, each with days, open and close, which is how the clerk publishes hours rather than listing every date. early_voting_sites is a list of name and address, each with optional lat, lng and entrance_note; with no list, no sites are shown. election_day_hours sits at the top level, not inside an election: the 7 AM to 8 PM window is set by state law and is the same for every polling place and every election, so there is nothing per-election to carry forward or check.",
     "notes": [
       "Any registered Grand Rapids voter may use any early voting site, so sites are not tied to a precinct. The Michigan Voter Information Center returns all of them for a single address.",
       "Site addresses are stored as street and ZIP, without the city, matching polling.json.",
@@ -15,7 +15,17 @@
       "The Michigan Voter Information Center names the Quarry Ave site St. Peter & Paul School and the clerk's precinct directory names the same address Sts. Peter & Paul Church. Each is left as its own source writes it.",
       "The phone number the Michigan Voter Information Center prints against these sites is the City Clerk's main office line, not a number for the site."
     ],
-    "caution": "Early voting sites and hours change between elections. If the sites below sit under an election that has passed, they are history, not guidance."
+    "caution": "Early voting sites and hours change between elections. If the sites below sit under an election that has passed, they are history, not guidance.",
+    "election_day_hours_source": "Michigan Secretary of State, Vote on Election Day: https://www.michigan.gov/sos/elections/voting/vote-on-election-day. Read 2026-09-05. Unlike early voting hours, these do not change between elections, so they are not re-checked each cycle."
+  },
+  "election_day_hours": {
+    "open": "7:00 AM",
+    "close": "8:00 PM",
+    "in_line_note": "Every voter in line at 8:00 PM must be allowed to vote. A polling place keeps operating until everyone who was in line at 8:00 PM has cast a ballot.",
+    "applies_to": "All polling places in Michigan. Set by state law, so this does not vary by precinct, by city or by election, which is why it is one field here and not a per-place column in polling.json.",
+    "source": "Michigan Secretary of State",
+    "source_url": "https://www.michigan.gov/sos/elections/voting/vote-on-election-day",
+    "verified": "2026-09-05"
   },
   "elections": [
     {
