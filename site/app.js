@@ -271,14 +271,14 @@
   // The stored value keeps its ZIP: /simple builds "..., Grand Rapids, MI
   // 49504" from it to hand OpenStreetMap something it can geocode.
   function addressForDisplay(a) {
-    return String(a || '').replace(/,\s*\d{5}(-\d{4})?\s*$/, '');
+    return displayCase(String(a || '').replace(/,\s*\d{5}(-\d{4})?\s*$/, ''));
   }
 
   function precinctInfoHtml(pr) {
     var place = P && P.pollingPlace(pr.precinct);
     return '<div class="destpop">' +
       '<div class="dt">Ward ' + esc(pr.ward) + ' \u00b7 Precinct ' + esc(pr.precinct) + '</div>' +
-      (place ? '<div class="dn">' + esc(place.name) + '</div>' +
+      (place ? '<div class="dn">' + esc(displayCase(place.name)) + '</div>' +
                '<div class="da">' + esc(addressForDisplay(place.address)) + '</div>' +
                (place.entrance_note ? '<div class="de">' + esc(place.entrance_note) + '</div>' : '')
              : '<div class="da">No polling place on file.</div>') +
@@ -642,7 +642,7 @@
         var list = m.__precincts.sort(function (a, b) { return a - b; });
         return '<div class="destpop">' +
           '<div class="dt">Polling place</div>' +
-          '<div class="dn">' + esc(pl.name) + '</div>' +
+          '<div class="dn">' + esc(displayCase(pl.name)) + '</div>' +
           '<div class="da">' + esc(addressForDisplay(pl.address)) + '</div>' +
           (pl.entrance_note ? '<div class="de">' + esc(pl.entrance_note) + '</div>' : '') +
           '<div class="dw">Precinct' + (list.length > 1 ? 's ' : ' ') +
@@ -957,7 +957,7 @@
         it.kind === 'near' ? 'nearest on this street' : 'pick a number';
       return '<button type="button" class="ac-item" role="option" data-i="' + i + '">' +
         (it.number != null ? '<span class="num">' + it.number + '</span>' : '') +
-        '<span class="st">' + esc(it.street) + '</span>' +
+        '<span class="st">' + esc(displayCase(it.street)) + '</span>' +
         (why ? '<span class="why">' + why + '</span>' : '') + '</button>';
     }).join('');
     box.innerHTML = (hasNumber ? '' : '<div class="ac-head">Choose a street</div>') + html;
@@ -1001,7 +1001,7 @@
     if (item.number == null) {
       // a street was picked: keep any number already typed and reopen
       var num = ($('addr').value.match(/^(\d+)/) || [])[1] || '';
-      $('addr').value = (num ? num + ' ' : '') + item.street + (num ? '' : ' ');
+      $('addr').value = (num ? num + ' ' : '') + displayCase(item.street) + (num ? '' : ' ');
       $('addr').focus();
       refreshSuggestions();
       return;
@@ -1165,7 +1165,7 @@
         '<div class="vi-val">' + esc(evState.status) + '</div>';
       if (ev) {
         html += '<div class="vi-lead">Early Voting Site Nearest to You:</div>' +
-          '<div class="pp-name">' + esc(ev.place.name) + '</div>' +
+          '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
           '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
           evHoursHtml(activeEl);
       }
@@ -1192,7 +1192,7 @@
           ? ' class="pp-place" id="showPlaceBtn" role="button" tabindex="0"' +
             ' title="Show it on the map"'
           : '') + '>' +
-        '<div class="pp-name">' + esc(place.name) + '</div>' +
+        '<div class="pp-name">' + esc(displayCase(place.name)) + '</div>' +
         '<div class="pp-addr">' + esc(addressForDisplay(place.address)) +
         (place.entrance_note ? '<br>' + esc(place.entrance_note) : '') + '</div>' +
         '</div>';
@@ -1559,7 +1559,7 @@
     var destHtml =
       '<div class="destpop">' +
       '<div class="dt">Finish</div>' +
-      '<div class="dn">' + esc(p.name) + '</div>' +
+      '<div class="dn">' + esc(displayCase(p.name)) + '</div>' +
       '<div class="da">' + esc(addressForDisplay(p.address)) + '</div>' +
       (p.entrance_note ? '<div class="de">' + esc(p.entrance_note) + '</div>' : '') +
       '<div class="dw">' + esc(routes.destSub) + '</div>' +
@@ -1927,6 +1927,16 @@
     return '\u2191';
   }
 
+  // Case only the street inside the instruction, never the instruction.
+  // router.js builds the text as 'Turn left onto ' + leg.name and hands the
+  // bare name back as st.street, so the name appears verbatim and a single
+  // replace is exact rather than a guess at where it starts.
+  function stepText(st) {
+    if (!st.street) return st.text;
+    var cased = displayCase(st.street);
+    return cased === st.street ? st.text : st.text.replace(st.street, cased);
+  }
+
   function renderSteps() {
     var r = routes[selected];
     var steps = r.steps || graph.steps(r);
@@ -1940,7 +1950,7 @@
       return '<li data-i="' + steps.indexOf(st) + '"' + (st.arrive ? ' class="arrive"' : '') +
         ' title="Show this part of the route on the map">' +
         (st.arrive ? '' : '<span class="glyph">' + turnGlyph(st.text) + '</span>') +
-        '<span class="stext">' + esc(st.text) + '</span>' + dist + cam + '</li>';
+        '<span class="stext">' + esc(stepText(st)) + '</span>' + dist + cam + '</li>';
     }).join('') + '</ol>' +
     '';
     $('steps').innerHTML = html;
