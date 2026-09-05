@@ -260,9 +260,12 @@ body {
 }
 
 .block { padding: 18px 0; border-top: 1px solid var(--line); }
+/* The block heading is a different role from the labels inside it, so it
+   sits off the label scale on purpose. Until now nothing in the page used
+   this rule: the answer block had no heading at all. */
 .block h2 {
-  margin: 0 0 14px; font-size: var(--label-size); font-weight: 700;
-  letter-spacing: var(--label-track); text-transform: uppercase; color: var(--dim);
+  margin: 0 0 14px; font-size: 1rem; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
 }
 
 /* Shown with the answer it hedges, not before and not in the basement. Until

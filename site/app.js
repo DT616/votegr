@@ -264,12 +264,21 @@
   // One builder for "what precinct is this", fed by both input worlds:
   // the desktop hover chip and the touch tap-for-detail card. Content, not
   // an event handler, so the two cannot describe the same spot differently.
+  // Every polling place and early voting site in this data is in Grand
+  // Rapids, so the five digits tell a reader nothing they did not already
+  // know and cost a line of width on a phone. Stripped when drawing only.
+  // The stored value keeps its ZIP: /simple builds "..., Grand Rapids, MI
+  // 49504" from it to hand OpenStreetMap something it can geocode.
+  function addressForDisplay(a) {
+    return String(a || '').replace(/,\s*\d{5}(-\d{4})?\s*$/, '');
+  }
+
   function precinctInfoHtml(pr) {
     var place = P && P.pollingPlace(pr.precinct);
     return '<div class="destpop">' +
       '<div class="dt">Ward ' + esc(pr.ward) + ' \u00b7 Precinct ' + esc(pr.precinct) + '</div>' +
       (place ? '<div class="dn">' + esc(place.name) + '</div>' +
-               '<div class="da">' + esc(place.address) + '</div>' +
+               '<div class="da">' + esc(addressForDisplay(place.address)) + '</div>' +
                (place.entrance_note ? '<div class="de">' + esc(place.entrance_note) + '</div>' : '')
              : '<div class="da">No polling place on file.</div>') +
       '</div>';
@@ -630,7 +639,7 @@
         return '<div class="destpop">' +
           '<div class="dt">Polling place</div>' +
           '<div class="dn">' + esc(pl.name) + '</div>' +
-          '<div class="da">' + esc(pl.address) + '</div>' +
+          '<div class="da">' + esc(addressForDisplay(pl.address)) + '</div>' +
           (pl.entrance_note ? '<div class="de">' + esc(pl.entrance_note) + '</div>' : '') +
           '<div class="dw">Precinct' + (list.length > 1 ? 's ' : ' ') +
           esc(list.join(', ')) + '</div></div>';
@@ -1145,7 +1154,7 @@
         '<div class="vi-val">' + esc(earlyVotingStatus()) + '</div>' +
         '<div class="vi-lead">Early Voting Site Nearest to You:</div>' +
         '<div class="pp-name">' + esc(ev.place.name) + '</div>' +
-        '<div class="pp-addr">' + esc(ev.place.address) + '</div>' +
+        '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
         evHoursHtml(activeEl) +
         '</div>';
     }
@@ -1166,7 +1175,7 @@
             ' title="Show it on the map"'
           : '') + '>' +
         '<div class="pp-name">' + esc(place.name) + '</div>' +
-        '<div class="pp-addr">' + esc(place.address) +
+        '<div class="pp-addr">' + esc(addressForDisplay(place.address)) +
         (place.entrance_note ? '<br>' + esc(place.entrance_note) : '') + '</div>' +
         '</div>';
       if (place.consolidated_with) {
@@ -1501,7 +1510,7 @@
       '<div class="destpop">' +
       '<div class="dt">Finish</div>' +
       '<div class="dn">' + esc(p.name) + '</div>' +
-      '<div class="da">' + esc(p.address) + '</div>' +
+      '<div class="da">' + esc(addressForDisplay(p.address)) + '</div>' +
       (p.entrance_note ? '<div class="de">' + esc(p.entrance_note) + '</div>' : '') +
       '<div class="dw">' + esc(routes.destSub) + '</div>' +
       '</div>';
