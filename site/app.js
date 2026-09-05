@@ -1144,19 +1144,28 @@
       '<div><div class="vi-lbl">Precinct</div>' +
       '<div class="vi-num">' + esc(r.precinct) + '</div></div></div>';
 
-    // Only while the window is open and a site is listed. destinations()
-    // already ranks the sites by distance from this origin, so the nearest
-    // is read back from it rather than sorted a second time here.
-    var ev = destinations(r).filter(function (o) { return o.kind === 'early'; })[0];
-    if (ev) {
+    // The site is named only when the window is actually open. Note ev can
+    // still come back empty then: destinations() also wants sites with
+    // coordinates and an origin to measure from, and with the window open
+    // and our site list short, the honest thing is to say the window is open
+    // and name nothing, rather than blame the calendar for a gap of our own.
+    // destinations() already ranks by distance from this origin, so the
+    // nearest is read back from it rather than sorted a second time here.
+    var evState = earlyVotingForBlock();
+    if (evState) {
+      var ev = evState.site
+        ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
+        : null;
       html += '<div>' +
-        '<div class="vi-lbl live">Early voting</div>' +
-        '<div class="vi-val">' + esc(earlyVotingStatus()) + '</div>' +
-        '<div class="vi-lead">Early Voting Site Nearest to You:</div>' +
-        '<div class="pp-name">' + esc(ev.place.name) + '</div>' +
-        '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
-        evHoursHtml(activeEl) +
-        '</div>';
+        '<div class="vi-lbl live">' + esc(evState.label) + '</div>' +
+        '<div class="vi-val">' + esc(evState.status) + '</div>';
+      if (ev) {
+        html += '<div class="vi-lead">Early Voting Site Nearest to You:</div>' +
+          '<div class="pp-name">' + esc(ev.place.name) + '</div>' +
+          '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
+          evHoursHtml(activeEl);
+      }
+      html += '</div>';
     }
 
     if (activeEl) {
@@ -1325,6 +1334,38 @@
     // is still open and it is our data that is short. Saying nothing about the
     // dates would be blaming the calendar for a gap of our own.
     return 'Open through ' + prettyDate(to);
+  }
+
+  // What the BLOCK says about early voting, which is deliberately not what
+  // the footer bar says. The bar labels its row "Early voting" and lets the
+  // status carry the state; the block puts the state in the label, in the
+  // accent, where it is the first thing read. So the status here drops the
+  // state word rather than saying it twice, and the two callers stay
+  // independent instead of one wording being wrong for the other surface.
+  //
+  // Four states. The one that matters most is the third: after the window
+  // closes but before election day, a reader who saw a site listed last week
+  // has to be told it is no longer an option, or they drive to a locked door.
+  // activeEl is always the NEXT election, so if it exists at all then
+  // election day has not passed, and t > to means exactly "closed, with the
+  // election still ahead".
+  function earlyVotingForBlock() {
+    if (!activeEl) return null;
+    var from = activeEl.early_voting_from, to = activeEl.early_voting_to;
+    // A half-published window is not a window a voter can act on, so say
+    // nothing rather than describe a date range that does not exist yet.
+    if (!from || !to) return null;
+    var t = todayStr();
+    if (t > to) {
+      return { label: 'Early voting closed', status: 'Ended ' + prettyDate(to),
+               site: false };
+    }
+    if (t < from) {
+      return { label: 'Early voting',
+               status: prettyDate(from) + ' to ' + prettyDate(to), site: false };
+    }
+    return { label: 'Early voting open', status: 'Through ' + prettyDate(to),
+             site: true };
   }
 
   function renderElectionBanner() {
