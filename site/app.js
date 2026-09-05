@@ -1361,7 +1361,7 @@
                site: false };
     }
     if (t < from) {
-      return { label: 'Early voting',
+      return { label: 'Early voting upcoming',
                status: prettyDate(from) + ' to ' + prettyDate(to), site: false };
     }
     return { label: 'Early voting open', status: 'Through ' + prettyDate(to),
