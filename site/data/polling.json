@@ -1,0 +1,397 @@
+{
+  "provenance": {
+    "description": "Grand Rapids polling places by precinct. Edit this file by hand.",
+    "source": "City of Grand Rapids, City Clerk's Office",
+    "source_document": "November 3 2026 precinct directory",
+    "source_pdf": "https://media-002-us.cdn.govstack.com/grandrapidsmi-us/media/cthaltog/112026-precinct-directory.pdf",
+    "source_page": "https://www.grandrapidsmi.gov/departments/clerks-office/elections/precinct-maps-and-polling-locations/",
+    "cross_checked_against": "https://www.kentcountymi.gov/418/Grand-Rapids",
+    "transcribed": "2026-07-27",
+    "rechecked": "2026-08-30: re-read against the November 3 2026 directory. All 59 precincts and every street address match. Precinct 51 is still consolidated with 45 while Ken-O-Sha is closed. One transcription error found and fixed here (precinct 11, Harrion -> Harrison).",
+    "licence": "Public record of the City of Grand Rapids, redistributed as published.",
+    "how_to_update": "Each election the clerk publishes a new precinct directory PDF at source_page, under a new file name. Read it and update the rows below. Check the count is still 59 and that numbering runs 1-59.",
+    "notes": [
+      "Addresses are stored as street and ZIP, without the city: every address here is in Grand Rapids, and nothing parses the string, since map links are built from lat and lng.",
+      "The directory is not carefully proofed and the November edition repeats every error the August one had: Madison as Madion, Kalamazoo as Kalamzoo, Garfield as Gafield, Orthodox as Othodox, and LaGrave as one word. Those are corrected here, so do not copy the PDF's spellings back in.",
+      "Two names here are deliberately fuller than the PDF prints them, and are not errors to reconcile: precinct 47 is Martin Luther King Jr. Leadership Academy, and precinct 54 is East Congregational United Church of Christ.",
+      "consolidated_with means that precinct votes at another precinct's location for this election only. Check the PDF footnotes each time.",
+      "Precinct 9 is where the city directory and the Kent County listing disagree. The city is correct, confirmed with the clerk's office on 2026-07-27."
+    ],
+    "caution": "Polling places change every election. If source_document names an election that has passed, this file is out of date.",
+    "verified_with_clerk": "2026-07-27: the Grand Rapids City Clerk's office confirmed by phone that the city directory is correct where it differs from the Kent County listing (precinct 9), and that precinct 51 votes at precinct 45's location while Ken-O-Sha School is closed.",
+    "source_pdf_caution": "The city serves PDFs under generated paths. This URL has already changed once; if it 404s, find the current directory at source_page."
+  },
+  "precincts": {
+    "1": {
+      "name": "Kent County Recycling & Education Center",
+      "address": "977 WEALTHY ST SW, 49504",
+      "lat": 42.956427,
+      "lng": -85.691459
+    },
+    "2": {
+      "name": "Sibley Elementary School",
+      "address": "947 SIBLEY ST NW, 49504",
+      "lat": 42.967301,
+      "lng": -85.691318
+    },
+    "3": {
+      "name": "Brookside Elementary School",
+      "address": "2505 MADISON AVE SE, 49507",
+      "lat": 42.917602,
+      "lng": -85.657333
+    },
+    "4": {
+      "name": "Gafield Park Gym",
+      "address": "2111 MADISON AVE SE, 49507",
+      "lat": 42.925396,
+      "lng": -85.657881
+    },
+    "5": {
+      "name": "Marsh Ridge Senior Community",
+      "address": "470 MARSH RIDGE DR NW, 49504",
+      "lat": 42.973678,
+      "lng": -85.739896,
+      "entrance_note": "Community Center"
+    },
+    "6": {
+      "name": "LaGrave Christian Reformed Church",
+      "address": "107 LA GRAVE AVE SE, 49503",
+      "lat": 42.960678,
+      "lng": -85.665427,
+      "entrance_note": "West Entrance"
+    },
+    "7": {
+      "name": "First Evangelical Covenant Church",
+      "address": "1933 TREMONT BLVD NW, 49504",
+      "lat": 42.975135,
+      "lng": -85.715775
+    },
+    "8": {
+      "name": "Faith Community Church of West MI",
+      "address": "2600 7TH ST NW, 49504",
+      "lat": 42.978868,
+      "lng": -85.731537
+    },
+    "9": {
+      "name": "New Vintage Place",
+      "address": "889 BROADWAY AVE NW, 49504",
+      "lat": 42.979215,
+      "lng": -85.679413,
+      "entrance_note": "9th Street Entrance"
+    },
+    "10": {
+      "name": "St. Mary's Catholic Church",
+      "address": "420 2ND ST NW, 49504",
+      "lat": 42.972616,
+      "lng": -85.679541,
+      "entrance_note": "Activities Center"
+    },
+    "11": {
+      "name": "Harrison Park Elementary School",
+      "address": "1440 DAVIS AVE NW, 49504",
+      "lat": 42.988722,
+      "lng": -85.685622
+    },
+    "12": {
+      "name": "Cesar E Chavez Elementary School",
+      "address": "1205 CESAR E CHAVEZ AVE SW, 49503",
+      "lat": 42.941521,
+      "lng": -85.682823
+    },
+    "13": {
+      "name": "Burton Elementary School",
+      "address": "2133 BUCHANAN AVE SW, 49507",
+      "lat": 42.924695,
+      "lng": -85.671512
+    },
+    "14": {
+      "name": "Seventh Reformed Church",
+      "address": "950 LEONARD ST NW, 49504",
+      "lat": 42.985305,
+      "lng": -85.692129
+    },
+    "15": {
+      "name": "New Hope Baptist Church",
+      "address": "130 DELAWARE ST SW, 49507",
+      "lat": 42.94598,
+      "lng": -85.669995
+    },
+    "16": {
+      "name": "Sts. Peter & Paul Church",
+      "address": "1430 QUARRY AVE NW, 49504",
+      "lat": 42.98877,
+      "lng": -85.681172,
+      "entrance_note": "School Gym"
+    },
+    "17": {
+      "name": "St. Paul's Anglican Catholic Church",
+      "address": "2560 LAKE MICHIGAN DR NW, 49504",
+      "lat": 42.971606,
+      "lng": -85.731112
+    },
+    "18": {
+      "name": "Westview Christian Reformed Church",
+      "address": "2929 LEONARD ST NW, 49504",
+      "lat": 42.986482,
+      "lng": -85.740783
+    },
+    "19": {
+      "name": "Downtown Christian Church",
+      "address": "1711 WALKER AVE NW, 49504",
+      "lat": 42.989639,
+      "lng": -85.712038
+    },
+    "20": {
+      "name": "Buchanan Elementary School",
+      "address": "1775 BUCHANAN AVE SW, 49507",
+      "lat": 42.931613,
+      "lng": -85.67185
+    },
+    "21": {
+      "name": "Congress Elementary School",
+      "address": "940 BALDWIN ST SE, 49506",
+      "lat": 42.961632,
+      "lng": -85.645849
+    },
+    "22": {
+      "name": "Kent Hills Elementary School",
+      "address": "1445 EMERALD AVE NE, 49505",
+      "lat": 42.989003,
+      "lng": -85.647517
+    },
+    "23": {
+      "name": "St. Isidore Parish Center",
+      "address": "625 SPRING AVE NE, 49503",
+      "lat": 42.974539,
+      "lng": -85.643145
+    },
+    "24": {
+      "name": "4th Reformed Church",
+      "address": "1226 UNION AVE NE, 49505",
+      "lat": 42.985435,
+      "lng": -85.654578,
+      "entrance_note": "North Entrance"
+    },
+    "25": {
+      "name": "Encounter Church",
+      "address": "1736 LYON ST NE, 49503",
+      "lat": 42.9666,
+      "lng": -85.62596
+    },
+    "26": {
+      "name": "Palmer Elementary School",
+      "address": "309 PALMER ST NE, 49505",
+      "lat": 42.994603,
+      "lng": -85.661741
+    },
+    "27": {
+      "name": "Emerald Flats Gym",
+      "address": "750 EASTERN AVE NE, 49503",
+      "lat": 42.976524,
+      "lng": -85.649552
+    },
+    "28": {
+      "name": "Leonard Terrace Apartments",
+      "address": "1315 LEONARD ST NE, 49505",
+      "lat": 42.984498,
+      "lng": -85.636659
+    },
+    "29": {
+      "name": "Northlawn United Methodist Church",
+      "address": "1157 NORTHLAWN ST NE, 49505",
+      "lat": 43.009873,
+      "lng": -85.64076
+    },
+    "30": {
+      "name": "Aberdeen Elementary School",
+      "address": "928 ABERDEEN ST NE, 49505",
+      "lat": 43.006164,
+      "lng": -85.646612
+    },
+    "31": {
+      "name": "Coit Arts Academy",
+      "address": "617 COIT AVE NE, 49503",
+      "lat": 42.973967,
+      "lng": -85.664492,
+      "entrance_note": "Livingston Ave Entrance"
+    },
+    "32": {
+      "name": "Westminster Presbyterian Church",
+      "address": "47 JEFFERSON AVE SE, 49503",
+      "lat": 42.961908,
+      "lng": -85.664265,
+      "entrance_note": "South Entrance"
+    },
+    "33": {
+      "name": "Trinity Methodist Church",
+      "address": "1100 LAKE DR SE, 49506",
+      "lat": 42.958779,
+      "lng": -85.641104
+    },
+    "34": {
+      "name": "North Park School",
+      "address": "3375 CHENEY AVE NE, 49525",
+      "lat": 43.023378,
+      "lng": -85.647261
+    },
+    "35": {
+      "name": "Vista Springs - Riverside Gardens",
+      "address": "2420 COIT AVE NE, 49505",
+      "lat": 43.006901,
+      "lng": -85.663344
+    },
+    "36": {
+      "name": "Faith Lutheran Church",
+      "address": "2740 FULLER AVE NE, 49505",
+      "lat": 43.012436,
+      "lng": -85.639684
+    },
+    "37": {
+      "name": "Beckwith Hills Christian Reformed Church",
+      "address": "2100 CHELSEA DR NE, 49505",
+      "lat": 42.989289,
+      "lng": -85.617805,
+      "entrance_note": "Fellowship Room"
+    },
+    "38": {
+      "name": "Yankee Clipper Library",
+      "address": "2025 LEONARD ST NE, 49505",
+      "lat": 42.98448,
+      "lng": -85.617664,
+      "entrance_note": "lower level"
+    },
+    "39": {
+      "name": "Holy Trinity Greek Othodox Church",
+      "address": "330 LAKESIDE DR NE, 49503",
+      "lat": 42.968859,
+      "lng": -85.617627
+    },
+    "40": {
+      "name": "Ransom Tower Apartments",
+      "address": "50 RANSOM AVE NE, 49503",
+      "lat": 42.964663,
+      "lng": -85.664878,
+      "entrance_note": "Barclay Avenue Entrance"
+    },
+    "41": {
+      "name": "Grand Rapids International Fellowship",
+      "address": "3765 KALAMAZOO AVE SE, 49508",
+      "lat": 42.894781,
+      "lng": -85.62662
+    },
+    "42": {
+      "name": "Woodlawn CRC Ministry Center",
+      "address": "3190 BURTON ST SE, 49546",
+      "lat": 42.926856,
+      "lng": -85.589304
+    },
+    "43": {
+      "name": "Our Savior Lutheran Church",
+      "address": "2900 BURTON ST SE, 49546",
+      "lat": 42.926946,
+      "lng": -85.596739
+    },
+    "44": {
+      "name": "Shawnee Park Christian Reformed Church",
+      "address": "2255 TECUMSEH DR SE, 49506",
+      "lat": 42.922207,
+      "lng": -85.620188
+    },
+    "45": {
+      "name": "Brookside Christian Reformed Church",
+      "address": "3600 KALAMAZOO AVE SE, 49508",
+      "lat": 42.89813,
+      "lng": -85.626656
+    },
+    "46": {
+      "name": "Plymouth Congregational Church",
+      "address": "4010 KALAMAZOO AVE SE, 49508",
+      "lat": 42.890593,
+      "lng": -85.626258
+    },
+    "47": {
+      "name": "Martin Luther King Jr. Leadership Academy",
+      "address": "645 LOGAN ST SE, 49503",
+      "lat": 42.953911,
+      "lng": -85.652671
+    },
+    "48": {
+      "name": "Calvin Christian Reformed Church",
+      "address": "700 ETHEL AVE SE, 49506",
+      "lat": 42.949676,
+      "lng": -85.632933
+    },
+    "49": {
+      "name": "Dickinson Elementary School",
+      "address": "448 DICKINSON ST SE, 49507",
+      "lat": 42.932674,
+      "lng": -85.656791
+    },
+    "50": {
+      "name": "CrossWay Community Church",
+      "address": "3950 BURTON ST SE, 49546",
+      "lat": 42.926932,
+      "lng": -85.570745
+    },
+    "51": {
+      "name": "Brookside Christian Reformed Church",
+      "address": "3600 KALAMAZOO AVE SE, 49508",
+      "lat": 42.89813,
+      "lng": -85.626656,
+      "consolidated_with": 45,
+      "note": "Ken-O-Sha School closed for construction"
+    },
+    "52": {
+      "name": "First Christian Reformed Church",
+      "address": "651 MARTIN LUTHER KING JR ST SE, 49507",
+      "lat": 42.948505,
+      "lng": -85.652984
+    },
+    "53": {
+      "name": "Oakdale Christian Reformed Church",
+      "address": "961 TEMPLE ST SE, 49507",
+      "lat": 42.939179,
+      "lng": -85.644958,
+      "entrance_note": "Butler Avenue Entrance"
+    },
+    "54": {
+      "name": "East Congregational United Church of Christ",
+      "address": "1005 GIDDINGS AVE SE, 49506",
+      "lat": 42.944516,
+      "lng": -85.634632,
+      "entrance_note": "basement"
+    },
+    "55": {
+      "name": "Fuller Avenue Church",
+      "address": "1239 FULLER AVE SE, 49506",
+      "lat": 42.940679,
+      "lng": -85.639477
+    },
+    "56": {
+      "name": "Seymour Christian Reformed Church",
+      "address": "840 ALGER ST SE, 49507",
+      "lat": 42.91999,
+      "lng": -85.646064,
+      "entrance_note": "South Entrance"
+    },
+    "57": {
+      "name": "HUB 07",
+      "address": "1534 KALAMAZOO AVE SE, 49507",
+      "lat": 42.935846,
+      "lng": -85.639962
+    },
+    "58": {
+      "name": "Eastern Avenue Christian Reformed Church",
+      "address": "514 EASTERN AVE SE, 49503",
+      "lat": 42.953361,
+      "lng": -85.649209,
+      "entrance_note": "Logan Street Entrance"
+    },
+    "59": {
+      "name": "Plymouth Heights Christian Ref. Church",
+      "address": "1800 PLYMOUTH AVE SE, 49506",
+      "lat": 42.930684,
+      "lng": -85.624104
+    }
+  }
+}

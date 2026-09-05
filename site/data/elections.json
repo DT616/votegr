@@ -1,0 +1,74 @@
+{
+  "provenance": {
+    "description": "Election days shown on the page, the early voting window, and the early voting sites.",
+    "source": "State of Michigan, Bureau of Elections",
+    "source_url": "https://www.michigan.gov/sos/elections",
+    "early_voting_sites_source": "Michigan Voter Information Center early voting site listing for the City of Grand Rapids, read 2026-08-01.",
+    "early_voting_hours_source": "City of Grand Rapids City Clerk, early voting page: https://www.grandrapidsmi.gov/departments/clerks-office/elections/early-voting/",
+    "how_to_update": "Add the next election when it is announced. The page shows the first date that has not passed and ignores the rest, so an old entry is harmless. If every date has passed the page shows no election at all, which is deliberate: nothing is better than a stale date. Early voting sites and hours belong to the election they sit in. Check them against the clerk's posting for that election rather than carrying the previous election's forward.",
+    "fields": "date and name are required. early_voting_from and early_voting_to are optional; when present the page shows the window, and says it is open once the start date arrives. early_voting_hours is a list of weekday rules, each with days, open and close, which is how the clerk publishes hours rather than listing every date. early_voting_sites is a list of name and address, each with optional lat, lng and entrance_note; with no list, no sites are shown.",
+    "notes": [
+      "Any registered Grand Rapids voter may use any early voting site, so sites are not tied to a precinct. The Michigan Voter Information Center returns all of them for a single address.",
+      "Site addresses are stored as street and ZIP, without the city, matching polling.json.",
+      "Coordinates for 1430 Quarry Ave NW come from polling.json, which carries the same street address as precinct 16's polling place. The other two are Kent County parcel centroids.",
+      "The Michigan Voter Information Center gives Ottawa Hills High School a ZIP of 49503. The Kent County parcel record for 2055 Rosewood Ave SE says 49507, which is what is used here.",
+      "The Michigan Voter Information Center names the Quarry Ave site St. Peter & Paul School and the clerk's precinct directory names the same address Sts. Peter & Paul Church. Each is left as its own source writes it.",
+      "The phone number the Michigan Voter Information Center prints against these sites is the City Clerk's main office line, not a number for the site."
+    ],
+    "caution": "Early voting sites and hours change between elections. If the sites below sit under an election that has passed, they are history, not guidance."
+  },
+  "elections": [
+    {
+      "date": "2026-08-04",
+      "name": "Primary Election",
+      "early_voting_from": "2026-07-25",
+      "early_voting_to": "2026-08-02",
+      "early_voting_hours": [
+        {
+          "days": [
+            "Mon",
+            "Wed",
+            "Fri",
+            "Sat",
+            "Sun"
+          ],
+          "open": "9:00 AM",
+          "close": "5:00 PM"
+        },
+        {
+          "days": [
+            "Tue",
+            "Thu"
+          ],
+          "open": "11:00 AM",
+          "close": "7:00 PM"
+        }
+      ],
+      "early_voting_sites": [
+        {
+          "name": "St. Peter & Paul School",
+          "address": "1430 QUARRY AVE NW, 49504",
+          "lat": 42.98877,
+          "lng": -85.681172
+        },
+        {
+          "name": "GRPS University",
+          "address": "1400 FULLER AVE NE, 49505",
+          "lat": 42.990162,
+          "lng": -85.637624
+        },
+        {
+          "name": "Ottawa Hills High School",
+          "address": "2055 ROSEWOOD AVE SE, 49507",
+          "lat": 42.925233,
+          "lng": -85.629622,
+          "entrance_note": "Door M"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-03",
+      "name": "General Election"
+    }
+  ]
+}

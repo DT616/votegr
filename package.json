@@ -1,0 +1,9 @@
+{
+  "name": "votegr",
+  "private": true,
+  "description": "Tooling manifest. The site itself has no build step and no dependencies -- this file exists so the page test has a browser to drive.",
+  "license": "Unlicense",
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

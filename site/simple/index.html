@@ -1,0 +1,69 @@
+<!doctype html>
+<!--
+  Grand Rapids Precinct Lookup
+  Type an address, get the ward, the precinct, and where that precinct votes.
+
+  Live:   https://votegr.org
+  Source: https://github.com/DT616/votegr
+
+  Released into the public domain under the Unlicense, see UNLICENSE in the
+  repository: free to copy, host, and change, including by a city or clerk's
+  office, with or without credit. The data in data/ is not ours to
+  license: it is public record from the State of Michigan, Kent County and the
+  Grand Rapids City Clerk, passed along as published.
+
+  The address you type never leaves the browser. There is no geocoder: data/
+  lists every city address with the precinct it votes in, and the search runs
+  against that locally. Clicking a Directions link is the one act that
+  shares the typed address: it becomes the route's starting point.
+
+  Unofficial and offered with no guarantee of accuracy. Why this exists, where
+  the data comes from, how it is hosted, and how to keep it current are in the
+  README: https://github.com/DT616/votegr
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Grand Rapids Precinct Lookup</title>
+<script src="lookup.js" defer></script>
+<link rel="stylesheet" href="lookup.css">
+</head>
+<body>
+<main>
+  <h1>Grand Rapids Precinct Lookup</h1>
+  <p class="sub why">Why does the State of Michigan make you hand over your personal
+     info just to find out where to vote? That seemed unnecessary, so this is
+     an alternative.</p>
+  <p class="sub">Type your address to find your ward, your precinct, and where to vote.
+     The lookup is done client side in your browser, without querying any server
+     to retrieve the information.</p>
+
+  <p id="election" class="election" hidden></p>
+
+  <div class="combo">
+    <label for="addr">Street address</label>
+    <input id="addr" type="text" autocomplete="off" spellcheck="false"
+           role="combobox" aria-expanded="false" aria-autocomplete="list"
+           aria-controls="opts" placeholder="300 Monroe Ave NW">
+    <ul id="opts" role="listbox" aria-label="Address suggestions"></ul>
+  </div>
+
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+  <div id="result"></div>
+
+  <noscript>
+    <p class="status">This lookup needs JavaScript. The city publishes a
+      <a href="https://www.grandrapidsmi.gov/departments/clerks-office/elections/precinct-maps-and-polling-locations/">precinct directory</a>
+      you can read directly.</p>
+  </noscript>
+
+
+
+  <p class="disclaimer"><strong>Disclaimer:</strong> Not an official tool.
+     Always double check and plan ahead.</p>
+</main>
+
+</body>
+</html>

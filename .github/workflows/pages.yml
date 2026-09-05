@@ -1,0 +1,42 @@
+# Publishes the site folder to GitHub Pages on every push to main.
+#
+# Pages can only serve a branch root or a /docs folder when deploying from a
+# branch, and the site lives in site/ because that is the folder you copy to
+# any host. So this uploads site/ as the Pages artifact instead, which keeps
+# the repository laid out the way the README describes.
+#
+# Everything the page needs is relative (lookup.js, lookup.css, data/*.json),
+# so it works unchanged under a project subpath such as /vote-gr/ as well as
+# at the root of a custom domain.
+name: Deploy site to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; queue instead, so a run is not cancelled halfway
+# through replacing the live files.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v5

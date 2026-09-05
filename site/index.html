@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>votegr.org - Vote Grand Rapids, Michigan</title>
+<meta name="description" content="Find your Grand Rapids precinct and polling place, and drive there avoiding known license plate cameras. Runs entirely in your browser.">
+<!-- justified inline: stamps the saved theme before first paint, so an
+     explicitly chosen theme does not flash the other one on load. -->
+<script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="router.css">
+</head>
+<body>
+<header id="siteHeader">
+  <a class="brand" href="./" aria-label="Vote Grand Rapids, home">
+    <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none"
+         stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+         stroke-linejoin="round">
+      <path d="M4 5.5h16v13H4z"/><path d="M8 11.5l2.6 2.6L16 8.5"/>
+    </svg>
+    <span class="brand-text"><b>Vote</b> Grand Rapids</span>
+    <!-- Michigan, both peninsulas, state outline only. Derived from the
+         same county geometry as the state outline, unioned to
+         the state edge and simplified for logo weight. -->
+    <svg class="brand-mi" viewBox="0 0 24 24" aria-hidden="true" fill="none"
+         stroke="currentColor" stroke-width="0.9" stroke-linejoin="round"
+         stroke-linecap="round">
+      <path d="M5.9,6.88 1.97,5.51 1.71,4.87 1.17,4.61 2.22,4.19 2.87,3.62 3.86,3.53 4.66,2.93 5.09,2.89 6.58,1.42 7.6,1.0 8.25,1.01 8.49,1.3 7.83,1.36 7.87,1.56 7.09,2.11 6.51,3.0 6.4,3.89 6.66,3.43 7.32,3.03 6.93,3.61 7.49,3.21 8.21,3.33 8.82,3.76 9.45,4.86 10.41,4.74 10.75,5.12 11.1,4.96 11.38,5.23 11.86,4.67 12.7,4.21 14.46,4.19 15.39,3.83 15.96,3.82 15.76,4.1 15.79,4.95 17.26,5.06 18.19,4.76 18.25,5.89 18.66,6.61 19.48,6.36 20.08,6.84 19.76,7.17 19.54,7.0 19.1,7.09 18.93,6.86 18.55,7.04 17.34,6.8 17.11,6.96 16.77,6.63 16.54,7.05 16.64,7.4 16.58,7.73 17.25,8.17 17.96,8.25 18.31,8.8 19.93,9.32 20.55,10.6 20.21,10.4 19.99,10.68 20.4,11.14 20.52,11.79 20.35,13.22 19.8,13.55 19.69,14.31 19.43,14.34 19.41,14.54 18.97,14.5 18.7,15.55 19.4,16.05 20.37,14.93 20.15,14.8 21.35,14.23 21.75,14.36 22.24,15.12 22.83,18.2 22.54,19.67 22.37,19.87 22.1,20.0 22.44,19.63 22.11,19.37 21.77,19.52 21.87,19.72 21.59,19.98 21.55,20.44 20.91,21.03 20.86,21.79 20.38,22.14 20.02,22.87 16.36,23.0 16.36,22.77 10.89,22.77 11.52,22.18 12.26,20.76 12.52,19.73 12.5,18.15 11.66,15.85 11.96,15.14 11.73,14.27 12.41,13.17 12.44,11.87 12.88,11.68 12.95,11.05 13.32,10.81 13.64,10.89 14.35,9.89 14.07,11.27 14.22,11.59 14.55,10.73 14.41,11.66 14.78,10.9 14.83,9.65 15.28,9.3 16.07,9.18 15.58,8.84 15.52,8.47 16.0,7.91 15.63,7.74 16.38,7.82 16.58,7.43 15.79,6.79 14.47,6.46 13.96,7.0 12.38,7.05 12.17,7.65 11.56,7.95 11.46,8.39 11.18,8.08 11.42,7.68 11.63,7.71 11.67,7.26 11.37,7.48 11.03,7.36 10.86,7.92 10.51,8.13 10.5,7.16 10.26,7.97 9.89,8.24 8.81,10.33 8.43,10.03 8.64,9.28 8.02,9.33 8.31,8.07 7.36,7.57 7.44,7.15 6.32,6.75 5.9,6.88Z"/>
+    </svg>
+  </a>
+</header>
+
+
+<main id="col">
+
+  <!-- The next election, as a dateline. It stays at the top of the page but
+       reads as a standing notice rather than a banner competing with the
+       headline for the first thing you look at. -->
+  <section class="ask" id="intro">
+    <p class="lede">Find your Grand Rapids ward, precinct and polling place
+      directions that avoid known license plate readers. Free and open source,
+      all queries and directions are done on your device with zero tracking!
+      <a href="#" id="howLink" class="how-link">How?</a></p>
+  </section>
+
+  <div class="searchbar" id="searchBar">
+    <label class="field-label" for="addr">Where are you starting?</label>
+    <div class="field-row">
+      <div class="field">
+        <input id="addr" placeholder="300 Monroe Ave NW" autocomplete="off"
+               spellcheck="false">
+      </div>
+      <button type="button" class="pin-btn" id="pinBtn" aria-pressed="false"
+              title="Route from a spot on the map instead">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 21s-7-5.1-7-11a7 7 0 0 1 14 0c0 5.9-7 11-7 11z"/>
+          <circle cx="12" cy="10" r="2.6"/>
+        </svg>
+      </button>
+      <button type="button" class="pin-btn reset-btn" id="resetBtn" hidden
+              title="Start over" aria-label="Start over">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+
+  <!-- The answer. Precinct first, then how to get there, then the map. The map
+       comes last on purpose: it is evidence for the answer, not the answer. -->
+  <section class="block" id="resultBlock" hidden>
+    <div id="precinctInfo"></div>
+    <div id="advisory"></div>
+  </section>
+
+  <section class="block" id="routeBlock" hidden>
+    <div id="destPick"></div>
+    <div class="routes" id="routes"></div>
+    <div id="unavoid"></div>
+
+    <div class="map-section" id="mapBlock" hidden>
+      <div id="map"></div>
+      <div class="map-detail" id="mapDetail" hidden>
+        <button type="button" class="detail-x" id="detailX" aria-label="Close">&#215;</button>
+        <div id="mapDetailBody"></div>
+      </div>
+      <div class="map-foot">
+        <div class="map-note" id="mapNote"></div>
+        <div class="map-legend">
+          <span class="lg-label">Map legend:</span>
+          <span class="route-key" id="routeKey" hidden></span>
+          <span class="lg"><i class="k prec"></i>Precinct</span>
+          <span class="lg"><i class="k wardk"></i>Wards 1, 2, 3</span>
+          <span class="lg"><i class="pollk"></i>Polling place</span>
+          <span class="lg"><i class="dotk"></i>License plate camera</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="steps"></div>
+  </section>
+
+    <div class="page-disclaimer">
+      <p class="disclaimer-flag"><strong>Not an official government tool.</strong>
+        This is a calculated estimate based on the address you enter. Where you
+        vote follows the address you are registered at, not the one you type
+        here. So if you have moved recently, check what is on file before
+        election day. Obey all traffic signs and laws. Verify results with the
+        official
+        <a href="https://mvic.sos.state.mi.us/" target="_blank" rel="noopener">Michigan Voter Information Center</a>
+        or <a href="https://www.grandrapidsmi.gov/departments/clerks-office/" target="_blank" rel="noopener">Grand Rapids City Clerk</a>
+        if you aren't sure.</p>
+    </div>
+
+</main>
+
+<!-- Full-width band under the page: colour-scheme switch in the left track,
+     election calendar in the centre one, links in the right one, so the
+     switch sits in the bottom-left corner rather than competing with the
+     wordmark up top. Sits at the viewport bottom on short pages via the body
+     flex chain. -->
+<footer id="siteFooter">
+  <div class="theme-switch" id="themeSwitch" role="group" aria-label="Color scheme">
+    <button type="button" data-theme-choice="light" title="Light" aria-label="Light">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
+    </button>
+    <button type="button" data-theme-choice="system" title="Match system" aria-label="Match system">Auto</button>
+    <button type="button" data-theme-choice="dark" title="Dark" aria-label="Dark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    </button>
+  </div>
+  <div id="electionFoot" hidden><span id="electionBarInfo"></span></div>
+  <nav class="sf-links">
+    <button type="button" class="about-btn" id="aboutBtnFoot">About</button>
+    <a class="about-btn" href="https://github.com/DT616/votegr"
+       target="_blank" rel="noopener">GitHub</a>
+  </nav>
+</footer>
+<div class="modal-wrap" id="osmConfirm" hidden>
+  <div class="modal-veil" data-close></div>
+  <div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="osmConfirmTitle">
+    <div class="modal-head">
+      <h2 id="osmConfirmTitle">Check OpenStreetMap?</h2>
+      <button type="button" class="modal-x" data-close aria-label="Close">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p class="body">This contacts OpenStreetMap&rsquo;s servers to fetch the
+        latest camera reports. It is the only network request this page can
+        make.</p>
+      <div class="confirm-row">
+        <button type="button" class="confirm-go" id="osmGo">Fetch from OSM</button>
+        <button type="button" class="confirm-stay" data-close>Stay cached</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-wrap" id="aboutModal" hidden>
+  <div class="modal-veil" data-close></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+    <div class="modal-head">
+      <h2 id="aboutTitle">About</h2>
+      <button type="button" class="modal-x" data-close aria-label="Close">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-tagline">Privacy by design</p>
+      <h3>How it works</h3>
+      <p class="body">We created an engine that runs locally in your browser
+        that finds your voter information based on where you live, and generates
+        directions to your polling place while avoiding license plate cameras.
+        Everything the page needs is downloaded when you first visit, so your
+        address never leaves your browser. The lookup and the directions are
+        worked out right there. Once the page has loaded, it keeps working
+        with no connection at all.</p>
+      <p class="body">The files this page uses to compute your information were
+        compiled from published city, state and county data sources.
+        Additionally, we also retrieve and synchronize the data that DeFlock
+        publishes on OpenStreetMap for projects like this to use.</p>
+
+      <h3>Why make this?</h3>
+      <ol class="body why-list">
+        <li>The Voter Information site requires you to submit your personal
+          information and presumably logs lookups. You have to agree to a
+          disclaimer to find this information, and every query is done on their
+          servers. You should not have to hand over your details to find out
+          your ward and precinct number, but that is a limitation of the
+          state's tool. The City provides no lookup tool at all.</li>
+        <li>Raise awareness that decentralized, free and open source software
+          is possible, and we should foster more development and creativity to
+          solve problems using principles that provide utility, maximize privacy
+          and decentralization.</li>
+        <li>Raise awareness about license plate cameras and how they might
+          impact even the sacred act of voting. Nobody should have a reason to
+          feel uneasy about being tracked to go vote. While being pulled over
+          because a camera read your license plate is unlikely for most, it is
+          a real possibility, as are false positives. If this site helps one
+          eligible voter find the polls and vote, and results in the government
+          having less data to collect, it was worth it.</li>
+      </ol>
+
+      <h3>Licence and self-hosting</h3>
+      <p class="body">This page, all the code and data is hosted on
+        <a href="https://github.com/DT616/votegr" target="_blank" rel="noopener">GitHub</a>.
+        It is public domain under the Unlicense and free to download, copy,
+        host and revise.</p>
+
+      <h3>Learning more</h3>
+      <ul class="src-list">
+        <li><a href="https://deflock.me/" target="_blank" rel="noopener">DeFlock</a></li>
+        <li><a href="https://atlasofsurveillance.org/" target="_blank" rel="noopener">Atlas of Surveillance</a></li>
+        <li>Your city and county commissioners decide whether your department
+          buys surveillance technology and under what policy. The
+          <a href="https://www.grandrapidsmi.gov/Government/City-Commission" target="_blank" rel="noopener">City Commission</a>
+          takes public comment at its regular meetings.</li>
+      </ul>
+
+    </div>
+  </div>
+</div>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="basemap.js"></script>
+<script src="router.js"></script>
+<script src="precinct.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

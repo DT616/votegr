@@ -1,0 +1,114 @@
+# Keeps site/data/cameras.json current from OpenStreetMap.
+#
+# The page ships the camera list rather than fetching it, which is what lets
+# the lookup and the route run without contacting anyone. The cost of that
+# choice is that the shipped list goes stale unless something refreshes it,
+# and "something" was a person remembering to run a script. This is that
+# something.
+#
+# Daily. One query a day is a negligible load on Overpass, which is donated
+# infrastructure, and it means a newly mapped reader reaches the page within a
+# day rather than sitting unseen for most of a week. The first real run found
+# four cameras the committed set did not have, which is the argument for the
+# shorter interval: the list drifts faster than weekly checking would catch.
+name: Refresh ALPR cameras
+
+on:
+  schedule:
+    # 06:17 UTC daily. Off the hour on purpose: every cron job in the world
+    # fires at :00, and Overpass is busiest exactly then.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+# contents: to push the refreshed data back. actions: to ask the Pages
+# workflow to run afterwards, which is not optional here, see the deploy step.
+permissions:
+  contents: write
+  actions: write
+
+# Never let two refreshes overlap, and never cancel one halfway: a killed run
+# between write and commit would leave the tree in a state nobody chose.
+concurrency:
+  group: refresh-cameras
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # No dependency install step: scripts/refresh_cameras.py is standard library
+      # only, deliberately, so this job has no supply chain of its own.
+
+      - name: Record the current count
+        id: before
+        run: |
+          BEFORE=$(python3 -c "import json;print(len(json.load(open('site/data/cameras.json'))['cameras']))")
+          echo "count=$BEFORE" >> "$GITHUB_OUTPUT"
+          echo "Committed set: $BEFORE cameras"
+
+      - name: Pull from OpenStreetMap
+        # The script walks an endpoint fallback chain, treats an Overpass
+        # 'remark' at HTTP 200 as the truncation signal it is, and exits
+        # non-zero rather than writing a partial result. A failure here stops
+        # the job before anything is committed, which is the intended outcome.
+        run: python3 scripts/refresh_cameras.py
+
+      - name: Refuse a mass deletion
+        # The script's own floor is MIN_CAMERAS=20, which is an absolute guard
+        # against a broken pull. It is not a guard against a PLAUSIBLE one: a
+        # truncated response returning 25 of 148 clears that floor and would
+        # quietly delete 123 cameras. Unattended, nobody would notice until a
+        # route was drawn straight past a reader.
+        #
+        # So compare against what we already had. Cameras are removed from OSM
+        # occasionally, in ones and twos, never in droves. A drop past a fifth
+        # of the set is not news about Grand Rapids, it is news about the
+        # query, and the right response is to keep yesterday's data and shout.
+        run: |
+          BEFORE=${{ steps.before.outputs.count }}
+          AFTER=$(python3 -c "import json;print(len(json.load(open('site/data/cameras.json'))['cameras']))")
+          echo "before=$BEFORE after=$AFTER"
+          python3 - "$BEFORE" "$AFTER" <<'PY'
+          import sys
+          before, after = int(sys.argv[1]), int(sys.argv[2])
+          if before and after < before * 0.8:
+              sys.exit(
+                  f"REFUSE: {after} cameras is a {100*(before-after)/before:.0f}% drop "
+                  f"from {before}. Treating this as a bad pull, not a real change. "
+                  f"Nothing committed. Re-run, or run scripts/refresh_cameras.py by hand "
+                  f"and inspect the diff if the loss is genuine."
+              )
+          print(f"Delta accepted: {after - before:+d}")
+          PY
+
+      - name: Commit and deploy if anything changed
+        run: |
+          if git diff --quiet -- site/data/cameras.json; then
+            echo "No change this week. Nothing to commit."
+            exit 0
+          fi
+          BEFORE=${{ steps.before.outputs.count }}
+          AFTER=$(python3 -c "import json;print(len(json.load(open('site/data/cameras.json'))['cameras']))")
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/data/cameras.json
+          git commit -m "Refresh ALPR cameras from OpenStreetMap ($BEFORE -> $AFTER)"
+          git push
+          # Pushing is NOT enough to publish. GitHub deliberately does not fire
+          # workflows for pushes made with GITHUB_TOKEN, so pages.yml ignores
+          # this commit and the refreshed list would sit in the repository
+          # forever without reaching anyone. Measured: the first real run
+          # committed 148 -> 152 and no deploy followed it.
+          #
+          # So ask for the deploy explicitly. Dispatching the existing workflow
+          # rather than copying its steps keeps one definition of how this site
+          # is published; a second copy here would drift from it.
+          gh workflow run "Deploy site to GitHub Pages" --ref main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,67 @@
+# Runs the repository's own checks on every pull request.
+#
+# pages.yml deploys site/ on every push to main, so main IS production and a
+# merge is a release. Until now nothing ran before that: the tests existed and
+# were run by whoever remembered. This is the step that makes remembering
+# unnecessary, and gives branch protection something real to require.
+#
+# Three suites, cheapest first, so an obvious break fails in seconds rather
+# than after a browser download:
+#
+#   test_router.mjs  the routing core, restrictions and address lookup
+#   audit_routes.mjs 859 real trips, mechanically checked -- the one that
+#                    matters, per the README, and only ~15s
+#   test_page.mjs    the page in a real browser at three widths
+#
+# compare_osrm.mjs is deliberately absent. It queries a public OSRM server,
+# which makes it network-dependent and slow, and sending trips to a routing
+# server is the thing this project exists to avoid doing. It stays a tool you
+# reach for by hand.
+name: Checks
+
+on:
+  pull_request:
+  # Also on main: a check that only guards pull requests does not notice a
+  # push that went straight to the branch, which is exactly the case worth
+  # hearing about, since that push has already deployed.
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per branch. Cancelling is right here, unlike the deploy and refresh
+# jobs: a superseded commit's results are noise, and nothing is left half
+# written if a run is killed.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      # package.json exists only for this: the site itself has no build step
+      # and no dependencies. npm ci to honour the lockfile exactly.
+      - run: npm ci
+
+      - name: Router core
+        run: node test_router.mjs
+
+      - name: Real trips across the city
+        run: node audit_routes.mjs
+
+      # Only chromium. The page is plain HTML, CSS and ES5-era JavaScript, so
+      # a second engine would cost minutes to tell us the same thing.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: The page in a browser
+        run: node test_page.mjs

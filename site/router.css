@@ -1,0 +1,1052 @@
+/* Get to your polling place — Grand Rapids
+ * Released into the public domain under the Unlicense, see UNLICENSE.
+ *
+ * Visual language: civic wayfinding. The map is deliberately quiet so the
+ * route reads like a transit line -- heavy, cased, unmistakable -- and the
+ * cameras read as bright warning nodes on top of it. Palette and theming are
+ * shared with vote-gr so the two tools feel like siblings.
+ */
+
+@font-face {
+  font-family: "Hanken Grotesk";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("fonts/hankengrotesk-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215;
+}
+
+:root {
+  /* Lifted off vote-gr's near-black: a map fills far more of the screen than a
+     text page, so the same values read much heavier here. Slate, not black. */
+  --bg: #191d25;
+  --panel: #212630;
+  --raise: #2a303b;
+  --fg: #eceef2;
+  --dim: #aab3c0;
+  --line: #39414f;
+  --accent: #7cc4ff;
+  --warn: #ffcf70;
+  --poll: #3ddc84;
+  --danger: #ff7a7a;
+  --good: #6ee7a5;
+  --route-fastsel: #b0565b;
+  --route-avoid: #12e07a;
+  --case: #12151b;          /* casing under route lines */
+  --pin-ring: #12151b;
+  --shadow: 0 2px 8px rgba(0,0,0,.45);
+  --header-h: 72px;
+}
+/* Light applies when the system asks for it AND the reader has not explicitly
+   chosen dark, or when they have explicitly chosen light. Both rules carry the
+   same palette so the two paths cannot drift apart. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #fbfbfd;
+    --panel: #ffffff;
+    --raise: #f4f6fa;
+    --fg: #1a1d23;
+    --dim: #4d5560;
+    --line: #dde1e8;
+    --accent: #0b62b0;
+    --warn: #8a5b00;
+    --poll: #178f4a;
+    --danger: #b3261e;
+    --good: #0f7a43;
+  --route-fastsel: #8f2b31;
+    --route-avoid: #00963f;
+    --case: #ffffff;
+    --pin-ring: #ffffff;
+    --shadow: 0 2px 8px rgba(20,25,35,.16);
+  }
+}
+:root[data-theme="light"] {
+    --bg: #fbfbfd;
+    --panel: #ffffff;
+    --raise: #f4f6fa;
+    --fg: #1a1d23;
+    --dim: #4d5560;
+    --line: #dde1e8;
+    --accent: #0b62b0;
+    --warn: #8a5b00;
+    --poll: #178f4a;
+    --danger: #b3261e;
+    --good: #0f7a43;
+  --route-fastsel: #8f2b31;
+    --route-avoid: #00963f;
+    --case: #ffffff;
+    --pin-ring: #ffffff;
+    --shadow: 0 2px 8px rgba(20,25,35,.16);
+  }
+
+* { box-sizing: border-box; }
+html { height: 100%; }
+/* The body is a flex column at least a viewport tall, so the footer can be
+   pushed to the bottom of the SCREEN on a short page and to the bottom of
+   the CONTENT on a long one. */
+body {
+  margin: 0; min-height: 100dvh;
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--fg);
+  font-family: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------------
+   One centred column, the width of a paragraph, the same shape on a phone
+   as on a desktop. An earlier version gave the map half the screen at all
+   times, which spent the most valuable real estate on something there is
+   no reason to consult until you have asked a question.
+
+   The map is now part of the answer: it appears under the precinct result
+   and is sized to be read, not explored. Nothing here needs a viewport
+   height, so there is no bottom sheet and no fixed positioning.
+   --------------------------------------------------------------------- */
+#col {
+  max-width: 34rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  flex: 1 0 auto;
+  display: flex; flex-direction: column;
+}
+/* Every child spans the column as before; the spacer absorbs the slack so
+   the footer lands at the bottom of the viewport when content is short. */
+
+/* The asking state is a composed landing: little on screen, and pushed down
+   so the headline and the field sit in the optical centre of the viewport.
+   Scaled padding rather than flex centring on purpose. True vertical centring
+   reads well on a desktop and badly on a phone, where it shoves the one thing
+   you came to use below the fold. */
+#col:not(.has-result) { padding-top: clamp(1.25rem, 8vh, 4.5rem); }
+#col.has-result { padding-top: 1rem; }
+
+/* The map sits inside the route section now, directly under the choice it
+   illustrates, so it takes no rule of its own. */
+.map-section { padding: 16px 0 4px; }
+/* Section opened only to show the map (pin picking): its route chrome has
+   nothing to say yet. */
+#routeBlock.map-only > h2,
+#routeBlock.map-only > #destPick,
+#routeBlock.map-only > .routes,
+#routeBlock.map-only > #unavoid,
+#routeBlock.map-only > #steps { display: none; }
+
+/* The status bar in the map's bottom-left corner. Styled like the
+   attribution strip opposite it, and gone entirely while it has nothing
+   to say. */
+.map-status {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 9px;
+  margin: 0 0 4px 4px;
+  font-size: .71rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--accent); white-space: nowrap;
+  box-shadow: 0 1px 5px rgba(0,0,0,.22);
+}
+.map-status:empty { display: none; }
+#map {
+  height: 320px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;   /* keeps Leaflet's tiles inside the rounded corner */
+}
+.map-note {
+  margin-top: 8px; font-size: .82rem; color: var(--dim); line-height: 1.45;
+}
+
+@media (max-width: 600px) {
+  #map { height: 280px; }
+  #col { padding-left: 1rem; padding-right: 1rem; }
+}
+
+/* The reading column stays a comfortable measure for text, but a map is not
+   text and a desktop has room to spare. Past this width the map breaks out of
+   the column, symmetrically, sized from the viewport rather than from the
+   column it sits in. Everything else stays at its reading width. */
+/* ---------------------------------------------------------------------
+   The answer as a workspace on desktop: the ward/precinct header runs full
+   width, the directions take a reading-width side column, and the map fills
+   the rest, sticky so it stays in view while the steps scroll. This replaces
+   a rule that popped just the map out to its own wider centred box, which
+   left it aligned with nothing on either side.
+   On a phone none of this applies and the flow stays linear:
+   answer, route choice, map, steps.
+   --------------------------------------------------------------------- */
+/* The two-pane answer needs only enough width for a readable step list
+   beside a useful map, which a landscape phone already has. The directions
+   column is fluid: never below a readable floor, never wider than a
+   comfortable measure, and the map takes the rest. */
+@media (min-width: 640px) {
+  #col.has-result { max-width: 74rem; }
+
+  #routeBlock:not(.map-only) {
+    display: grid;
+    grid-template-columns: minmax(14.5rem, 23rem) minmax(0, 1fr);
+    column-gap: clamp(16px, 3vw, 30px);
+    align-items: start;
+  }
+  #routeBlock:not(.map-only) > h2,
+  #routeBlock:not(.map-only) > #destPick,
+  #routeBlock:not(.map-only) > .routes,
+  #routeBlock:not(.map-only) > #unavoid,
+  #routeBlock:not(.map-only) > #steps { grid-column: 1; }
+  #routeBlock:not(.map-only) > .map-section {
+    grid-column: 2;
+    grid-row: 1 / span 9;   /* overshoot; empty implicit rows cost nothing */
+    position: sticky; top: 66px;   /* clears the sticky search bar */
+    padding-top: 0;
+  }
+  /* On a landscape phone 64vh is under 300px, so the clamp floor carries
+     the map there; the ceiling still applies on tall desktops. */
+  #map { height: clamp(300px, 64vh, 620px); }
+}
+
+/* Caption on the left, key on the right, both under the map. Nothing of ours
+   is drawn inside the map box, so nothing of ours can cover a camera. */
+.map-foot {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; margin-top: 8px;
+}
+.map-foot .map-note { margin-top: 0; flex: 1 1 16rem; }
+.route-key {
+  display: flex; align-items: center; gap: 13px;
+  font-size: .74rem; line-height: 1.4; flex: none;
+}
+.rk-row {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--dim); font-weight: 600;
+  letter-spacing: .02em; white-space: nowrap;
+}
+.rk-row.on { color: var(--fg); font-weight: 800; }
+.rk-sw { width: 23px; height: 4.5px; border-radius: 2px; flex: none; opacity: .75; }
+.rk-row.on .rk-sw { height: 6px; opacity: 1; }
+.route-toggle .sw.avoid { background: var(--route-avoid); }
+.route-toggle .sw.fast {
+  background: repeating-linear-gradient(115deg,
+    var(--route-fastsel) 0 5px, #fff 5px 8px);
+}
+.rk-sw.avoid { background: var(--route-avoid); }
+.rk-sw.fast  {
+  background: repeating-linear-gradient(115deg,
+    var(--route-fastsel) 0 5px, #fff 5px 8px);
+}
+
+/* ---- masthead ---- */
+/* One headline and one sentence, where there used to be four paragraphs each
+   making a separate claim. The rest of what they said now lives in the three
+   steps below, which show the mechanism instead of asserting it. */
+.ask { padding: 0 0 26px; }
+#addressBlock { border-top: 1px solid var(--line); }
+.ask .lede {
+  margin: 0;
+  font-size: 1.03rem;
+  line-height: 1.62;
+  color: var(--dim);
+  max-width: 31rem;
+}
+
+.block { padding: 18px 0; border-top: 1px solid var(--line); }
+.block h2 {
+  margin: 0 0 14px; font-size: .71rem; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+}
+
+/* Shown with the answer it hedges, not before and not in the basement. Until
+   an address is queried there are no claims on screen to disclaim. */
+/* The one line that has to survive skim-reading: this is not the government's
+   tool. Sits above the longer disclaimer rather than inside it. */
+.page-disclaimer .disclaimer-flag { color: var(--fg); }
+.page-disclaimer { display: none; }
+#col.has-result .page-disclaimer { display: block; margin: 4px 0 0; }
+
+/* ---- address input ---- */
+.field { position: relative; }
+.field input {
+  width: 100%; background: var(--raise); color: var(--fg);
+  border: 1.5px solid var(--line); border-radius: 8px;
+  padding: 12px 13px; font: inherit; font-size: 1rem;
+}
+.field input:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.field input::placeholder { color: var(--dim); opacity: .8; }
+/* Rests empty; no reserved height while it has nothing to say. */
+.hint:empty { display: none; }
+.hint { font-size: .85rem; color: var(--dim); margin-top: 8px; line-height: 1.45; }
+
+.suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.suggest button {
+  background: var(--raise); border: 1px solid var(--line); color: var(--fg);
+  padding: 5px 11px; border-radius: 999px; font: inherit; font-size: .82rem;
+  cursor: pointer; transition: border-color .12s, color .12s;
+}
+.suggest button:hover { border-color: var(--accent); color: var(--accent); }
+
+button.ghost {
+  margin-top: 12px; width: 100%; background: transparent;
+  border: 1px solid var(--line); color: var(--dim);
+  padding: 9px; border-radius: 8px; cursor: pointer; font: inherit;
+  font-size: .87rem; transition: border-color .12s, color .12s;
+}
+button.ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---- polling place result ---- */
+/* Ward and precinct read as a line of fact, not as chips: bordered pills
+   looked like buttons and invited a click that does nothing. */
+.wp-line {
+  font-size: .85rem; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 9px;
+}
+/* The polling place block doubles as the show-on-map control. It should
+   read as clickable without dressing up as a hyperlink. */
+.pp-place { cursor: pointer; border-radius: 8px; margin: 0 -8px; padding: 2px 8px; }
+.pp-place:hover { background: var(--raise); }
+.pp-place:hover .pp-name { color: var(--accent); }
+.pp-place:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.pp-name {
+  font-size: 1.42rem; font-weight: 700; line-height: 1.22;
+  letter-spacing: -.022em; margin-top: 2px;
+}
+.pp-addr { font-size: .93rem; color: var(--dim); line-height: 1.55; margin-top: 4px; }
+.pp-note {
+  font-size: .87rem; margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--line); color: var(--dim); line-height: 1.5;
+}
+.advisory {
+  font-size: .87rem; color: var(--warn); line-height: 1.5; margin-top: 12px;
+  padding-left: 12px; border-left: 2px solid var(--warn);
+}
+.err { font-size: .93rem; color: var(--warn); line-height: 1.55; }
+
+/* ---- route cards ---- */
+.routes { display: flex; flex-direction: column; gap: 10px; }
+.swatch { width: 26px; height: 5px; border-radius: 3px; flex: none; }
+.stat { font-size: .9rem; color: var(--dim); margin-top: 7px; line-height: 1.5; }
+.stat .n { color: var(--fg); font-weight: 600; }
+.cam-big { color: var(--danger); font-weight: 700; }
+.cam-zero { color: var(--good); font-weight: 700; }
+.verdict {
+  margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line);
+  font-size: .9rem; color: var(--fg); line-height: 1.5;
+}
+.unavoid {
+  font-size: .88rem; color: var(--warn); margin-top: 12px; line-height: 1.55;
+  padding-left: 12px; border-left: 2px solid var(--warn);
+}
+
+/* ---- camera source ---- */
+.src { display: flex; gap: 8px; }
+.src button {
+  flex: 1; background: var(--raise); border: 1.5px solid var(--line);
+  color: var(--dim); padding: 9px; border-radius: 8px; cursor: pointer;
+  font: inherit; font-size: .88rem; font-weight: 600;
+  transition: border-color .12s, color .12s;
+}
+.src button.on { border-color: var(--accent); color: var(--accent); background: var(--panel); }
+.src button:disabled { opacity: .55; cursor: default; }
+.src-note { font-size: .87rem; color: var(--dim); margin-top: 10px; line-height: 1.5; }
+.src-note.bad { color: var(--warn); }
+.spin {
+  display: inline-block; width: 11px; height: 11px; margin-right: 7px;
+  border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -1px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- legend + footer ---- */
+/* One ink for the whole key. It was label-at-full-strength over items-at-dim,
+   which read as two levels of importance where there is only one. Note this
+   is var(--fg), not literal white: --fg is near-white on the dark theme and
+   near-black on the light one, and a hardcoded white would be invisible on
+   the light theme's #fbfbfd background. */
+.map-legend {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 7px 16px; font-size: .78rem; color: var(--fg);
+}
+/* The intro's How? opener. Underlined rather than button-shaped: it sits in a
+   sentence, and a button there would compete with the search box for the eye. */
+.how-link {
+  color: var(--accent); font-weight: 700; text-decoration: underline;
+  text-underline-offset: 3px; text-decoration-thickness: 1.5px;
+  white-space: nowrap;
+}
+.how-link:hover { text-decoration-thickness: 2.5px; }
+.how-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+
+.map-legend .lg-label {
+  font-weight: 700; letter-spacing: .04em; color: var(--fg);
+}
+.map-legend .lg { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.map-legend .k {
+  display: inline-block; width: 26px; height: 5px; border-radius: 2.5px;
+}
+/* Holds the real marker SVG, injected by paintLegendCamera(). This was a
+   gradient imitation of the robot and had visibly drifted from the thing it
+   was imitating, which is what happens whenever one drawing exists twice. */
+.map-legend .dotk {
+  display: inline-flex; width: 18px; height: 18px;
+  align-items: center; justify-content: center;
+}
+
+/* The dark basemap ships nearly black, which swallows the map. Lifting it
+   here keeps the ground legible as slate while the route still dominates. */
+:root[data-theme="dark"] .leaflet-tile-pane,
+:root:not([data-theme="light"]) .leaflet-tile-pane {
+  filter: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .leaflet-tile-pane {
+    filter: brightness(1.72) contrast(.82) saturate(1.15);
+  }
+}
+:root[data-theme="dark"] .leaflet-tile-pane {
+  filter: brightness(1.72) contrast(.82) saturate(1.15);
+}
+
+/* ---- map furniture ---- */
+.leaflet-container { font-family: inherit; background: var(--raise); }
+.leaflet-control-attribution {
+  background: color-mix(in srgb, var(--panel) 86%, transparent) !important;
+  color: var(--dim) !important; font-size: 11px !important;
+}
+.leaflet-control-attribution a { color: var(--dim) !important; }
+.leaflet-bar a {
+  background: var(--panel) !important; color: var(--fg) !important;
+  border-bottom-color: var(--line) !important;
+}
+.leaflet-bar a:hover { background: var(--raise) !important; }
+
+/* The chosen route flows, so the eye follows it without reading the legend. */
+.route-flow { animation: flow 2.4s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -28; } }
+@media (prefers-reduced-motion: reduce) {
+  .route-flow { animation: none; }
+  .spin { animation: none; }
+}
+
+/* Very small phones: tighten the gutter and the masthead. */
+@media (max-width: 380px) {
+  #siteHeader { padding: 0 12px; gap: 8px; }
+  #col { padding: 0 .75rem 2.5rem; }
+  .block { padding: 14px 0; }
+}
+
+/* ---- address type-ahead ---- */
+.field { position: relative; }
+.ac {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 900;
+  background: var(--panel); border: 1.5px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow); overflow: hidden; max-height: 300px; overflow-y: auto;
+}
+.ac[hidden] { display: none; }
+.ac-item {
+  display: flex; align-items: baseline; gap: 9px; width: 100%;
+  padding: 10px 13px; background: none; border: 0; cursor: pointer;
+  font: inherit; text-align: left; color: var(--fg);
+  border-bottom: 1px solid var(--line);
+}
+.ac-item:last-child { border-bottom: 0; }
+.ac-item:hover, .ac-item.active { background: var(--raise); }
+.ac-item .num { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ac-item .st { flex: 1; }
+.ac-item .why {
+  font-size: .76rem; color: var(--dim); letter-spacing: .04em;
+  text-transform: uppercase; white-space: nowrap;
+}
+.ac-head {
+  padding: 8px 13px; font-size: .76rem; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--dim); background: var(--raise);
+  border-bottom: 1px solid var(--line);
+}
+
+/* ---- camera detail popup ---- */
+/* Marker detail, shown under the map rather than in a popup over it. See
+   showDetail in app.js for why. Full column width, so nothing is clipped and
+   nothing covers the streets the reader is looking at. */
+.map-detail {
+  position: relative;
+  margin-top: 10px;
+  padding: 13px 40px 13px 15px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  font-size: .88rem; line-height: 1.45;
+}
+.detail-x {
+  position: absolute; top: 6px; right: 6px;
+  width: 30px; height: 30px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: 0; border-radius: 6px;
+  color: var(--dim); font-size: 1.3rem; cursor: pointer;
+}
+.detail-x:hover { background: var(--raise); color: var(--fg); }
+
+/* Leaflet popup chrome for the camera detail, desktop only. */
+.cam-popup .leaflet-popup-content-wrapper {
+  background: var(--panel); color: var(--fg);
+  border: 1.5px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+}
+.cam-popup .leaflet-popup-tip { background: var(--panel); border: 1.5px solid var(--line); }
+.cam-popup .leaflet-popup-content { margin: 12px 14px; font-size: .88rem; line-height: 1.4; }
+.cam-popup a.leaflet-popup-close-button { color: var(--dim); }
+
+.campop .ctitle {
+  font-size: .74rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--danger); margin-bottom: 9px;
+}
+.campop .cf {
+  display: flex; gap: 10px; padding: 3px 0; align-items: baseline;
+}
+.campop .ck { color: var(--dim); flex: none; min-width: 92px; }
+.campop .cv { font-weight: 600; }
+.campop .cfoot {
+  margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line);
+  font-size: .78rem; color: var(--dim);
+}
+
+/* ---- election banner ---- */
+/* The election, set in the header bar. Small uppercase so it reads as a
+   standing fact rather than a headline competing with the page's own. */
+/* Two columns, two rows: labels align under labels and dates under dates.
+   The grid is centred as a block, so the pair reads as one aligned unit
+   rather than two lines each centred on its own width. */
+
+/* Full-width footer band, the header's mirror: same surface, same three
+   tracks. Colour-scheme switch left, election calendar centred, links right.
+   The body flex chain keeps it at the viewport bottom when the page is
+   short. */
+#siteFooter {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px 16px; padding: 12px 18px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+#siteFooter .theme-switch { grid-column: 1; justify-self: start; }
+#siteFooter #electionFoot { grid-column: 2; justify-self: center; }
+#siteFooter .sf-links { grid-column: 3; justify-self: end; }
+.sf-links { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sf-links .about-btn { text-decoration: none; }
+/* If the bar runs out of room the links wrap; the switch keeps its size and
+   its corner. */
+#siteFooter .theme-switch { flex: none; }
+/* Stacked footer on a phone. The election line stays centred on its own row,
+   then the switch and the links share the row below and push apart, so the
+   switch still lands in the bottom-left corner of the screen. */
+@media (max-width: 640px) {
+  #siteFooter { grid-template-columns: auto 1fr; padding: 12px 18px 14px; }
+  #siteFooter #electionFoot { grid-column: 1 / -1; grid-row: 1; justify-self: center; }
+  #siteFooter .theme-switch { grid-column: 1; grid-row: 2; justify-self: start; }
+  #siteFooter .sf-links { grid-column: 2; grid-row: 2; justify-self: end; }
+}
+
+#electionBarInfo {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 3px 10px;
+  align-items: baseline;
+  justify-content: center;
+}
+
+.elec-name {
+  font-weight: 700; font-size: .74rem; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--accent);
+}
+.elec-date {
+  font-weight: 600; font-size: .74rem; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--dim);
+}
+
+.cam-count {
+  font-size: .88rem; color: var(--dim); line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+/* The caveat that matters most, on the page rather than behind a dialog. */
+.page-disclaimer {
+  margin: 22px 0 0;
+  padding: 12px 14px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 8px;
+  font-size: .85rem; line-height: 1.55; color: var(--fg);
+}
+.page-disclaimer a { color: inherit; }
+.page-disclaimer p { margin: 0; }
+.page-disclaimer p + p { margin-top: 10px; }
+
+/* ---- destination segmented control ---- */
+.seg { display: flex; gap: 0; margin-bottom: 12px; border: 1.5px solid var(--line);
+       border-radius: 8px; overflow: hidden; }
+.seg button {
+  flex: 1; background: var(--raise); border: 0; color: var(--dim);
+  padding: 9px 8px; font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer;
+  border-right: 1px solid var(--line);
+}
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--panel); color: var(--accent); }
+
+/* ---- route cards are now buttons ---- */
+
+/* ---- turn-by-turn ---- */
+ol.steps { list-style: none; margin: 14px 0 0; padding: 0; counter-reset: s; }
+ol.steps li {
+  position: relative; display: flex; align-items: baseline; gap: 9px;
+  padding: 9px 0 9px 30px; border-bottom: 1px solid var(--line);
+  font-size: .92rem; line-height: 1.45;
+}
+ol.steps li:last-child { border-bottom: 0; }
+ol.steps li::before {
+  counter-increment: s; content: counter(s);
+  position: absolute; left: 0; top: 9px;
+  width: 21px; height: 21px; border-radius: 50%;
+  background: var(--raise); border: 1px solid var(--line);
+  font-size: .74rem; font-weight: 700; color: var(--dim);
+  display: flex; align-items: center; justify-content: center;
+}
+ol.steps li.arrive::before {
+  content: '✓'; background: var(--warn); border-color: var(--warn); color: #1a1207;
+}
+ol.steps .stext { flex: 1; }
+ol.steps li { cursor: pointer; }
+ol.steps li:hover { background: var(--raise); }
+ol.steps li.cur {
+  background: var(--raise);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+ol.steps .sd { color: var(--dim); font-size: .85rem; white-space: nowrap; }
+ol.steps .scam {
+  color: var(--danger); font-size: .78rem; font-weight: 700; white-space: nowrap;
+}
+.steps-note { font-size: .85rem; color: var(--dim); line-height: 1.5; margin-top: 12px; }
+
+/* camera markers */
+.cam-icon { background: none; border: 0; }
+.cam-pulse { animation: campulse 1.9s ease-in-out infinite; transform-origin: center; }
+@keyframes campulse { 0%,100% { opacity: .95; } 50% { opacity: .28; } }
+@media (prefers-reduced-motion: reduce) { .cam-pulse { animation: none; opacity: .7; } }
+
+/* Cameras beyond the city line sit under the veil and are outside what this
+   tool routes through, so they recede with it rather than floating on top. */
+.cam-icon.cam-outside { opacity: .34; }
+.campop .cago { color: var(--dim); font-weight: 400; }
+
+/* A single collapsed route is not one of two choices, so it does not invite a
+   click the way the paired cards do. */
+
+/* ---- site header ---- */
+/* Three tracks with equal flexible sides, so the middle is optically centred
+   in the bar. min-height, not height, because the row is allowed to wrap to
+   two lines on a narrow phone.
+
+   The bar carries the wordmark and nothing else: the colour-scheme switch
+   moved to the footer's right track. That also retires the squeeze this
+   header used to have, where centring a 200px wordmark next to 190px of
+   controls in a 390px row was geometry that could not work. The empty side
+   tracks stay because they are what centres the wordmark. */
+#siteHeader {
+  min-height: var(--header-h);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px; padding: 0 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  position: relative; z-index: 700;
+}
+#siteHeader .brand { grid-column: 2; justify-self: center; }
+@media (max-width: 640px) {
+  #siteHeader {
+    grid-template-columns: 1fr;
+    padding: 10px 18px;
+    justify-items: center;
+    gap: 8px;
+  }
+  #siteHeader .brand { grid-column: 1; justify-self: center; }
+}
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  text-decoration: none; color: var(--fg);
+  min-width: 0;
+}
+.brand-mark { width: 32px; height: 32px; flex: none; color: var(--accent); }
+.brand-mi { width: 38px; height: 38px; flex: none; color: var(--accent); }
+.brand-text {
+  font-size: 1.8rem; letter-spacing: -.018em; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* The wordmark steps down on smaller screens, but only as far as the width
+   genuinely demands: with the switch gone from the bar there is nothing left
+   to make room for, so even a 320px phone gets a masthead larger than the old
+   desktop one. Kept together and ordered widest to narrowest on purpose --
+   this file's breakpoints are not in source order, so a .brand-text sitting
+   in some other @media block further down would silently win over these. */
+@media (max-width: 640px) {
+  .brand-mark { width: 28px; height: 28px; }
+  .brand-mi { width: 34px; height: 34px; }
+  .brand-text { font-size: 1.55rem; }
+}
+@media (max-width: 380px) {
+  .brand-mark { width: 24px; height: 24px; }
+  .brand-mi { width: 28px; height: 28px; }
+  .brand-text { font-size: 1.32rem; }
+}
+.brand-text b { font-weight: 800; }
+.brand:hover .brand-text { color: var(--accent); }
+.brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+/* ---- theme switch ---- */
+.theme-switch {
+  display: flex; gap: 0; background: var(--panel);
+  border: 1.5px solid var(--line); border-radius: 8px;
+  box-shadow: var(--shadow); overflow: hidden;
+}
+.theme-switch button {
+  background: none; border: 0; color: var(--dim); cursor: pointer;
+  font: inherit; font-size: .76rem; font-weight: 600;
+  padding: 6px 10px; min-height: 32px; line-height: 1;
+  border-right: 1px solid var(--line);
+}
+.theme-switch button:last-child { border-right: 0; }
+.theme-switch button:hover { color: var(--fg); }
+.theme-switch button.on { color: var(--accent); background: var(--raise); }
+.theme-switch button svg { display: block; width: 15px; height: 15px; }
+/* The switch's own steps down, gathered here and ordered widest to narrowest
+   for the same reason the brand's are: the breakpoints in this file are not in
+   source order, so a .theme-switch button rule left in some other @media block
+   further down would quietly win over these. */
+@media (max-width: 900px) {
+  .theme-switch button { min-height: 34px; }
+}
+@media (max-width: 520px) {
+  .theme-switch button { padding: 6px 9px; }
+}
+@media (max-width: 380px) {
+  .theme-switch button { padding: 5px 8px; }
+}
+
+/* Body copy in the panel. Reads at the same size as the rest of the sheet, not
+   as fine print: this is the part explaining what the tool does with your
+   information, so it should not look like a disclaimer. */
+.block .body {
+  font-size: .93rem; line-height: 1.6; color: var(--fg);
+  margin: 0 0 11px;
+}
+.block .body:last-child { margin-bottom: 0; }
+
+.block .body.big {
+  font-size: 1.02rem; font-weight: 600; line-height: 1.5;
+  color: var(--fg); margin-bottom: 13px;
+}
+.tag.good { color: var(--good); }
+
+/* ---- footer tools + about modal ---- */
+.about-btn {
+  display: inline-flex; align-items: center; text-decoration: none;
+  background: none; border: 1.5px solid var(--line); color: var(--dim);
+  font: inherit; font-size: .88rem; font-weight: 600;
+  padding: 7px 14px; border-radius: 9px; cursor: pointer;
+  transition: color .12s, border-color .12s;
+}
+.about-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* A stray "button" token sat on the line above this rule, which made the
+   selector parse as the descendant "button .modal-wrap" -- a thing that never
+   exists, so the rule never applied. The wrap stayed position:static with
+   z-index:auto, which cost it both jobs: it did not pin to the viewport, and
+   it lost the paint order to #siteHeader (z-index 700), so on a phone the
+   site masthead covered the modal's own title bar and close button. */
+.modal-wrap { position: fixed; inset: 0; z-index: 1000; }
+.modal-wrap[hidden] { display: none; }
+.modal-veil { position: absolute; inset: 0; background: rgba(6, 8, 12, .55); }
+.modal {
+  position: absolute; inset: 0; margin: auto;
+  width: min(660px, calc(100vw - 32px));
+  height: min(78dvh, 900px);
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(0,0,0,.45);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 22px; border-bottom: 1px solid var(--line); flex: none;
+}
+.modal-head h2 { margin: 0; font-size: 1.1rem; }
+.modal-x {
+  background: none; border: 0; color: var(--dim); font-size: 1.5rem;
+  line-height: 1; cursor: pointer; padding: 4px 8px; border-radius: 6px;
+}
+.modal-x:hover { color: var(--fg); background: var(--raise); }
+.modal-body { overflow-y: auto; padding: 20px 22px 26px; }
+.modal-body h3 {
+  font-size: .78rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--dim); margin: 22px 0 10px;
+}
+.modal-body h3:first-child { margin-top: 0; }
+/* The numbered reasons. Numerals rather than bullets because the list is an
+   argument in three parts, and being able to say "reason 2" is useful. */
+.why-list { margin: 0; padding-left: 22px; }
+.why-list li { margin-bottom: 10px; }
+.why-list li:last-child { margin-bottom: 0; }
+/* Standfirst under the About header. Full-strength ink, not dim: it is the
+   page's claim, not a caption. Its sibling rule restores the heading rhythm
+   that h3:first-child gave up when this line took first place. */
+.modal-tagline {
+  margin: 0 0 2px; font-size: 1.3rem; font-weight: 600;
+  letter-spacing: -.01em; color: var(--fg);
+}
+.modal-tagline + h3 { margin-top: 18px; }
+@media (max-width: 900px) {
+  .modal { width: 100%; height: 100dvh; max-height: none; border-radius: 0; border: 0; }
+  .about-btn { padding: 8px 12px; min-height: 40px; }
+}
+
+/* ---- pin-drop toggle beside the address field ---- */
+.field-row { display: flex; gap: 8px; align-items: stretch; }
+.field-row .field { flex: 1; }
+.pin-btn {
+  flex: none; width: 46px; border-radius: 8px; cursor: pointer;
+  background: var(--raise); border: 1.5px solid var(--line); color: var(--dim);
+  display: flex; align-items: center; justify-content: center;
+  transition: color .12s, border-color .12s;
+}
+.pin-btn svg { width: 20px; height: 20px; }
+.pin-btn:hover { color: var(--accent); border-color: var(--accent); }
+.pin-btn.armed {
+  color: var(--accent); border-color: var(--accent); background: var(--panel);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+#map.pin-armed { cursor: crosshair; }
+
+.src-list { margin: 0 0 14px; padding-left: 20px; }
+.src-list li { font-size: .9rem; line-height: 1.55; margin-bottom: 7px; color: var(--fg); }
+.src-list a { color: var(--accent); }
+
+/* ---- destination popup ---- */
+.destpop .dt {
+  font-size: .72rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--warn); margin-bottom: 7px;
+}
+.destpop .dn { font-size: 1rem; font-weight: 700; line-height: 1.3; }
+.destpop .da { font-size: .88rem; color: var(--dim); margin-top: 3px; }
+.destpop .de { font-size: .88rem; color: var(--fg); margin-top: 5px; }
+.destpop .dw {
+  margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line);
+  font-size: .78rem; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--accent);
+}
+
+/* ==========================================================================
+   Panel layout
+   The panel has two states. Before a lookup it explains the tool; after one
+   it should be the answer and the directions, with the explanation out of the
+   way. Reference material (election, cameras, legend) folds shut so it costs
+   a row each instead of a screen each.
+   ========================================================================== */
+
+/* In the asking state this is the one thing to do, so it gets room and no
+   rule under it. Once there is an answer it becomes a tool you return to, so
+   it sticks to the top and takes a divider. It carries the page background,
+   not the panel colour, so the sticky band is invisible against what scrolls
+   beneath it. */
+.searchbar { padding: 0; }
+.field-label {
+  display: block; margin: 0 0 7px;
+  font-size: .95rem; font-weight: 700; letter-spacing: -.01em; color: var(--fg);
+}
+/* Once there is an answer the field is a tool you come back to, not the
+   question being asked, so its framing collapses along with the hint. */
+#col.has-result .field-label { display: none; }
+#col.has-result .searchbar {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--bg);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+#col:not(.has-result) .field input {
+  font-size: 1.06rem;
+  padding: 15px 16px;
+}
+.reset-btn { display: none; }
+#col.has-result .reset-btn { display: flex; }
+#col.has-result #intro { display: none; }
+#col.has-result .searchbar .hint { display: none; }
+
+/* the answer, tightened */
+#resultBlock, #routeBlock { padding: 16px 0; }
+
+/* route choice as one compact control rather than two stacked cards */
+.route-toggle {
+  display: flex; border: 1.5px solid var(--line); border-radius: 9px;
+  overflow: hidden; margin-bottom: 10px;
+}
+.route-toggle button {
+  flex: 1; background: var(--raise); border: 0; border-right: 1px solid var(--line);
+  color: var(--dim); cursor: pointer; font: inherit; padding: 9px 8px;
+  text-align: left; min-height: 46px;
+}
+.route-toggle button:last-child { border-right: 0; }
+.route-toggle button.on { background: var(--panel); }
+.route-toggle .rt-top {
+  display: flex !important; align-items: center; gap: 7px;
+  font-size: .85rem; font-weight: 700; color: var(--dim);
+}
+.route-toggle button.on .rt-top { color: var(--fg); }
+.route-toggle .sw { width: 18px; height: 4px; border-radius: 2px; flex: none; }
+.route-toggle button > span { display: block; }
+.route-toggle .rt-sub {
+  font-size: .8rem; margin-top: 3px; color: var(--dim); white-space: nowrap;
+}
+.route-toggle .rt-cam { font-size: .8rem; margin-top: 1px; white-space: nowrap; }
+.route-toggle .rt-camlbl { color: var(--dim); font-weight: 400; }
+.route-toggle button.on.avoid { box-shadow: inset 0 -3px 0 var(--route-avoid); }
+.route-toggle button.on.fast { box-shadow: inset 0 -3px 0 var(--route-fastsel); }
+
+/* directions list: an arrow per turn reads faster than a counter */
+ol.steps { margin: 12px 0 0; }
+ol.steps li { padding: 10px 0 10px 30px; gap: 10px; }
+ol.steps li::before {
+  content: ''; border: 0; background: none; top: 11px;
+  width: 20px; height: 20px;
+  background-repeat: no-repeat; background-position: center;
+  background-size: 17px 17px;
+}
+ol.steps li.arrive::before { background: none; content: '⚑'; color: var(--warn); font-size: 15px; }
+
+/* wider desktops get a wider panel: the map has room to spare */
+ol.steps li .glyph {
+  position: absolute; left: 0; top: 9px; width: 20px;
+  text-align: center; font-size: 15px; line-height: 1.2;
+  color: var(--accent); font-weight: 700;
+}
+.one-route { font-size: .95rem; color: var(--fg); }
+.one-route b { font-weight: 700; }
+
+/* Narrow phones. The masthead is just the wordmark now, so nothing competes
+   with it there; the crowding moved to the footer row, where two buttons sit
+   beside a three-way switch. Those are what tighten. GitHub is also linked
+   in About. */
+@media (max-width: 520px) {
+  #siteHeader { gap: 10px; }
+  /* The name of the site does not shrink to suit the controls any more --
+     they are in the footer, and they are what tightens. */
+  .about-btn { padding: 7px 10px; }
+}
+/* --lg-* are published by basemap.js from the palette it is drawing with, so
+   these follow the theme. The literal #6d4fa8 that was here is the LIGHT
+   theme's precinct colour, so on the dark theme this drew dark purple on a
+   dark background and was the reason the key was hard to read. The fallback
+   is only for the first paint, before the map has rendered once. */
+.map-legend .k.prec {
+  height: 0; border-top: 2.5px dashed var(--lg-precinct, #b5a6f0); background: none;
+}
+
+/* Hollow ring, matching the polling markers themselves. */
+.map-legend .pollk {
+  display: inline-block; width: 16px; height: 16px; border-radius: 50%;
+  background: none; border: 3.5px solid var(--poll);
+  vertical-align: -3px; margin-right: 6px;
+}
+
+/* ---- polling place markers ---- */
+/* Hollow rings. Fifty-nine solid marks fought the precinct numbers and the
+   route for attention; an outline states the location without claiming the
+   foreground. */
+@keyframes poll-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(35, 190, 105, .85); }
+  100% { box-shadow: 0 0 0 26px rgba(35, 190, 105, 0); }
+}
+.poll-ring.pulse span { animation: poll-pulse 1s ease-out 3; }
+
+.poll-ring { background: none; border: 0; }
+.poll-ring span {
+  display: block; width: 100%; height: 100%; border-radius: 50%;
+  border: 3px solid var(--poll);
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pin-ring) 55%, transparent),
+              0 1px 3px rgba(0,0,0,.35);
+}
+.poll-ring:hover span { border-color: var(--poll); background: var(--panel); }
+.poll-ring.active span {
+  border-width: 4px; border-color: var(--poll);
+  background: color-mix(in srgb, var(--poll) 30%, var(--panel));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--poll) 35%, transparent),
+              0 1px 5px rgba(0,0,0,.5);
+}
+
+/* ---- map layer toggles ---- */
+/* The gear in the map's corner and the panel it opens. Leaflet stacks the
+   control in its corner furniture; the panel is transient and user-opened,
+   so it is allowed over the map in a way standing chrome is not. */
+
+.map-gear { position: relative; }
+.gear-btn {
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--panel); color: var(--fg);
+  border: 0; cursor: pointer; border-radius: 4px;
+}
+.gear-btn:hover { color: var(--accent); }
+.gear-sec {
+  margin: 10px 0 6px; padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-size: .68rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--dim);
+}
+.gear-panel .cam-count { font-size: .78rem; margin-bottom: 7px; }
+.gear-panel .src button { flex: 1; }
+.gear-panel .src-note { font-size: .78rem; margin-top: 7px; max-width: 15rem; }
+.modal-small { max-width: 24rem; }
+.confirm-row { display: flex; gap: 10px; margin-top: 14px; }
+.confirm-row button {
+  flex: 1; padding: 9px 12px; border-radius: 8px; font: inherit;
+  font-size: .9rem; cursor: pointer;
+}
+.confirm-go {
+  background: var(--accent); color: #fff; border: 1px solid var(--accent);
+  font-weight: 700;
+}
+.confirm-stay { background: var(--raise); color: var(--fg); border: 1px solid var(--line); }
+
+.gear-panel {
+  position: absolute; top: 40px; right: 0; z-index: 900;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: var(--shadow);
+  padding: 8px 14px;
+  min-width: 228px;
+}
+
+.layer-toggles {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 0 0 14px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.layer-toggles .lyr {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 0; min-height: 34px;
+}
+.layer-toggles label {
+  font-size: .9rem; color: var(--fg); cursor: pointer; flex: 1;
+}
+.layer-toggles input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.map-legend .k.wardk {
+  height: 15px; border-radius: 3px; border: 1px solid var(--line);
+  background: linear-gradient(90deg,
+    var(--lg-ward1, hsl(265,54%,50%)) 0 33%,
+    var(--lg-ward2, hsl(190,54%,50%)) 33% 66%,
+    var(--lg-ward3, hsl(32,54%,50%)) 66%);
+}

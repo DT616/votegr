@@ -1,0 +1,7 @@
+# Only needed to rebuild data, and only by two scripts:
+#   refresh_addresses.py   requests + shapely
+#   refresh_precincts.py   requests + shapely
+# Every other refresh_/build_ script is standard library only, and the site
+# itself needs nothing installed at all.
+requests>=2.31
+shapely>=2.0
