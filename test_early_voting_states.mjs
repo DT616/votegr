@@ -88,9 +88,12 @@ for (const [name, data, want] of CASES) {
     const live = labels.find(e => e.classList.contains('live'));
     if (!live) return { label: null, site: false, status: null };
     const group = live.parentElement;
+    // The site sits in the row's OTHER cell now, not inside the label's own
+    // group, and both where-cells carry a .pp-name. .vi-ev-site is what
+    // separates the early voting site from the polling place.
     return { label: live.textContent.trim(),
              status: (group.querySelector('.vi-val') || {}).textContent || null,
-             site: !!group.querySelector('.pp-name') };
+             site: !!document.querySelector('.vi-ev-site .pp-name') };
   });
 
   console.log(`\n[${name}] label=${JSON.stringify(got.label)} status=${JSON.stringify(got.status)} site=${got.site} pollHours=${JSON.stringify(hours)}`);

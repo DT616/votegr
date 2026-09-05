@@ -337,6 +337,25 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
 }
 .vi-val { font-size: 1.05rem; font-weight: 600; line-height: 1.35; }
 .vi-lead { font-size: .93rem; color: var(--dim); margin-top: 10px; }
+
+/* When on the left, where on the right: one row for early voting, one for
+   election day. The columns are placed EXPLICITLY rather than left to flow,
+   because a row can be missing its right cell (the window is closed, so
+   there is no site to name) and auto-flow would pull the next row's left
+   cell up into column two. */
+.vi-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 18px 24px; align-items: start;
+}
+.vi-when { grid-column: 1; }
+.vi-where { grid-column: 2; }
+/* Two columns of this need about 240px each. Below that the polling place
+   name wraps to three lines and the pair stops reading as a pair, so the
+   grid becomes one column and the rows simply stack. */
+@media (max-width: 600px) {
+  .vi-grid { grid-template-columns: 1fr; gap: 16px; }
+  .vi-when, .vi-where { grid-column: auto; }
+}
 /* One line, not the days-and-times grid early voting needs: the 7 AM to 8 PM
    window is set by state law and is the same every day and every election, so
    there is no weekday pattern to lay out. */
