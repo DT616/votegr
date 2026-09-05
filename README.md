@@ -6,18 +6,12 @@ Type a Grand Rapids address, or drop a pin, and get your ward, your precinct,
 where you vote, and a driving route there that avoids the license plate
 readers we know about.
 
-**Nothing you type leaves your browser.** No lookup is sent to the state, the
-county, or the city. Not even the map is fetched: it is drawn on your device
-from the same road file the routing uses, so panning and zooming send nothing
-to anyone either.
+**Nothing you type leaves your browser.** Everything is rendered on your device.
 
 This project is independent and unofficial, offered with no guarantee of
 accuracy. It is not affiliated with the City of Grand Rapids, Kent County, or
 the State of Michigan. The Michigan Voter Information Center is the official
 source of record; always verify there, or with the Clerk.
-
-Free to copy, host, revise, and change, including by a city or clerk's office.
-You do not need to ask.
 
 ## Why
 
@@ -59,8 +53,7 @@ site/data/precincts.geojson  full precinct polygons, the source scripts/build_pr
 site/simple/               the light version, no map, at /simple/
 ```
 
-Included are scripts that generated those files, so the data is not
-just asserted but reproducible. `BUILD.md` has the order:
+Included are the scripts that generated those files. `BUILD.md` has the order:
 
 ```
 scripts/
@@ -110,7 +103,7 @@ roughly half the signs are not used.
 a faster route that passes one, and where no clean route exists the same
 search returns the one passing the fewest cameras, with each unavoidable camera named.
 
-## Checking it
+## Checking the data
 
 ```bash
 node test_router.mjs      # 76 assertions: routing, restrictions, addresses
@@ -119,7 +112,7 @@ npm ci && node test_page.mjs   # 93 assertions: the page itself, in a browser
 node compare_osrm.mjs 30  # differential test against OSRM, the OSM reference
 ```
 
-The first three run on every pull request, and on any push to `main`. The
+The first three checks run on every pull request, and on any push to `main`. The
 `package.json` exists only so `test_page.mjs` has a browser to drive; the site
 has no build step and no dependencies.
 
@@ -135,7 +128,7 @@ sending your trip to a routing server is the thing this tool exists to avoid.
 Turn costs were added to the router because that comparison showed our routes
 zigzagging between fast streets in ways OSRM would not.
 
-## Limits
+## Limits and Disclaimer:
 
 This tool is an estimate, and these are the ways it is wrong.
 
@@ -143,42 +136,22 @@ This tool is an estimate, and these are the ways it is wrong.
 map.** Addresses near a precinct boundary are genuinely ambiguous and the page
 says so, as it does for a number it had to infer from its neighbors.
 
-**Coverage is parcel addresses**, so a brand new build may be missing
+**Coverage is parcel addresses**, Meaning a brand new build may be missing
 entirely. More than half of all Grand Rapids mailing addresses are outside the
 city limits, in Wyoming, Kentwood, Walker, East Grand Rapids or one of the
 townships; the page detects those and says which jurisdiction you are in, but
 it cannot route there.
 
-**Camera data is whatever volunteers have mapped.** Newly installed and covert
-readers are not in it. A route lowers your *known* exposure; it cannot promise
-none. The map also shows where a camera stands, and a camera watches a
-corridor rather than a point.
-
-**Turn restrictions are partial and medians are invisible.** Centerline data
-draws a divided road as one line, so a route may imply a left turn across a
-median that has no crossing. This is a route to compare, not turn-by-turn
-navigation to obey. The road signs always win.
-
 **Polling places change every election**, and consolidations appear only in
 the footnotes of the clerk's directory.
 
-## Privacy, precisely
+## Privacy
 
-The page downloads its data once and answers every question locally. There is
-no geocoder, no lookup service, no account, no analytics, and no server to
-ask. You can verify this in your browser's network panel: after the page
-loads, using it produces no requests at all.
-
-The sole exception is the **Cache / OSM** control, under *Camera data* in the
-map's gear menu, which checks OpenStreetMap for readers mapped since this page
-was published. It prompts you before making that external query and never runs
-on its own, and the dialog names who gets contacted. What OpenStreetMap learns
-is that someone asked about Grand Rapids, nothing about you.
+The page downloads its data once and does everything in the browser.  
 
 We deliberately do not publish the OpenStreetMap usernames of the people who
 mapped these cameras, though the data contains them. They are real people
-doing something with friction, and a page about surveillance should not hand
-out a list of who documented it.
+doing something that carries risk.
 
 ## License
 
