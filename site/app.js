@@ -1124,9 +1124,38 @@
     var place = r.place;
     $('resultBlock').hidden = false;
 
-    var html = '<div class="wp-line">' +
-      (r.ward ? 'Ward ' + esc(r.ward) + ' · ' : '') +
-      'Precinct ' + esc(r.precinct) + '</div>';
+    // The answer as labelled facts rather than one eyebrow line. Order is
+    // who you are, then what is true today, then where you vote on the day:
+    // during early voting there are TWO places you could go, and a block
+    // that names only the election-day one is wrong for the nine days it
+    // matters most.
+    var html = '<div class="vi-rows"><div class="vi-two-up">' +
+      (r.ward ? '<div><div class="vi-lbl">Ward</div>' +
+                '<div class="vi-num">' + esc(r.ward) + '</div></div>' : '') +
+      '<div><div class="vi-lbl">Precinct</div>' +
+      '<div class="vi-num">' + esc(r.precinct) + '</div></div></div>';
+
+    // Only while the window is open and a site is listed. destinations()
+    // already ranks the sites by distance from this origin, so the nearest
+    // is read back from it rather than sorted a second time here.
+    var ev = destinations(r).filter(function (o) { return o.kind === 'early'; })[0];
+    if (ev) {
+      html += '<div>' +
+        '<div class="vi-lbl live">Early voting</div>' +
+        '<div class="vi-val">' + esc(earlyVotingStatus()) + '</div>' +
+        '<div class="vi-lead">Early Voting Site Nearest to You:</div>' +
+        '<div class="pp-name">' + esc(ev.place.name) + '</div>' +
+        '<div class="pp-addr">' + esc(ev.place.address) + '</div>' +
+        evHoursHtml(activeEl) +
+        '</div>';
+    }
+
+    if (activeEl) {
+      html += '<div><div class="vi-lbl">Election day</div>' +
+        '<div class="vi-val">' + esc(prettyDate(activeEl.date)) + '</div></div>';
+    }
+
+    html += '<div><div class="vi-lbl">Election day polling place</div>';
     if (place) {
       // The name and address ARE the show-on-map control: clicking the place
       // takes you to the place. A separate link said in four words what the
@@ -1148,6 +1177,7 @@
     } else {
       html += '<div class="err">No polling place on file for precinct ' + esc(r.precinct) + '.</div>';
     }
+    html += '</div></div>';
     $('precinctInfo').innerHTML = html;
     var spb = $('showPlaceBtn');
     if (spb) spb.onkeydown = function (e) {
@@ -1231,6 +1261,30 @@
     var months = ['January','February','March','April','May','June','July',
                   'August','September','October','November','December'];
     return months[Number(p[1]) - 1] + ' ' + Number(p[2]) + ', ' + p[0];
+  }
+
+  // The clerk publishes early voting hours as a weekday pattern rather than
+  // as dated rows, so a rule is matched by weekday. Indexes line up with the
+  // abbreviations the data file uses.
+  var DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  // Days left, times right, with today's row picked out: where to go is the
+  // answer, when it is open is the detail that follows it. Same shape the
+  // /simple page renders, so hours read alike on both surfaces.
+  function evHoursHtml(e) {
+    var rules = (e && e.early_voting_hours) || [];
+    if (!rules.length) return '';
+    var today = DAY_ABBR[new Date().getDay()];
+    var out = '<div class="ev-hours">';
+    for (var i = 0; i < rules.length; i++) {
+      var days = rules[i].days || [];
+      var mark = days.indexOf(today) !== -1 ? ' class="is-today"' : '';
+      out += '<span' + mark + '>' + esc(days.join(', ')) +
+             (mark ? ' (today)' : '') + '</span>' +
+             '<span' + mark + '>' + esc(rules[i].open) + ' to ' +
+             esc(rules[i].close) + '</span>';
+    }
+    return out + '</div>';
   }
 
   // Two lines in the header: election day, then early voting under it.
