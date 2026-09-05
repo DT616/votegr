@@ -14,6 +14,7 @@ refresh never touches the graph).
 import json
 import math
 from pathlib import Path
+from provenance import provenance
 
 # Paths are anchored to the repository root, one level up from this
 # file, since these scripts live in scripts/ and write into site/data.
@@ -150,6 +151,20 @@ def main():
             "skipped": skipped,
             "oneway": sum(1 for e in edges if e["d"]),
         },
+        "provenance": provenance(
+            source="City of Grand Rapids street centerlines, published on "
+                   "ArcGIS Online.",
+            source_url="https://services2.arcgis.com/L81TiOwAPO1ZvU9b/arcgis/"
+                       "rest/services/Transport_Street_Centerlines/"
+                       "FeatureServer/6",
+            licence="Published by the City of Grand Rapids as open data.",
+            made_by="build_graph.py, then build_restrictions.py",
+            how_to_update="Run refresh_centerlines.py, then build_graph.py, "
+                          "then build_restrictions.py. The last step MUST "
+                          "follow the second: a graph rebuild drops the "
+                          "restrictions attached to the previous one.",
+            restrictions="Attached by build_restrictions.py, which stamps its "
+                         "own sources here when it runs."),
         "nodes": nodes,
         "edges": edges,
     }

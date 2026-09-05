@@ -14,6 +14,7 @@ import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from provenance import provenance
 
 # Paths are anchored to the repository root, one level up from this
 # file, since these scripts live in scripts/ and write into site/data.
@@ -118,6 +119,16 @@ def main():
 
     payload = {
         "meta": {"source": "OpenStreetMap (ODbL)", "bbox": bbox()},
+        "provenance": provenance(
+            source="OpenStreetMap, queried through Overpass for water, "
+                   "waterways, green space and railways.",
+            source_url=ENDPOINTS[0],
+            licence="OpenStreetMap contributors, ODbL. Derived data must credit OSM.",
+            made_by="refresh_landcover.py",
+            how_to_update="Run refresh_boundary.py first: the bounding box is "
+                          "read from boundary.json. Then refresh_landcover.py.",
+            endpoint_fallbacks=ENDPOINTS[1:],
+            simplified_degrees=SIMPLIFY_DEG),
         "water": collect(water, True),
         "waterways": collect(lines, False),
         "green": collect(green, True),

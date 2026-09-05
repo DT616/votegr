@@ -19,6 +19,7 @@ import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from provenance import provenance
 
 LAYER = ("https://gisagocss.state.mi.us/arcgis/rest/services/OpenData/"
          "michigan_geographic_framework/MapServer/20/query")
@@ -107,6 +108,16 @@ def main():
                  "note": "Street names in jurisdictions bordering Grand Rapids, "
                          "used only to explain an address this tool cannot answer.",
                  "streets": len(idx)},
+        "provenance": provenance(
+            source="State of Michigan, Michigan Geographic Framework "
+                   "(All Roads layer).",
+            source_url=LAYER,
+            licence="Public record of the State of Michigan, redistributed as published.",
+            made_by="refresh_neighbors.py",
+            how_to_update="Run refresh_neighbors.py.",
+            why="Street names in the jurisdictions AROUND Grand Rapids, so an "
+                "address this tool cannot answer reads as out of area rather "
+                "than as a bug."),
         "streets": idx,
     }, separators=(",", ":")))
     print(f"wrote {len(idx)} street names -> {OUT} "

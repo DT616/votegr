@@ -13,6 +13,7 @@ rounding coordinates to ~1m.
 import json
 import sys
 from pathlib import Path
+from provenance import provenance
 
 # Paths are anchored to the repository root, one level up from this
 # file, since these scripts live in scripts/ and write into site/data.
@@ -108,6 +109,17 @@ def main():
     OUT.write_text(json.dumps({
         "meta": {"source": "State of Michigan voting precinct layer, "
                            "via vote-gr", "count": len(out)},
+        "provenance": provenance(
+            source="State of Michigan, Secretary of State voting precinct "
+                   "layer. Slimmed from site/data/precincts.geojson, which "
+                   "carries the full provenance for the fetch itself.",
+            source_url="site/data/precincts.geojson",
+            licence="Public record of the State of Michigan, redistributed as published.",
+            made_by="build_precincts.py",
+            how_to_update="Run refresh_precincts.py first, then "
+                          "build_precincts.py. This script only reshapes; it "
+                          "never fetches.",
+            derived_from="precincts.geojson"),
         "precincts": out,
     }, separators=(",", ":")))
     print(f"wrote {len(out)} precincts -> {OUT} "

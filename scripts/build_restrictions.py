@@ -22,6 +22,7 @@ import json
 import math
 import sys
 from pathlib import Path
+from provenance import provenance
 
 # Paths are anchored to the repository root, one level up from this
 # file, since these scripts live in scripts/ and write into site/data.
@@ -299,6 +300,30 @@ def main():
     graph["meta"]["restrictions"] = len(uniq)
     graph["meta"]["restrictions_source"] = (
         "OpenStreetMap (ODbL) + City of Grand Rapids sign inventory")
+    # Re-stamp: build_graph.py wrote the block, but this step is what finishes
+    # the file, so its date is the one that means anything. The sign layer's
+    # own edit date is recorded because it is the reason nothing schedules a
+    # sign refresh: measured 2026-09-05, the layer had not been edited since
+    # 2024-03-29 and carries no temporary construction signs (no W20-, TC-,
+    # G20- or CW- codes in 44,892 rows), so a cadence there would be upstream
+    # load with no payload.
+    prov = graph.get("provenance")
+    if prov:
+        prov.update(provenance(
+            source=prov.get("source", ""),
+            source_url=prov.get("source_url", ""),
+            licence=prov.get("licence", ""),
+            made_by="build_graph.py, then build_restrictions.py",
+            how_to_update=prov.get("how_to_update", ""),
+            restrictions_from=[
+                "OpenStreetMap (ODbL), turn restriction relations",
+                "https://services2.arcgis.com/L81TiOwAPO1ZvU9b/arcgis/rest/"
+                "services/signs/FeatureServer/0",
+            ],
+            sign_layer_last_edited="2024-03-29",
+            sign_layer_note="Frozen upstream. Permanent regulatory signs only; "
+                            "no temporary construction signage is published in "
+                            "it, so there is nothing for a schedule to catch."))
     GRAPH.write_text(json.dumps(graph, separators=(",", ":")))
 
     print(f"attached {len(uniq)} turn restrictions "

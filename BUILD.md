@@ -47,6 +47,25 @@ sooner. The job refuses to write a truncated Overpass result, and separately
 refuses any pull that drops more than a fifth of the committed set, on the
 grounds that cameras come off the map in ones and twos rather than in droves.
 
+## Where each file came from
+
+Every file under `site/data/` carries a `provenance` block: source, the URL
+actually fetched, licence, the script that writes it, and `generated`, the
+date the source was last read.
+
+`generated` is null on files written before the block existed. That is
+deliberate. It was not back-filled from the git log, because git records when
+a result was COMMITTED rather than when the source was READ, and those differ
+every time a pull returns nothing new. Null means nobody has stamped it yet;
+the next run of the owning script replaces it with a real date.
+
+The block sits beside `meta` rather than inside it. `meta` carries counts and
+bounding boxes that the browser reads at runtime, so it should not grow
+fields only a maintainer cares about. `scripts/provenance.py` builds the block
+so the eight writers cannot drift apart on field names, which is how four
+files ended up recording the same fact as `generated`, `retrieved`,
+`source_last_edited` and `transcribed`.
+
 ## Full rebuild
 
 Order matters in two places, both because a later step writes into an earlier
