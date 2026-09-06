@@ -72,6 +72,7 @@
     --case: #ffffff;
     --pin-ring: #ffffff;
     --shadow: 0 2px 8px rgba(20,25,35,.16);
+    --tint: #dfe0e3;
   }
 }
 :root[data-theme="light"] {
@@ -331,13 +332,12 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
 /* Early voting is the only group that is true right now, so it is the only
    one that takes the accent. */
 .vi-lbl.live { color: var(--accent); }
-/* Ward and Precinct are two halves of one identifier, so they sit together
-   at a fixed gap. Two equal tracks put them 244px apart on a 504px column,
-   which is not a pair. */
-.vi-two-up { display: flex; gap: 64px; }
-/* The label is the wider of the two, so it sets the cell width and the
-   number centres under it rather than hanging off its left edge. */
-.vi-two-up > div { text-align: center; }
+/* Ward and Precinct are the grid's first row rather than a block above it,
+   so the identity lines up with the place and the timing beneath it. They
+   are the only cells that name their column explicitly; every other row is
+   placed by which kind of cell it is. */
+.vi-id { grid-column: 1; }
+.vi-c2 { grid-column: 2; }
 .vi-num {
   font-size: 1.42rem; font-weight: 700; letter-spacing: -.022em;
   line-height: 1.22;
@@ -373,8 +373,7 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
    single value, so they step off --label-size. Tracking eases with the size:
    what reads as deliberate at 11.8px reads as gappy at 14px. Ward and
    Precinct come too, since they head a 1.42rem value exactly as these do. */
-.vi-grid .vi-lbl,
-.vi-two-up .vi-lbl {
+.vi-grid .vi-lbl {
   font-size: .88rem; letter-spacing: .07em; margin-bottom: 4px;
 }
 /* In a ~230px column the days and times cannot sit side by side without

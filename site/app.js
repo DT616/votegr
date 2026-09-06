@@ -1141,12 +1141,16 @@
     // on the right. One row for early voting, one for election day. A row's
     // right cell is emitted only when there is a place to name, which is why
     // the columns are placed explicitly in CSS rather than left to flow.
-    var html = '<div class="vi-rows"><div class="vi-two-up">' +
-      (r.ward ? '<div><div class="vi-lbl">Ward</div>' +
+    // Ward and Precinct are the FIRST ROW of the same grid, not a separate
+    // block above it, so they line up with the two columns underneath
+    // instead of floating in their own rhythm. Ward takes column one beside
+    // the place, Precinct column two beside the timing.
+    var html = '<div class="vi-rows"><div class="vi-grid">' +
+      (r.ward ? '<div class="vi-id vi-c1"><div class="vi-lbl">Ward</div>' +
                 '<div class="vi-num">' + esc(r.ward) + '</div></div>' : '') +
-      '<div><div class="vi-lbl">Precinct</div>' +
-      '<div class="vi-num">' + esc(r.precinct) + '</div></div></div>' +
-      '<div class="vi-grid">';
+      '<div class="vi-id vi-c2' + (r.ward ? '' : ' vi-full') + '">' +
+      '<div class="vi-lbl">Precinct</div>' +
+      '<div class="vi-num">' + esc(r.precinct) + '</div></div>';
 
     // --- early voting row -------------------------------------------------
     // The site is named only while the window is genuinely open. ev can still
