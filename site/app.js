@@ -1259,13 +1259,20 @@
       };
     }
 
-    var adv = [];
-    if (r.pin) adv.push('Your voting location is based on where you are ' +
-      'registered to vote. If you are not sure where that is, check with the ' +
+    // The caveat that applies to every answer this page gives, so it leads and
+    // it is unconditional: the route starts from what you handed the tool, and
+    // the ballot follows your registration. Those are the same address for most
+    // people and not for anyone who has moved, which is exactly who cannot
+    // afford to find out on election day. The notes below it are the
+    // exceptions, and they stay conditional.
+    var adv = ['Note: Your voting location is based on the address where you ' +
+      'registered to vote, not what you enter here. If you are not sure the ' +
+      'address you entered is your registered address, double-check with the ' +
       '<a href="https://www.grandrapidsmi.gov/departments/clerks-office/" ' +
       'target="_blank" rel="noopener">Grand Rapids City Clerk</a> or the ' +
       '<a href="https://mvic.sos.state.mi.us/" target="_blank" ' +
-      'rel="noopener">Michigan Voter Information Center</a>.');
+      'rel="noopener">Michigan Voter Information Center</a> for an ' +
+      'authoritative answer.'];
     if (r.rivals) adv.push('This address sits on a precinct line and could be in ' +
       r.rivals.join(' or ') + '. Worth confirming with the clerk.');
     else if (r.inferred) adv.push('This exact number is not in ' +
@@ -1274,7 +1281,7 @@
     if (r.edgeMetres !== Infinity && r.edgeMetres < 30) adv.push('This address is close ' +
       'to a precinct boundary, so the answer is less certain.');
     if (r.ambiguousStreet) adv.push('Read as ' + esc(r.street) + '. Other streets also match what you typed.');
-    $('advisory').innerHTML = adv.length ? '<div class="advisory">' + adv.join(' ') + '</div>' : '';
+    $('advisory').innerHTML = '<div class="advisory">' + adv.join(' ') + '</div>';
 
     routeTo(r);
     // After routeTo, because the blocks it fills are hidden until then and a
