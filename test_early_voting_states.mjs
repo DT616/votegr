@@ -104,8 +104,10 @@ for (const [name, data, want] of CASES) {
   console.log(`\n[${name}] label=${JSON.stringify(got.label)} status=${JSON.stringify(got.status)} site=${got.site} pollHours=${JSON.stringify(hours)}`);
   // Statewide and statutory, so it shows in every state including the ones
   // where no early voting group renders at all.
-  ok(`${name}: election day hours shown`,
-     hours === `${short(POLL_HOURS.open)} to ${short(POLL_HOURS.close)}`);
+  // Pins the "Hours:" label as well as the value: the label is the point of
+  // the field, and an unlabelled time is what this replaced.
+  ok(`${name}: election day hours shown, labelled`,
+     hours === `Hours: ${short(POLL_HOURS.open)} to ${short(POLL_HOURS.close)}`);
   ok(`${name}: label`, want.label === null ? got.label === null
                                            : !!(got.label && want.label.test(got.label)));
   ok(`${name}: site ${want.site ? 'shown' : 'withheld'}`, got.site === want.site);
