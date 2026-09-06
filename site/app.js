@@ -1273,7 +1273,7 @@
       '<a href="https://mvic.sos.state.mi.us/" target="_blank" ' +
       'rel="noopener">Michigan Voter Information Center</a>.'];
     if (r.rivals) adv.push('This address sits on a precinct line and could be in ' +
-      r.rivals.join(' or ') + '. Worth confirming with the clerk.');
+      r.rivals.join(' or ') + '.');
     else if (r.inferred) adv.push('This exact number is not in ' +
       'the address list, so the precinct was taken from its neighbors and ' +
       'checked against the precinct boundary.');
