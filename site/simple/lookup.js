@@ -491,18 +491,6 @@
       election = nextElection(calendar.elections);
       showNextElection(election);
 
-      // Read the dates off the data itself. A hand-edited data file and a
-      // hard-coded footer drift apart; this cannot.
-      const generated = (addresses.provenance || {}).generated;
-      const directory = (places.provenance || {}).source_document;
-      const sources = $("sources");
-      if (sources) {
-        sources.textContent =
-          "Precinct boundaries from the State of Michigan, matched to Kent County " +
-          `parcel addresses${generated ? ` on ${prettyMonthDay(generated)}` : ""}.` +
-          ` Polling places from the ${directory || "City Clerk's precinct directory"}.`;
-      }
-
       input.disabled = false;
       say("");
     } catch {

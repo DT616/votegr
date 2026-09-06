@@ -5,13 +5,15 @@
 # were run by whoever remembered. This is the step that makes remembering
 # unnecessary, and gives branch protection something real to require.
 #
-# Three suites, cheapest first, so an obvious break fails in seconds rather
+# Five suites, cheapest first, so an obvious break fails in seconds rather
 # than after a browser download:
 #
-#   test_router.mjs  the routing core, restrictions and address lookup
-#   audit_routes.mjs 859 real trips, mechanically checked -- the one that
-#                    matters, per the README, and only ~15s
-#   test_page.mjs    the page in a real browser at three widths
+#   test_display_case.mjs         display casing, over the real corpus
+#   test_router.mjs               the routing core, restrictions and address lookup
+#   audit_routes.mjs              859 real trips, mechanically checked -- the one
+#                                 that matters, per the README, and only ~15s
+#   test_page.mjs                 the page in a real browser at three widths
+#   test_early_voting_states.mjs  the four early voting states, from a fixture
 #
 # compare_osrm.mjs is deliberately absent. It queries a public OSRM server,
 # which makes it network-dependent and slow, and sending trips to a routing

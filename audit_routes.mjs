@@ -14,24 +14,17 @@
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const R = require('./site/router.js');
+const { pointInRings } = require('./site/precinct.js');
 const fs = require('fs');
 
 const graph = new R.Graph(JSON.parse(fs.readFileSync('site/data/graph.json')));
 const cams = JSON.parse(fs.readFileSync('site/data/cameras.json')).cameras;
 const poll = JSON.parse(fs.readFileSync('site/data/polling.json')).precincts;
-const bnd = JSON.parse(fs.readFileSync('site/data/boundary.json'));
+// boundary.json stores [lng, lat]; the shared ray cast wants [lat, lng].
+const cityRings = JSON.parse(fs.readFileSync('site/data/boundary.json'))
+  .rings.map(ring => ring.map(p => [p[1], p[0]]));
+const inside = (lat, lng) => pointInRings(lat, lng, cityRings);
 graph.assignCameras(cams.filter(c => inside(c.lat, c.lng)));
-
-function inside(lat, lng) {
-  let ins = false;
-  for (const ring of bnd.rings) {
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
-      if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) ins = !ins;
-    }
-  }
-  return ins;
-}
 
 // degree map for the u-turn check
 const deg = new Map();

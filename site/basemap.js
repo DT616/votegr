@@ -24,12 +24,13 @@
     6: { name: 'private',  w: [0,   0,   0.9, 1.6], minZ: 15, casing: 0    }
   };
 
-  // Interpolate a width across zoom stops 10 / 13 / 15 / 17.
-  var ALLEY = /\bALY\b|\bALLEY\b/i;
-  // Ramps have long distinct names ("US-131 NB TO I-196 EB RAMP") that carpet
+  // Street names the label pass skips. Alleys are not worth naming; ramps
+  // have long distinct names ("US-131 NB TO I-196 EB RAMP") that carpet
   // every interchange while telling a reader nothing a freeway label has not.
+  var ALLEY = /\bALY\b|\bALLEY\b/i;
   var RAMP = /\bRAMP\b/i;
 
+  // Interpolate a width across zoom stops 10 / 13 / 15 / 17.
   var STOPS = [10, 13, 15, 17];
   function widthFor(cls, z) {
     var w = CLASS[cls] ? CLASS[cls].w : CLASS[5].w;
@@ -129,9 +130,6 @@
     ctx.restore();
   }
 
-  // Which occupancy cells a rotated text run covers. Sampled along the
-  // baseline rather than computed as a rotated rectangle: the sampling is
-  // cheap, and a label only needs to reserve roughly what it covers.
   // Half the camera marker's footprint, in CSS pixels. MEASURED from the live
   // icon (58x58, because the box includes the direction cone) rather than
   // guessed. Both things drawn on the label canvas, street names and precinct
@@ -139,6 +137,9 @@
   // cannot drift apart.
   var MARKER_R = 29;
 
+  // Which occupancy cells a rotated text run covers. Sampled along the
+  // baseline rather than computed as a rotated rectangle: the sampling is
+  // cheap, and a label only needs to reserve roughly what it covers.
   function spanCells(mx, my, ang, tw, fontPx, CELL) {
     var out = [], seen = {};
     var half = tw / 2, cosA = Math.cos(ang), sinA = Math.sin(ang);
@@ -157,10 +158,11 @@
   }
 
   // Street names arrive in the data as ALL CAPS, which shouts on a map.
-  function titleCase(s) {
-    return s.toLowerCase().replace(/\b([a-z])/g, function (m, c) {
-      return c.toUpperCase();
-    }).replace(/\b(Se|Sw|Ne|Nw)\b/g, function (m) { return m.toUpperCase(); });
+  // display-case.js knows this corpus's hard cases (10TH, MCREYNOLDS, US-131
+  // NB), so the map spells a street the way the step list does. The raw name
+  // is the fallback rather than nothing, should that script ever be missing.
+  function labelText(name) {
+    return typeof root.displayCase === 'function' ? root.displayCase(name) : name;
   }
 
   var BasemapLayer = L.Layer.extend({
@@ -173,9 +175,6 @@
 
     setDark: function (d) { this._dark = !!d; this._redraw(); },
 
-    // Street names used by the current route. They are labeled before
-    // anything else, because a step that says "turn right onto Jefferson"
-    // is worthless if Jefferson is the one street on screen without a name.
     // Precinct boundaries, drawn by default. This is a voting tool: the lines
     // that decide where you vote should be visible before you have asked
     // anything, not only after a lookup.
@@ -208,6 +207,9 @@
       this._redraw();
     },
 
+    // Street names used by the current route. They are labeled before
+    // anything else, because a step that says "turn right onto Jefferson"
+    // is worthless if Jefferson is the one street on screen without a name.
     setRouteStreets: function (names, pts) {
       this._routeStreets = {};
       (names || []).forEach(function (n) {
@@ -244,14 +246,11 @@
       this._labelCanvas.style.position = 'absolute';
       map.getPane('basemapLabels').appendChild(this._labelCanvas);
 
-      // Leaflet fires `move` continuously while panning. Redrawing per event
-      // meant several full canvas passes inside one frame, all but the last
-      // discarded. Coalescing to one per animation frame keeps panning smooth
-      // without changing what ends up on screen.
-      // Only redraw when the map SETTLES. During a drag Leaflet translates
-      // the pane, and these canvases are children of panes, so they move with
-      // it for free. Redrawing on every `move` event repainted 10,000 roads
-      // per frame and held panning to about 20fps.
+      // Only redraw when the map SETTLES, and at most once per animation
+      // frame. During a drag Leaflet translates the pane, and these canvases
+      // are children of panes, so they move with it for free; redrawing on
+      // every `move` event repainted 10,000 roads per frame and held panning
+      // to about 20fps.
       //
       // The canvases are drawn PADDED beyond the viewport so a pan reveals
       // ground that is already there instead of blank edges. Same approach as
@@ -353,8 +352,6 @@
             'hsl(' + P.wardHue[wk] + ',' + P.wardSat + '%,' + P.wardL + '%)');
         }
       } catch (e) {}
-
-      var origin = map.getPixelOrigin(), pane = map.getPixelBounds().min;
 
       // Project [lat,lng] -> canvas px with a precomputed linear transform.
       //
@@ -672,7 +669,6 @@
       ctx.textBaseline = 'middle';
       ctx.lineJoin = 'round';
 
-      var wanted = names.length, shown = 0;
       for (var k = 0; k < names.length; k++) {
         var cands = best[names[k]];
         var onRoute = !!route[names[k]];
@@ -728,7 +724,7 @@
           }
           var size_px = it.cls <= 2 ? 13.5 : it.cls === 3 ? 12.5 : 12;
           ctx.font = '600 ' + size_px + 'px "Hanken Grotesk", system-ui, sans-serif';
-          var label = titleCase(names[k]);
+          var label = labelText(names[k]);
           // The name may overrun the block it is anchored to. A block is an
           // arbitrary slice of a street that keeps going, so demanding the
           // text fit inside one was rejecting nearly every label at mid
@@ -805,11 +801,8 @@
           ctx.fillText(label, 0, 0);
           ctx.restore();
           placed++;
-          if (placed === 1) shown++;
-          // block the neighboring cells too, so a repeat is not adjacent
         }
       }
-      this.labelCoverage = { wanted: wanted, shown: shown };
     },
 
     _strokeRings: function (ctx, rings, pt) {
