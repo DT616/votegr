@@ -394,6 +394,28 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
    tint rather than on the page, so its hover has to move away from the tint
    rather than toward the old page-level --raise. */
 .vi-grid .pp-place:hover { background: var(--tint-hover); }
+
+/* While early voting is open there are two addresses on screen and only one
+   of them is the one being routed to. The cells are the toggle: hover lifts
+   either, and the one the directions are actually for carries an accent ring
+   so the answer to "which address is this route for" is on the address
+   itself rather than only in the control below the map. */
+.vi-dest { cursor: pointer; }
+.vi-dest:hover { background: var(--tint-hover); }
+.vi-dest:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vi-dest.is-dest {
+  box-shadow: inset 0 0 0 2px var(--accent),
+              inset 0 1px 0 var(--bevel-hi), inset 0 -1px 0 var(--bevel-lo);
+}
+/* Inside a selected cell the place block must not paint over the ring's
+   inner edge on hover. */
+.vi-dest.is-dest .pp-place:hover { background: var(--tint-hover); }
+
+/* Hours are a labelled sub-field, not another column header, so they sit
+   below the header scale rather than on it. */
+.vi-hours-lbl { color: var(--dim); font-weight: 600; }
+.ev-hours-lbl { font-size: .88rem; margin-top: 12px; }
+.ev-hours-lbl + .ev-hours { margin-top: 2px; }
 /* These name a whole column of the table, a bigger job than a word above a
    single value, so they step off --label-size. Tracking eases with the size:
    what reads as deliberate at 11.8px reads as gappy at 14px. Ward and

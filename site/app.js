@@ -1168,7 +1168,7 @@
       // .vi-ev-site names this cell: both where-cells hold a .pp-name and
       // nothing else told them apart.
       if (ev) {
-        html += '<div class="vi-where vi-ev-site">' +
+        html += '<div class="vi-where vi-ev-site" data-kind="early">' +
           '<div class="vi-lbl">Early Voting Site Nearest to You</div>' +
           '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
           '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
@@ -1186,7 +1186,7 @@
     // single column stacks the same way. With no upcoming election at all
     // there is no when-cell, so the place spans the row.
     html += '<div class="vi-where' + (activeEl ? '' : ' vi-full') +
-      '"><div class="vi-lbl">Election day polling place</div>';
+      '" data-kind="polling"><div class="vi-lbl">Election day polling place</div>';
     if (place) {
       // The name and address ARE the show-on-map control: clicking the place
       // takes you to the place. A separate link said in four words what the
@@ -1215,37 +1215,64 @@
         '<div class="vi-lbl">Election day</div>' +
         '<div class="vi-val">' + esc(prettyDateLong(activeEl.date)) + '</div>' +
         (electionDayHours && electionDayHours.open && electionDayHours.close
-          ? '<div class="vi-hours">' + esc(shortTime(electionDayHours.open)) +
-            ' to ' + esc(shortTime(electionDayHours.close)) + '</div>'
+          ? '<div class="vi-hours"><span class="vi-hours-lbl">Hours:</span> ' +
+            esc(shortTime(electionDayHours.open)) + ' to ' +
+            esc(shortTime(electionDayHours.close)) + '</div>'
           : '') +
         '</div>';
     }
 
     html += '</div></div>';
     $('precinctInfo').innerHTML = html;
+    // The two place cells ARE the destination toggle while both exist. Which
+    // address the directions are for was previously legible only from the
+    // segmented control below the map, so the block showed two addresses and
+    // gave no clue which one it was routing to.
+    //
+    // Only when there is something to choose between. With a single
+    // destination there is nothing to toggle, and the polling place keeps its
+    // older job of framing itself on the map.
+    var destCells = $('precinctInfo').querySelectorAll('[data-kind]');
+    var multi = destinations(r).length > 1;
+    Array.prototype.forEach.call(destCells, function (cell) {
+      var kind = cell.dataset.kind;
+      if (!multi) return;
+      cell.classList.add('vi-dest');
+      cell.setAttribute('role', 'button');
+      cell.setAttribute('tabindex', '0');
+      cell.setAttribute('aria-pressed', 'false');
+      cell.title = 'Get directions here instead';
+      cell.onclick = function () { if (current) routeTo(current, kind); };
+      cell.onkeydown = function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cell.click(); }
+      };
+    });
+
     var spb = $('showPlaceBtn');
-    if (spb) spb.onkeydown = function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); spb.click(); }
-    };
-    if (spb) spb.onclick = function () {
-      if (!place || !place.lat) return;
-      revealMap();
-      map.setView([place.lat, place.lng], 16);
-      $('mapBlock').scrollIntoView({ block: 'center', behavior: 'smooth' });
-      // Pulse the polling marker so the eye lands on the right dot rather
-      // than just the right neighborhood.
-      pollLayer.eachLayer(function (m) {
-        var ll = m.getLatLng();
-        if (Math.abs(ll.lat - place.lat) < 1e-6 && Math.abs(ll.lng - place.lng) < 1e-6) {
-          var el = m.getElement();
-          if (el) {
-            el.classList.remove('pulse');
-            void el.offsetWidth;   // restart the animation on repeat clicks
-            el.classList.add('pulse');
+    if (spb && !multi) {
+      spb.onkeydown = function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); spb.click(); }
+      };
+      spb.onclick = function () {
+        if (!place || !place.lat) return;
+        revealMap();
+        map.setView([place.lat, place.lng], 16);
+        $('mapBlock').scrollIntoView({ block: 'center', behavior: 'smooth' });
+        // Pulse the polling marker so the eye lands on the right dot rather
+        // than just the right neighborhood.
+        pollLayer.eachLayer(function (m) {
+          var ll = m.getLatLng();
+          if (Math.abs(ll.lat - place.lat) < 1e-6 && Math.abs(ll.lng - place.lng) < 1e-6) {
+            var el = m.getElement();
+            if (el) {
+              el.classList.remove('pulse');
+              void el.offsetWidth;   // restart the animation on repeat clicks
+              el.classList.add('pulse');
+            }
           }
-        }
-      });
-    };
+        });
+      };
+    }
 
     var adv = [];
     if (r.pin) adv.push(r.geo
@@ -1319,7 +1346,8 @@
     var rules = (e && e.early_voting_hours) || [];
     if (!rules.length) return '';
     var today = DAY_ABBR[new Date().getDay()];
-    var out = '<div class="ev-hours">';
+    var out = '<div class="vi-hours-lbl ev-hours-lbl">Hours:</div>' +
+              '<div class="ev-hours">';
     for (var i = 0; i < rules.length; i++) {
       var days = rules[i].days || [];
       var mark = days.indexOf(today) !== -1 ? ' class="is-today"' : '';
@@ -1487,6 +1515,7 @@
     if (forcedKind) pick = opts.filter(function (o) { return o.kind === forcedKind; })[0];
     if (!pick) pick = opts[0];
     destChoice = pick;
+    markDestination();
 
     var origin = r.pin ? { lat: r.lat, lng: r.lng }
                        : graph.geocode(r.number, r.street);
@@ -1676,6 +1705,23 @@
     renderRouteCards();
     renderSteps();
     renderUnavoidable();
+  }
+
+  // Mark the block cell whose address the directions are actually for. Driven
+  // off destChoice rather than off the click, so the highlight follows what
+  // the router picked even when the choice came from the segmented control,
+  // from a re-route, or from the fallback to opts[0].
+  function markDestination() {
+    var box = $('precinctInfo');
+    if (!box) return;
+    var cells = box.querySelectorAll('[data-kind]');
+    Array.prototype.forEach.call(cells, function (cell) {
+      var on = !!(destChoice && cell.dataset.kind === destChoice.kind);
+      cell.classList.toggle('is-dest', on && cell.classList.contains('vi-dest'));
+      if (cell.hasAttribute('aria-pressed')) {
+        cell.setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
+    });
   }
 
   function renderDestPicker() {
