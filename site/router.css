@@ -43,6 +43,14 @@
      1.13:1 clear of the hover colour so clicking the polling place reads,
      and every text colour stays above AA on it (--dim at 5.54:1). */
   --tint: #35383f;
+  /* Bevel edges, and the hover the tint forced. --raise was the polling
+     place's hover colour, but on a tinted panel it is DARKER than the panel
+     (1.13:1 the wrong way), so hovering read as the card dimming. --tint-hover
+     lifts instead, 1.24:1 above the tint. Light theme darkens on hover, which
+     is the convention there. */
+  --bevel-hi: rgba(255,255,255,.08);
+  --bevel-lo: rgba(0,0,0,.22);
+  --tint-hover: #43464c;
   /* One micro-label role. Seven sizes (.68 to .85rem) and five trackings
      (.04 to .12em) had accumulated across this file for what is a single
      job: the small uppercase label above or beside a value. Size and
@@ -73,6 +81,9 @@
     --pin-ring: #ffffff;
     --shadow: 0 2px 8px rgba(20,25,35,.16);
     --tint: #dfe0e3;
+    --bevel-hi: rgba(255,255,255,.95);
+    --bevel-lo: rgba(20,25,35,.16);
+    --tint-hover: #d1d2d6;
   }
 }
 :root[data-theme="light"] {
@@ -93,6 +104,9 @@
     --pin-ring: #ffffff;
     --shadow: 0 2px 8px rgba(20,25,35,.16);
   --tint: #dfe0e3;
+  --bevel-hi: rgba(255,255,255,.95);
+  --bevel-lo: rgba(20,25,35,.16);
+  --tint-hover: #d1d2d6;
   }
 
 * { box-sizing: border-box; }
@@ -367,8 +381,19 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
 /* No negative margins: a pull-out overflowed the column and closed the row
    gap until two panels read as one slab. The where-cell takes matching top
    padding instead, so both columns' first labels sit on the same line. */
-.vi-when { background: var(--tint); border-radius: 8px; padding: 12px 14px; }
-.vi-where { padding: 12px 0; }
+/* Both content columns are beveled panels: a light inset edge along the top
+   and a dark one along the bottom, so each cell reads as a raised card
+   rather than a flat colour block. The identity row stays plain, since a
+   panel around a single number is a lot of chrome for one digit. */
+.vi-grid .vi-where,
+.vi-grid .vi-when {
+  background: var(--tint); border-radius: 8px; padding: 12px 14px;
+  box-shadow: inset 0 1px 0 var(--bevel-hi), inset 0 -1px 0 var(--bevel-lo);
+}
+/* The polling place is still the show-on-map control, and it now sits ON the
+   tint rather than on the page, so its hover has to move away from the tint
+   rather than toward the old page-level --raise. */
+.vi-grid .pp-place:hover { background: var(--tint-hover); }
 /* These name a whole column of the table, a bigger job than a word above a
    single value, so they step off --label-size. Tracking eases with the size:
    what reads as deliberate at 11.8px reads as gappy at 14px. Ward and
@@ -386,10 +411,13 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
 @media (max-width: 600px) {
   .vi-grid { grid-template-columns: 1fr; gap: 16px; }
   .vi-when, .vi-where, .vi-full { grid-column: auto; }
-  /* Stacked, the tint is a floating slab rather than a column, and the
-     padding that aligned two columns has nothing left to align to. */
-  .vi-when { background: none; padding: 0; }
-  .vi-where { padding: 0; }
+  /* Stacked, these are not columns any more, so the panels come off: a
+     beveled slab per row is chrome without a job. */
+  .vi-grid .vi-where,
+  .vi-grid .vi-when {
+    background: none; padding: 0; box-shadow: none;
+  }
+  .vi-grid .pp-place:hover { background: var(--raise); }
 }
 /* One line, not the days-and-times grid early voting needs: the 7 AM to 8 PM
    window is set by state law and is the same every day and every election, so
