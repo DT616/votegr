@@ -1161,36 +1161,28 @@
       var ev = evState.site
         ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
         : null;
-      html += '<div class="vi-when">' +
-        '<div class="vi-lbl live">' + esc(evState.label) + '</div>' +
-        '<div class="vi-val">' + esc(evState.status) + '</div>' +
-        (ev ? evHoursHtml(activeEl) : '') +
-        '</div>';
+      // .vi-ev-site names this cell: both where-cells hold a .pp-name and
+      // nothing else told them apart.
       if (ev) {
-        // Named so the two where-cells are distinguishable. Both hold a
-        // .pp-name and nothing else told them apart, which is exactly what
-        // the state test tripped over.
         html += '<div class="vi-where vi-ev-site">' +
           '<div class="vi-lbl">Early Voting Site Nearest to You</div>' +
           '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
           '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
           '</div>';
       }
-    }
-
-    // --- election day row -------------------------------------------------
-    if (activeEl) {
-      html += '<div class="vi-when">' +
-        '<div class="vi-lbl">Election day</div>' +
-        '<div class="vi-val">' + esc(prettyDate(activeEl.date)) + '</div>' +
-        (electionDayHours && electionDayHours.open && electionDayHours.close
-          ? '<div class="vi-hours">' + esc(electionDayHours.open) + ' to ' +
-            esc(electionDayHours.close) + '</div>'
-          : '') +
+      html += '<div class="vi-when' + (ev ? '' : ' vi-full') + '">' +
+        '<div class="vi-lbl live">' + esc(evState.label) + '</div>' +
+        '<div class="vi-val">' + esc(evState.status) + '</div>' +
+        (ev ? evHoursHtml(activeEl) : '') +
         '</div>';
     }
 
-    html += '<div class="vi-where"><div class="vi-lbl">Election day polling place</div>';
+    // --- election day row -------------------------------------------------
+    // Where first, then when, matching the column order so the collapsed
+    // single column stacks the same way. With no upcoming election at all
+    // there is no when-cell, so the place spans the row.
+    html += '<div class="vi-where' + (activeEl ? '' : ' vi-full') +
+      '"><div class="vi-lbl">Election day polling place</div>';
     if (place) {
       // The name and address ARE the show-on-map control: clicking the place
       // takes you to the place. A separate link said in four words what the
@@ -1212,7 +1204,20 @@
     } else {
       html += '<div class="err">No polling place on file for precinct ' + esc(r.precinct) + '.</div>';
     }
-    html += '</div></div></div>';
+    html += '</div>';
+
+    if (activeEl) {
+      html += '<div class="vi-when">' +
+        '<div class="vi-lbl">Election day</div>' +
+        '<div class="vi-val">' + esc(prettyDateLong(activeEl.date)) + '</div>' +
+        (electionDayHours && electionDayHours.open && electionDayHours.close
+          ? '<div class="vi-hours">' + esc(shortTime(electionDayHours.open)) +
+            ' to ' + esc(shortTime(electionDayHours.close)) + '</div>'
+          : '') +
+        '</div>';
+    }
+
+    html += '</div></div>';
     $('precinctInfo').innerHTML = html;
     var spb = $('showPlaceBtn');
     if (spb) spb.onkeydown = function (e) {
@@ -1316,10 +1321,44 @@
       var mark = days.indexOf(today) !== -1 ? ' class="is-today"' : '';
       out += '<span' + mark + '>' + esc(days.join(', ')) +
              (mark ? ' (today)' : '') + '</span>' +
-             '<span' + mark + '>' + esc(rules[i].open) + ' to ' +
-             esc(rules[i].close) + '</span>';
+             '<span' + mark + '>' + esc(shortTime(rules[i].open)) + ' to ' +
+             esc(shortTime(rules[i].close)) + '</span>';
     }
     return out + '</div>';
+  }
+
+  var WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+                  'Friday', 'Saturday'];
+
+  // "2026-11-03" -> "Tuesday, November 3, 2026". The weekday leads because it
+  // is what people plan around; a bare date sends the reader to a calendar.
+  // Built from local Y/M/D parts, never new Date(iso): that parses as UTC
+  // midnight and lands on the previous day for anyone west of Greenwich,
+  // which would print the wrong weekday for an election.
+  //
+  // Deliberately NOT prettyDate(). The footer bar renders its dates in a
+  // compact uppercase strip where a weekday would not fit at 320px, so the
+  // two surfaces keep two formats on purpose. /simple already leads with the
+  // weekday (its own prettyMonthDay caller), so this brings the main page
+  // into line with it rather than inventing a third convention.
+  function prettyDateLong(iso) {
+    if (!iso) return '';
+    var p = iso.split('-');
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    return WEEKDAYS[d.getDay()] + ', ' + prettyDate(iso);
+  }
+
+  // "2026-11-03" -> "Tuesday, November 3", no year. Used inside the early
+  // voting window, where the election date sits directly below carrying the
+  // same year and repeating it twice in four lines adds nothing.
+  function prettyDayMonth(iso) {
+    return prettyDateLong(iso).replace(/, \d{4}$/, '');
+  }
+
+  // "7:00 AM" -> "7 AM". Only on the hour: the clerk publishes half hours
+  // for early voting and those keep their minutes.
+  function shortTime(t) {
+    return String(t || '').replace(/:00(?=\s*[AP]M\b)/i, '');
   }
 
   // Two lines in the header: election day, then early voting under it.
@@ -1374,15 +1413,16 @@
     if (!from || !to) return null;
     var t = todayStr();
     if (t > to) {
-      return { label: 'Early voting closed', status: 'Ended ' + prettyDate(to),
-               site: false };
+      return { label: 'Early voting closed',
+               status: 'Ended ' + prettyDayMonth(to), site: false };
     }
     if (t < from) {
       return { label: 'Early voting upcoming',
-               status: prettyDate(from) + ' to ' + prettyDate(to), site: false };
+               status: prettyDayMonth(from) + ' to ' + prettyDayMonth(to),
+               site: false };
     }
-    return { label: 'Early voting open', status: 'Through ' + prettyDate(to),
-             site: true };
+    return { label: 'Early voting open',
+             status: 'Through ' + prettyDayMonth(to), site: true };
   }
 
   function renderElectionBanner() {

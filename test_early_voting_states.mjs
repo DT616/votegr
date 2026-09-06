@@ -26,6 +26,11 @@ const HOURS = JSON.parse(await readFile(join(ROOT, 'data/elections.json'), 'utf8
 const POLL_HOURS = JSON.parse(await readFile(join(ROOT, 'data/elections.json'), 'utf8'))
   .election_day_hours;
 
+// Mirrors shortTime() in app.js on purpose: the page drops :00 on the hour
+// but keeps a half hour's minutes, and a fixed '7:00 AM to 8:00 PM' string
+// here would pass while the page rendered something else entirely.
+const short = t => String(t).replace(/:00(?=\s*[AP]M\b)/i, '');
+
 const base = extra => ({
   election_day_hours: POLL_HOURS,
   elections: [Object.assign({ date: iso(30), name: 'Test Election' }, extra)],
@@ -100,7 +105,7 @@ for (const [name, data, want] of CASES) {
   // Statewide and statutory, so it shows in every state including the ones
   // where no early voting group renders at all.
   ok(`${name}: election day hours shown`,
-     hours === `${POLL_HOURS.open} to ${POLL_HOURS.close}`);
+     hours === `${short(POLL_HOURS.open)} to ${short(POLL_HOURS.close)}`);
   ok(`${name}: label`, want.label === null ? got.label === null
                                            : !!(got.label && want.label.test(got.label)));
   ok(`${name}: site ${want.site ? 'shown' : 'withheld'}`, got.site === want.site);
