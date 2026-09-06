@@ -113,12 +113,18 @@ node test_router.mjs               # 76 assertions: routing, restrictions, addre
 node audit_routes.mjs              # drives hundreds of real trips, checks every route
 npm ci && node test_page.mjs       # 93 assertions: the page itself, in a browser
 node test_early_voting_states.mjs  # the four early voting states, from a dated fixture
+node test_check_links.mjs          # what the link checker makes of a response
 node compare_osrm.mjs 30           # differential test against OSRM, the OSM reference
+node check_links.mjs               # every external link in the docs, the pages and the data provenance
 ```
 
-All but the OSRM comparison run on every pull request, and on any push to
-`main`. The `package.json` exists only so the two browser tests have a browser
-to drive; the site has no build step and no dependencies.
+All but the last two run on every pull request, and on any push to `main`.
+Those two reach other people's servers, so neither gates a merge: run them by
+hand. The link check also runs weekly on a schedule, which is when a page
+someone else moved gets noticed. It fails only on a page that is actually
+gone, never on a server that declined to answer it. The `package.json` exists
+only so the two browser tests have a browser to drive; the site has no build
+step and no dependencies.
 
 `audit_routes.mjs` is the one that matters. It routes across the real city and
 mechanically checks every result: edges join end to end, no edge is driven
