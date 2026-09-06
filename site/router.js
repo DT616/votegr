@@ -15,6 +15,7 @@
 
   var CAMERA_PENALTY = 1e9;      // seconds-equivalent per camera passed
   var UTURN_PENALTY = 90;        // seconds; discourages, does not forbid
+  var STANDOFF_M = 50;           // a camera "watches" edges within this radius
 
   // Turn costs, in seconds. Added after a differential test against OSRM
   // showed our routes zigzagging between fast streets that OSRM would not:
@@ -32,7 +33,6 @@
     if (a > 150) return TURN_COST_SHARP;
     return d > 0 ? TURN_COST_RIGHT : TURN_COST_LEFT;
   }
-  var STANDOFF_M = 50;           // a camera "watches" edges within this radius
 
   function haversine(lat1, lng1, lat2, lng2) {
     var R = 6371000, toR = Math.PI / 180;
@@ -84,32 +84,38 @@
     return true;
   };
 
-  // Directed adjacency: list of {to, edge, cost0} where cost0 is seconds only
-  // (camera cost is added at search time so a new camera set needs no rebuild).
+  // Directed adjacency: adj[node] lists {to, edge, depB, arrB}, the bearing
+  // on leaving this node and on arriving at the next, which the turn cost
+  // reads. Seconds live on the edge and the camera cost is added at search
+  // time, so a new camera set needs no rebuild.
   Graph.prototype._buildAdjacency = function () {
-    var adj = [];
-    for (var i = 0; i < this.nodes.length; i++) adj.push([]);
-    for (var ei = 0; ei < this.edges.length; ei++) {
-      var e = this.edges[ei];
-      // Freeways are excluded outright, not merely discouraged. A trip to a
-      // polling place is a neighborhood trip: taking US-131 to vote saves a
-      // minute at best, and surface streets are where the tool's camera
-      // knowledge actually applies. Class 1 is the Act 51 freeway class.
-      if (e.c === 1) continue;
-      var p = e.p;
-      if (p.length >= 2) {
-        var fB = bearing(p[0], p[1]);
-        var lB = bearing(p[p.length - 2], p[p.length - 1]);
-        if (e.d === 0 || e.d === 1) {
-          adj[e.a].push({ to: e.b, edge: ei, depB: fB, arrB: lB });
-        }
-        if (e.d === 0 || e.d === 2) {
-          adj[e.b].push({ to: e.a, edge: ei,
-                          depB: (lB + 180) % 360, arrB: (fB + 180) % 360 });
-        }
-      }
+    this.adj = [];
+    for (var i = 0; i < this.nodes.length; i++) this.adj.push([]);
+    for (var ei = 0; ei < this.edges.length; ei++) this._linkEdge(ei);
+  };
+
+  // Wire one edge into the adjacency lists, in whichever directions its
+  // one-way flag allows. Shared by the initial build and by splitAt, so a
+  // temporary half-edge carries the same bearings as a real one and turning
+  // onto it is priced like any other turn.
+  Graph.prototype._linkEdge = function (ei) {
+    var e = this.edges[ei];
+    // Freeways are excluded outright, not merely discouraged. A trip to a
+    // polling place is a neighborhood trip: taking US-131 to vote saves a
+    // minute at best, and surface streets are where the tool's camera
+    // knowledge actually applies. Class 1 is the Act 51 freeway class.
+    if (e.c === 1) return;
+    var p = e.p;
+    if (p.length < 2) return;
+    var fB = bearing(p[0], p[1]);
+    var lB = bearing(p[p.length - 2], p[p.length - 1]);
+    if (e.d === 0 || e.d === 1) {
+      this.adj[e.a].push({ to: e.b, edge: ei, depB: fB, arrB: lB });
     }
-    this.adj = adj;
+    if (e.d === 0 || e.d === 2) {
+      this.adj[e.b].push({ to: e.a, edge: ei,
+                           depB: (lB + 180) % 360, arrB: (fB + 180) % 360 });
+    }
   };
 
   // ---- Camera -> edge assignment (in the browser, per the design) ------
@@ -216,29 +222,13 @@
 
   // point-to-polyline distance in meters (min over segments)
   Graph.prototype._distToEdge = function (lat, lng, poly) {
+    if (poly.length === 1) return haversine(lat, lng, poly[0][0], poly[0][1]);
     var best = Infinity;
     for (var i = 0; i < poly.length - 1; i++) {
-      var d = this._distToSeg(lat, lng, poly[i], poly[i + 1]);
+      var d = projectOnSeg(lat, lng, poly[i], poly[i + 1]).d;
       if (d < best) best = d;
     }
-    if (poly.length === 1) best = haversine(lat, lng, poly[0][0], poly[0][1]);
     return best;
-  };
-
-  // approximate: project in local equirectangular meters
-  Graph.prototype._distToSeg = function (lat, lng, A, B) {
-    var toR = Math.PI / 180, R = 6371000;
-    var latR = lat * toR;
-    var mx = function (ln) { return R * ln * toR * Math.cos(latR); };
-    var my = function (la) { return R * la * toR; };
-    var px = mx(lng), py = my(lat);
-    var ax = mx(A[1]), ay = my(A[0]), bx = mx(B[1]), by = my(B[0]);
-    var dx = bx - ax, dy = by - ay;
-    var len2 = dx * dx + dy * dy;
-    var t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
-    t = Math.max(0, Math.min(1, t));
-    var cx = ax + t * dx, cy = ay + t * dy;
-    return Math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
   };
 
   // ---- A* --------------------------------------------------------------
@@ -272,7 +262,6 @@
   // Route from node srcId to node dstId. Returns null if unreachable.
   // Result: {edges:[ids], nodes:[ids], seconds, meters, cameras:[ids],
   //          cameraCount}
-  // Route from node srcId to node dstId. Returns null if unreachable.
   //
   // Search state is (node, edge-arrived-on), not just node, because whether a
   // turn is legal depends on how you got there. That multiplies the state
@@ -399,7 +388,7 @@
     var frac = total > 0 ? headLen / total : 0.5;
     var self = this;
     function piece(a, b, pts, lenShare, secShare) {
-      return { a: a, b: b, d: e.d, l: Math.round(lenShare * 10) / 10,
+      return { a: a, b: b, d: e.d, c: e.c, l: Math.round(lenShare * 10) / 10,
                t: Math.round(secShare * 10) / 10, n: e.n, r: e.r, z: e.z, p: pts };
     }
     var eHead = this.edges.length;
@@ -425,14 +414,8 @@
     };
     this.adj[e.a] = drop(this.adj[e.a]);
     this.adj[e.b] = drop(this.adj[e.b]);
-    if (e.d === 0 || e.d === 1) {
-      this.adj[e.a].push({ to: mid, edge: eHead });
-      this.adj[mid].push({ to: e.b, edge: eTail });
-    }
-    if (e.d === 0 || e.d === 2) {
-      this.adj[e.b].push({ to: mid, edge: eTail });
-      this.adj[mid].push({ to: e.a, edge: eHead });
-    }
+    this._linkEdge(eHead);
+    this._linkEdge(eTail);
 
     return {
       node: mid, lat: best.lat, lng: best.lng, meters: best.d,
@@ -506,27 +489,6 @@
   Graph.prototype.cameraPos = function (id, lat, lng) {
     var p = this._camSnap && this._camSnap[id];
     return p || [lat, lng];
-  };
-
-  // Nearest point ON a road to a lat/lng, or null beyond maxMeters.
-  //
-  // Cameras are mapped where the pole stands, which is beside the road, not
-  // on it. At street zoom that offset is tens of pixels and the dot appears
-  // to drift away from the road it watches, so the DISPLAY position snaps to
-  // the road while the true position stays in the data for the popup.
-  Graph.prototype.nearestPointOnRoad = function (lat, lng, maxMeters) {
-    var best = null;
-    for (var i = 0; i < this.edges.length; i++) {
-      var p = this.edges[i].p;
-      for (var j = 0; j < p.length - 1; j++) {
-        var pr = projectOnSeg(lat, lng, p[j], p[j + 1]);
-        if (!best || pr.d < best.meters) {
-          best = { lat: pr.lat, lng: pr.lng, meters: pr.d, edge: i };
-        }
-      }
-    }
-    if (!best || (maxMeters != null && best.meters > maxMeters)) return null;
-    return best;
   };
 
   // Nearest node to a lat/lng (linear scan; fine at 7.5k nodes).
@@ -631,7 +593,7 @@
     var ids = idx[key];
     if (!ids || !ids.length || number == null) return null;
 
-    var best = null;
+    // The first segment whose address range holds the number wins.
     for (var i = 0; i < ids.length; i++) {
       var e = this.edges[ids[i]], r = e.r || [];
       var lf = r[0], lt = r[1], rf = r[2], rt = r[3];
@@ -645,13 +607,8 @@
       var span = (to - from);
       var f = span ? (number - from) / span : 0.5;
       var pt = pointAtFraction(e.p, f);
-      var cand = { lat: pt[0], lng: pt[1], edge: ids[i], street: e.n, exact: true };
-      if (!best) best = cand;
-    }
-    if (best) {
-      var nn = this.nearestNode(best.lat, best.lng);
-      best.node = nn.node;
-      return best;
+      return { lat: pt[0], lng: pt[1], edge: ids[i], street: e.n, exact: true,
+               node: this.nearestNode(pt[0], pt[1]).node };
     }
     // number outside every known range on that street: fall back to the
     // midpoint of the nearest-numbered segment, flagged inexact.
@@ -675,12 +632,14 @@
   //
   // Steps are derived from the route geometry: consecutive edges sharing a
   // street name become one leg, and the bearing change where legs meet becomes
-  // the turn. One-way restrictions are already honored by the router, so a
-  // step can never tell you to drive the wrong way down a one-way street.
+  // the turn. One-ways and the turn restrictions the graph carries are already
+  // honored by the router, so a step never sends you the wrong way down a
+  // one-way street or through a banned turn it knows about.
   //
-  // What the data does NOT carry is turn restrictions -- no-left-turn signs,
-  // median divides, signal-only turns. So these are directions to follow along
-  // with rather than obey blindly, and the page says so.
+  // What the data does NOT carry is every restriction on the ground: signs
+  // the inventory missed, median divides, signal-only turns. So these are
+  // directions to follow along with rather than obey blindly, and the page
+  // says so.
 
   function bearing(a, b) {
     var toR = Math.PI / 180;
@@ -772,8 +731,9 @@
     return out;
   };
 
-  root.ALPRRouter = { Graph: Graph, haversine: haversine, bearing: bearing,
-    UTURN_PENALTY: UTURN_PENALTY,
-                      CAMERA_PENALTY: CAMERA_PENALTY, canonStreet: canonStreet };
+  root.ALPRRouter = {
+    Graph: Graph, haversine: haversine, bearing: bearing, canonStreet: canonStreet,
+    CAMERA_PENALTY: CAMERA_PENALTY, UTURN_PENALTY: UTURN_PENALTY
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.ALPRRouter;
 })(typeof self !== 'undefined' ? self : this);

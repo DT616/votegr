@@ -153,11 +153,10 @@
     // first.
     var base = strippedQuadrant(t.rest);
     if (base) {
-      var self2 = this;
       this.streetNames.forEach(function (s) {
         if (streets.indexOf(s) >= 0) return;
         if (strippedQuadrant(s) !== base) return;
-        var rows = self2.streets[s] || [];
+        var rows = self.streets[s] || [];
         for (var i = 0; i < rows.length; i++) {
           if (rows[i][0] === t.number) {
             out.push({ street: s, number: t.number, kind: 'quadrant' });
@@ -216,26 +215,32 @@
     };
   };
 
-  // ---- precinct boundaries ---------------------------------------------
-  // The one ray cast in the project. app.js delegates to it rather than
-  // keeping its own copy, so the map, the lookup and the tests can never
-  // drift into disagreeing about which precinct a point is in.
+  // ---- point in polygon --------------------------------------------------
+  // The one ray cast in the project. The precinct lookup below, the city
+  // limits check in app.js and the audit scripts all call this rather than
+  // keeping their own copy, so none of them can drift into disagreeing about
+  // which side of a line a point falls on.
   //
-  // precincts.json stores rings as [lat, lng]; the cast works in
-  // (x = lng, y = lat), so the indices below are swapped.
+  // Rings are [lat, lng] pairs, as precincts.json stores them; a caller
+  // holding [lng, lat] rings (boundary.json) swaps them once before calling.
+  // A polygon with several rings toggles across all of them, so holes work.
+  function pointInRings(lat, lng, rings) {
+    var inside = false;
+    for (var r = 0; r < rings.length; r++) {
+      var ring = rings[r];
+      for (var a = 0, b = ring.length - 1; a < ring.length; b = a++) {
+        var yi = ring[a][0], xi = ring[a][1], yj = ring[b][0], xj = ring[b][1];
+        if (((yi > lat) !== (yj > lat)) &&
+            (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+      }
+    }
+    return inside;
+  }
+
   Precincts.prototype.precinctAt = function (lat, lng, polygons) {
     if (!polygons) return null;
     for (var i = 0; i < polygons.length; i++) {
-      var pr = polygons[i], inside = false;
-      for (var r = 0; r < pr.rings.length; r++) {
-        var ring = pr.rings[r];
-        for (var a = 0, b = ring.length - 1; a < ring.length; b = a++) {
-          var xi = ring[a][1], yi = ring[a][0], xj = ring[b][1], yj = ring[b][0];
-          if (((yi > lat) !== (yj > lat)) &&
-              (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
-        }
-      }
-      if (inside) return pr;
+      if (pointInRings(lat, lng, polygons[i].rings)) return polygons[i];
     }
     return null;
   };
@@ -268,6 +273,9 @@
     return r;
   };
 
+  Precincts.pointInRings = pointInRings;
   root.Precincts = Precincts;
-  if (typeof module !== 'undefined' && module.exports) module.exports = { Precincts: Precincts };
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { Precincts: Precincts, pointInRings: pointInRings };
+  }
 })(typeof self !== 'undefined' ? self : this);
