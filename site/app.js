@@ -1260,9 +1260,12 @@
     }
 
     var adv = [];
-    if (r.pin) adv.push('The start location is based on where you dropped ' +
-      'your pin. Your real location is your registered voter address, so if ' +
-      'you live somewhere else, type that address instead.');
+    if (r.pin) adv.push('Your voting location is based on where you are ' +
+      'registered to vote. If you are not sure where that is, check the ' +
+      '<a href="https://mvic.sos.state.mi.us/" target="_blank" ' +
+      'rel="noopener">Michigan Voter Information Center</a> or the ' +
+      '<a href="https://www.grandrapidsmi.gov/departments/clerks-office/" ' +
+      'target="_blank" rel="noopener">Grand Rapids City Clerk</a>.');
     if (r.rivals) adv.push('This address sits on a precinct line and could be in ' +
       r.rivals.join(' or ') + '. Worth confirming with the clerk.');
     else if (r.inferred) adv.push('This exact number is not in ' +

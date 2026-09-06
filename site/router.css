@@ -459,6 +459,10 @@ body {
   font-size: .87rem; color: var(--warn); line-height: 1.5; margin-top: 12px;
   padding-left: 12px; border-left: 2px solid var(--warn);
 }
+/* The block is warn-coloured, so a default blue anchor inside it would read
+   as a different voice. Same treatment the page disclaimer gets: take the
+   surrounding colour, keep the underline that says it is a link. */
+.advisory a { color: inherit; }
 .err { font-size: .93rem; color: var(--warn); line-height: 1.55; }
 
 /* ---- route cards ---- */
