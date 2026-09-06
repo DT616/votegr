@@ -37,6 +37,12 @@
   --pin-ring: #12151b;
   --shadow: 0 2px 8px rgba(0,0,0,.45);
   --header-h: 72px;
+  /* Column tint. NOT --raise: that is the .pp-place hover colour and it sits
+     1.05:1 from the page in light theme, which is invisible. Chosen by
+     measurement: 1.44:1 against the page here and 1.28:1 in light, still
+     1.13:1 clear of the hover colour so clicking the polling place reads,
+     and every text colour stays above AA on it (--dim at 5.54:1). */
+  --tint: #35383f;
   /* One micro-label role. Seven sizes (.68 to .85rem) and five trackings
      (.04 to .12em) had accumulated across this file for what is a single
      job: the small uppercase label above or beside a value. Size and
@@ -85,6 +91,7 @@
     --case: #ffffff;
     --pin-ring: #ffffff;
     --shadow: 0 2px 8px rgba(20,25,35,.16);
+  --tint: #dfe0e3;
   }
 
 * { box-sizing: border-box; }
@@ -337,6 +344,54 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
 }
 .vi-val { font-size: 1.05rem; font-weight: 600; line-height: 1.35; }
 .vi-lead { font-size: .93rem; color: var(--dim); margin-top: 10px; }
+
+/* When on the left, where on the right: one row for early voting, one for
+   election day. The columns are placed EXPLICITLY rather than left to flow,
+   because a row can be missing its right cell (the window is closed, so
+   there is no site to name) and auto-flow would pull the next row's left
+   cell up into column two. */
+/* WHERE on the left, WHEN on the right: the place leads and the timing
+   follows it. The DOM emits them in that order too, so the collapsed single
+   column stacks in the same reading order rather than inverting on a phone.
+   stretch, not start, so a tinted cell fills its row instead of stopping at
+   its own last line while the other column runs on. */
+.vi-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 18px 24px; align-items: stretch;
+}
+.vi-where { grid-column: 1; }
+.vi-when { grid-column: 2; }
+/* A row with no place has nothing for column one, so its status spans the
+   full width rather than sitting in column two beside a hole. */
+.vi-grid .vi-full { grid-column: 1 / -1; }
+/* No negative margins: a pull-out overflowed the column and closed the row
+   gap until two panels read as one slab. The where-cell takes matching top
+   padding instead, so both columns' first labels sit on the same line. */
+.vi-when { background: var(--tint); border-radius: 8px; padding: 12px 14px; }
+.vi-where { padding: 12px 0; }
+/* These name a whole column of the table, a bigger job than a word above a
+   single value, so they step off --label-size. Tracking eases with the size:
+   what reads as deliberate at 11.8px reads as gappy at 14px. Ward and
+   Precinct come too, since they head a 1.42rem value exactly as these do. */
+.vi-grid .vi-lbl,
+.vi-two-up .vi-lbl {
+  font-size: .88rem; letter-spacing: .07em; margin-bottom: 4px;
+}
+/* In a ~230px column the days and times cannot sit side by side without
+   clipping, so the pairs stack. Same content, one per line. */
+.vi-grid .ev-hours { grid-template-columns: 1fr; gap: .1rem 0; }
+.vi-grid .ev-hours span:nth-child(even) { margin-bottom: .3rem; }
+/* Two columns of this need about 240px each. Below that the polling place
+   name wraps to three lines and the pair stops reading as a pair, so the
+   grid becomes one column and the rows simply stack. */
+@media (max-width: 600px) {
+  .vi-grid { grid-template-columns: 1fr; gap: 16px; }
+  .vi-when, .vi-where, .vi-full { grid-column: auto; }
+  /* Stacked, the tint is a floating slab rather than a column, and the
+     padding that aligned two columns has nothing left to align to. */
+  .vi-when { background: none; padding: 0; }
+  .vi-where { padding: 0; }
+}
 /* One line, not the days-and-times grid early voting needs: the 7 AM to 8 PM
    window is set by state law and is the same every day and every election, so
    there is no weekday pattern to lay out. */
