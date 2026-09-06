@@ -1145,12 +1145,15 @@
     // block above it, so they line up with the two columns underneath
     // instead of floating in their own rhythm. Ward takes column one beside
     // the place, Precinct column two beside the timing.
-    var html = '<div class="vi-rows"><div class="vi-grid">' +
-      (r.ward ? '<div class="vi-id vi-c1"><div class="vi-lbl">Ward</div>' +
+    // Ward and Precinct are a rail down the left of the whole table, spanning
+    // every row, rather than a row of their own or a cell inside one. That is
+    // what keeps both place names starting at the same x: the identity names
+    // the whole answer, not the first row of it.
+    var html = '<div class="vi-rows"><div class="vi-grid"><div class="vi-rail">' +
+      (r.ward ? '<div><div class="vi-lbl">Ward</div>' +
                 '<div class="vi-num">' + esc(r.ward) + '</div></div>' : '') +
-      '<div class="vi-id vi-c2' + (r.ward ? '' : ' vi-full') + '">' +
-      '<div class="vi-lbl">Precinct</div>' +
-      '<div class="vi-num">' + esc(r.precinct) + '</div></div>';
+      '<div><div class="vi-lbl">Precinct</div>' +
+      '<div class="vi-num">' + esc(r.precinct) + '</div></div></div>';
 
     // --- early voting row -------------------------------------------------
     // The site is named only while the window is genuinely open. ev can still

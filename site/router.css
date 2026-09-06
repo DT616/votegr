@@ -370,14 +370,19 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
    stretch, not start, so a tinted cell fills its row instead of stopping at
    its own last line while the other column runs on. */
 .vi-grid {
-  display: grid; grid-template-columns: 1fr 1fr;
+  display: grid; grid-template-columns: auto 1fr 1fr;
   gap: 18px 24px; align-items: stretch;
 }
-.vi-where { grid-column: 1; }
-.vi-when { grid-column: 2; }
-/* A row with no place has nothing for column one, so its status spans the
-   full width rather than sitting in column two beside a hole. */
-.vi-grid .vi-full { grid-column: 1 / -1; }
+/* The identity rail spans every row, so it reads as naming the whole answer
+   rather than the first line of it, and both place names start at the same
+   x. auto, so it takes exactly the width of the longer label. */
+.vi-rail { grid-column: 1; grid-row: 1 / -1; display: flex;
+           flex-direction: column; gap: 18px; }
+.vi-where { grid-column: 2; }
+.vi-when { grid-column: 3; }
+/* A row with no place spans the two content columns, never the rail: the
+   identity belongs to every row and must not be written over. */
+.vi-grid .vi-full { grid-column: 2 / -1; }
 /* No negative margins: a pull-out overflowed the column and closed the row
    gap until two panels read as one slab. The where-cell takes matching top
    padding instead, so both columns' first labels sit on the same line. */
@@ -432,7 +437,15 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent); }
    grid becomes one column and the rows simply stack. */
 @media (max-width: 600px) {
   .vi-grid { grid-template-columns: 1fr; gap: 16px; }
-  .vi-when, .vi-where, .vi-full { grid-column: auto; }
+  /* .vi-grid-prefixed to match the specificity of the two-column rules
+     above. Written bare, .vi-full lost to .vi-grid .vi-full and kept its
+     "2 / -1", which on a one-column grid invents an implicit second column
+     and pushed the closed-state row half off the left edge. */
+  .vi-grid .vi-when, .vi-grid .vi-where,
+  .vi-grid .vi-full, .vi-grid .vi-rail { grid-column: auto; grid-row: auto; }
+  /* Stacked there is no rail to run down, and a vertical pair would burn
+     height a phone does not have, so Ward and Precinct sit side by side. */
+  .vi-rail { flex-direction: row; gap: 48px; }
   /* Stacked, these are not columns any more, so the panels come off: a
      beveled slab per row is chrome without a job. */
   .vi-grid .vi-where,
