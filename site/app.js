@@ -1172,7 +1172,7 @@
       // nothing else told them apart.
       if (ev) {
         html += '<div class="vi-where vi-ev-site" data-kind="early">' +
-          '<div class="vi-lbl">Early Voting Site Nearest to You</div>' +
+          '<div class="vi-lbl">Early Voting Site Nearest to You:</div>' +
           '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
           '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
           '</div>';
