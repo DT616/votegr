@@ -14,11 +14,18 @@
 #                                 that matters, per the README, and only ~15s
 #   test_page.mjs                 the page in a real browser at three widths
 #   test_early_voting_states.mjs  the four early voting states, from a fixture
+#   test_check_links.mjs          what the link checker makes of a response
 #
 # compare_osrm.mjs is deliberately absent. It queries a public OSRM server,
 # which makes it network-dependent and slow, and sending trips to a routing
 # server is the thing this project exists to avoid doing. It stays a tool you
 # reach for by hand.
+#
+# check_links.mjs is absent for the same reason and runs weekly from
+# link-check.yml instead. Its judgement about what a response means is a pure
+# function, though, and that part belongs here: it is what decides whether a
+# link-check run is red, and it is where a host-by-host exemption list would
+# grow back.
 name: Checks
 
 on:
@@ -75,3 +82,8 @@ jobs:
       # reach on any given day, so this serves its own dated fixture.
       - name: Early voting states
         run: node test_early_voting_states.mjs
+
+      # Makes no request: it feeds fabricated responses to the link checker's
+      # classifier. The live check runs weekly, from link-check.yml.
+      - name: Link checker rules
+        run: node test_check_links.mjs

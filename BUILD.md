@@ -115,8 +115,9 @@ because nothing recomputes them.
 
 **`polling.json`** comes from the City Clerk's precinct directory PDF. Each
 election the clerk publishes a new one under a new generated filename, so the
-URL in the file's `provenance` block goes stale; when it 404s, find the current
-directory from the elections page rather than assuming it is gone. After
+URL in the file's `provenance` block goes stale; when it 404s (the weekly link
+check, `check_links.mjs`, is what will say so), find the current directory from
+the elections page rather than assuming it is gone. After
 transcribing: check there are 59 precincts and the numbering runs 1 to 59,
 cross-check against the Kent County listing, and read the footnotes for
 consolidations, where one precinct votes at another's location for that
@@ -142,11 +143,16 @@ node test_router.mjs               # 76 assertions: routing, restrictions, addre
 node audit_routes.mjs              # drives hundreds of real trips, checks every route
 npm ci && node test_page.mjs       # 93 assertions: the page itself, in a browser
 node test_early_voting_states.mjs  # the four early voting states, from a dated fixture
+node test_check_links.mjs          # what the link checker makes of a response
 node compare_osrm.mjs 30           # differential check against OSRM
+node check_links.mjs               # every external link, the provenance URLs included
 ```
 
-All but the OSRM comparison also run on every pull request, so a rebuild that
-breaks the routing or the page is caught before it can be merged and deployed.
+All but the last two also run on every pull request, so a rebuild that breaks
+the routing or the page is caught before it can be merged and deployed. Those
+two reach other people's servers and gate nothing; the link check runs weekly
+on its own schedule, and after a rebuild changes a provenance URL it is worth
+running by hand.
 
 `audit_routes.mjs` is the one that matters. It routes across the real city and
 mechanically checks every result: edges join end to end, no edge is driven

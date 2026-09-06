@@ -1,0 +1,43 @@
+# Fetches every external link the docs, the two pages and the data provenance
+# blocks point at. See check_links.mjs for what is scanned and what is skipped.
+#
+# Not part of checks.yml, and deliberately not triggered by pull requests.
+# Everything in checks.yml is deterministic and runs against files in this
+# repository; this depends on a dozen other organisations' web servers, which
+# go down and move pages on their own schedule. A dead link is worth knowing
+# about within the week. It is not worth blocking an unrelated merge over, and
+# a clerk's site being down for an hour should not turn a routing change red.
+#
+# So it runs weekly and on demand. The rule it applies to what those servers
+# answer IS checked on every pull request, as test_check_links.mjs in
+# checks.yml, which is the part that can be deterministic. When you add a
+# link, run `node check_links.mjs` yourself rather than pushing to see.
+#
+# A failed scheduled run shows up in the Actions tab and in the repository's
+# notifications, which is the right volume for this. It fails only when a page
+# is actually gone (404, 410, a host that stopped resolving); a server that
+# declines to answer a non-browser client is reported and does not fail.
+name: Link check
+
+on:
+  schedule:
+    - cron: '30 6 * * 1'   # Mondays, 06:30 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: link-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      # No npm ci: the script has no dependencies, like the rest of the suite.
+      - run: node check_links.mjs
