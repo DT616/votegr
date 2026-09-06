@@ -10,15 +10,14 @@
   var map, graph, P, cameras;
   var boundaryLayer, pollLayer, camLayer, routeLayer, pinLayer;
   var cachedCameras = null, cachedMeta = null, current = null;
-  var elections = null, activeEl = null, destMode = 'auto', destChoice = null;
-  var electionDayHours = null;
-  var cityRings = null, landcover = null, ownBase = null;
+  var activeEl = null, destChoice = null, electionDayHours = null;
+  var cityRings = null, ownBase = null;      // cityRings: [lat, lng] pairs
   var neighbors = null, precincts = null;
   var pinArmed = false;
   var routes = null, selected = 'avoid';
   var originArrow = null;   // the blue you-are-here arrow; steps advance it
-  var liveState = 'idle';            // idle | loading | live | failed
   var GR = [42.9634, -85.6681];
+  var METERS_PER_MILE = 1609.34;
 
   // There is deliberately no tile layer. Tiles would be fetched from a third
   // party on every pan, which is the one thing that stopped this page being
@@ -29,11 +28,17 @@
   var ATTR = 'Roads: City of Grand Rapids · ' +
              '\u00a9 OpenStreetMap contributors (ODbL)';
 
-  // The hint line rests EMPTY: it exists only to carry transient guidance
-  // (pin arming) and returns to nothing afterwards.
-  var HINT_DEFAULT = '';
-
   function $(id) { return document.getElementById(id); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+  function fmtMi(m) { return (m / METERS_PER_MILE).toFixed(1) + ' mi'; }
+  function fmtMin(s) { return Math.max(1, Math.round(s / 60)) + ' min'; }
+  function getVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000';
+  }
+
+  // The hint line under the address field rests EMPTY: it exists only to
+  // carry transient guidance (pin arming) and returns to nothing afterwards.
+  function setHint(text) { $('hint').textContent = text || ''; }
 
   // ---- color scheme ----------------------------------------------------
   //
@@ -82,8 +87,8 @@
   // scheme flips: the tile layer, the route casings, the markers.
   function onSchemeChanged() {
     if (!map) return;
-    if (ownBase) ownBase.setDark(prefersDark());
-    if (cityRings) drawBoundary({ rings: cityRings });
+    ownBase.setDark(prefersDark());
+    if (cityRings) drawBoundary();
     if (routes) renderAll(false);
     else if (cameras) drawCameras();
     // The key is the same drawing as the marker and reads --pin-ring the same
@@ -102,14 +107,6 @@
       if (x) x.focus();
     }
     function close() { wrap.hidden = true; }
-    // The address is assembled here rather than written in the HTML, so
-    // scrapers reading the raw page for mailto: patterns find nothing while
-    // a person gets an ordinary working link. Still zero requests: mailto is
-    // navigation into the reader's own mail client.
-    var ml = $('mailLink');
-    if (ml) ml.href = 'mailto:' + ['info', 'votegr.org'].join('\u0040');
-
-    paintLegendCamera();
 
     // The footer About is the only opener now; the header carries just the
     // wordmark, and the theme switch holds the other end of the footer.
@@ -145,7 +142,7 @@
 
   function applyLayers() {
     var o = layerState();
-    if (ownBase) ownBase.setLayerOpts(o);
+    ownBase.setLayerOpts(o);
     if (pollLayer) {
       if (o.polling) { if (!map.hasLayer(pollLayer)) pollLayer.addTo(map); }
       else map.removeLayer(pollLayer);
@@ -180,9 +177,6 @@
     }
     applyTheme(themeChoice());
   }
-  function fmtMi(m) { return (m / 1609.34).toFixed(1) + ' mi'; }
-  function fmtMin(s) { return Math.max(1, Math.round(s / 60)) + ' min'; }
-  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
   // ---- the result map --------------------------------------------------
   //
@@ -255,11 +249,17 @@
     if (!el) return;
     if (!map || !precincts || $('mapBlock').hidden) { el.textContent = ''; return; }
     var c = map.getCenter();
-    if (!insideCity(c.lat, c.lng)) { el.textContent = 'Outside the city'; return; }
-    var pr = precinctAt(c.lat, c.lng);
-    el.textContent = pr
-      ? 'Ward ' + pr.ward + ' \u00b7 Precinct ' + pr.precinct
-      : '';
+    el.textContent = scopeText(c.lat, c.lng);
+  }
+
+  // "Ward 2 \u00b7 Precinct 40", "Outside the city", or nothing when no precinct
+  // claims the point. One writer for the status bar whether it is following
+  // the view centre or the cursor, so the two cannot word one spot
+  // differently.
+  function scopeText(lat, lng) {
+    if (!insideCity(lat, lng)) return 'Outside the city';
+    var pr = precinctAt(lat, lng);
+    return pr ? 'Ward ' + pr.ward + ' \u00b7 Precinct ' + pr.precinct : '';
   }
 
   // One builder for "what precinct is this", fed by both input worlds:
@@ -286,39 +286,41 @@
   }
 
   // Marker detail opens AT the marker on hover-capable devices, and in the
-  // card below the map on touch. ONE predicate, read by all three marker
-  // kinds (cameras, polling places, the finish flag), so a device can never
-  // get a mix of the two behaviours.
+  // card below the map on touch. ONE helper, used by all three marker kinds
+  // (cameras, polling places, the finish flag), so a device can never get a
+  // mix of the two behaviours. `html` may be a string or a function that
+  // builds one when opened, as Leaflet's own bindPopup allows.
   function hoverPopups() {
     return !!(window.matchMedia && window.matchMedia('(hover: hover)').matches);
   }
 
-  // Desktop hover, two readers of one mousemove. The STATUS readout (the
-  // ward/precinct line in the map's header row) follows the cursor instead of
-  // the view centre while a cursor exists to follow; on touch devices it
-  // keeps its centre-of-view meaning. And when the cursor comes within a few
-  // pixels of a precinct NUMBER, a small tip names it, because the numbers
-  // are canvas ink with no element to hover: the hit test is against the 59
-  // label anchors directly.
+  function bindDetail(m, html, maxWidth) {
+    if (hoverPopups()) {
+      m.bindPopup(html, { maxWidth: maxWidth, className: 'cam-popup' });
+    } else {
+      m.on('click', function () {
+        showDetail(typeof html === 'function' ? html() : html);
+      });
+    }
+  }
+
+  // Desktop hover: the status bar follows the cursor instead of the view
+  // centre while a cursor exists to follow; on touch devices it keeps its
+  // centre-of-view meaning. Cursor tracking feeds the status bar and nothing
+  // else: a per-number tooltip used to live here too, but with the words now
+  // drawn on the map and the status bar naming whatever is under the cursor,
+  // it said the same thing twice.
   var hoverThrottle = 0;
   function initMapHover() {
-    if (!window.matchMedia || !window.matchMedia('(hover: hover)').matches) return;
-    // Cursor tracking feeds the bottom-left status bar and nothing else: a
-    // per-number tooltip used to live here too, but with the words now drawn
-    // on the map and the status bar naming whatever is under the cursor, it
-    // said the same thing twice.
+    if (!hoverPopups()) return;
     map.on('mousemove', function (e) {
       var now = Date.now();
       if (now - hoverThrottle < 40) return;
       hoverThrottle = now;
       var el = $('mapScope');
-      if (!el) return;
-      var pr = insideCity(e.latlng.lat, e.latlng.lng)
-        ? precinctAt(e.latlng.lat, e.latlng.lng) : null;
-      el.textContent = pr ? 'Ward ' + pr.ward + ' \u00b7 Precinct ' + pr.precinct
-                          : 'Outside the city';
+      if (el) el.textContent = scopeText(e.latlng.lat, e.latlng.lng);
     });
-    map.on('mouseout', function () { updateMapScope(); });
+    map.on('mouseout', updateMapScope);
   }
 
   function hideMap() {
@@ -337,12 +339,23 @@
   }
 
   function init() {
+    initMap();
+    initInput();
+    initTheme();
+    initLayers();
+    initMapHover();
+    initAbout();
+    initCameraSource();
+    $('resetBtn').onclick = reset;
+    loadData();
+  }
+
+  function initMap() {
     map = L.map('map', { zoomControl: true, attributionControl: true }).setView(GR, 13);
     // Added before the data loads so the map paints its ground color rather
     // than flashing empty; setData fills it in when the files arrive.
     ownBase = BasemapLayer({ graph: null, landcover: null, dark: prefersDark() });
     ownBase.addTo(map);
-    window.__base = ownBase;   // exposed for the label-coverage check
     // Leaflet 1.9 ships a Ukrainian flag SVG inside its default attribution
     // prefix. The library credit stays, the flag does not: this is a voting
     // page, and it should not put an unrelated political statement in front of
@@ -363,12 +376,51 @@
     boundaryLayer = L.layerGroup().addTo(map);
     pollLayer = L.layerGroup().addTo(map);
     camLayer = L.layerGroup().addTo(map);
+    routeLayer = L.layerGroup().addTo(map);
+    pinLayer = L.layerGroup().addTo(map);
+    addGearControl();
+    addStatusControl();
 
-    // The layer toggles live in a gear in the map's own corner: they are map
-    // settings, and they used to sit in a fold at the bottom of the PAGE,
-    // three scrolls from the thing they control. Same input-as-SIBLING-of-
-    // label markup as before: wrapping the input in its label makes a click
-    // toggle it twice and the box lands back where it started.
+    // moveend covers pan, zoom and fitBounds alike, so the readout follows the
+    // route fit as well as a hand drag.
+    map.on('moveend', updateMapScope);
+
+    // Pin drop is ARMED by the button beside the address field, so an idle
+    // click on the map (panning slip, closing a popup) never starts a route.
+    // One shot: a successful drop disarms it.
+    map.on('click', function (e) {
+      if (pinArmed) {
+        hideDetail();
+        disarmPin();
+        pinLookup(e.latlng.lat, e.latlng.lng);
+        return;
+      }
+      // An idle tap asks "what precinct is this". This is the whole touch
+      // story: no cursor means no hover, so the tap opens the same detail
+      // card under the map that the markers use, with the same dismissals
+      // (close button, Escape, a tap outside the city). Marker clicks do not
+      // bubble here, so their own detail is never overridden.
+      var pr = insideCity(e.latlng.lat, e.latlng.lng) && precinctAt(e.latlng.lat, e.latlng.lng);
+      if (pr) showDetail(precinctInfoHtml(pr));
+      else hideDetail();
+    });
+    $('detailX').onclick = hideDetail;
+    $('pinBtn').onclick = function () { pinArmed ? disarmPin() : armPin(); };
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      // One surface per press: the pin is the more recent intent, so it backs
+      // out first and the detail survives that press.
+      if (pinArmed) disarmPin();
+      else hideDetail();
+    });
+  }
+
+  // The layer toggles live in a gear in the map's own corner: they are map
+  // settings, and they used to sit in a fold at the bottom of the PAGE,
+  // three scrolls from the thing they control. Same input-as-SIBLING-of-
+  // label markup as before: wrapping the input in its label makes a click
+  // toggle it twice and the box lands back where it started.
+  function addGearControl() {
     var gear = L.control({ position: 'topright' });
     gear.onAdd = function () {
       var d = L.DomUtil.create('div', 'map-gear leaflet-bar');
@@ -417,10 +469,11 @@
       return d;
     };
     gear.addTo(map);
+  }
 
-    // The ward/precinct readout lives in the map's own bottom-left corner,
-    // a status bar opposite the attribution. Same id as before, so every
-    // writer (centre updates, cursor tracking) is unaffected by the move.
+  // The ward/precinct readout lives in the map's own bottom-left corner, a
+  // status bar opposite the attribution. Every writer finds it by its id.
+  function addStatusControl() {
     var status = L.control({ position: 'bottomleft' });
     status.onAdd = function () {
       var d = L.DomUtil.create('div', 'map-status');
@@ -428,120 +481,29 @@
       return d;
     };
     status.addTo(map);
-    routeLayer = L.layerGroup().addTo(map);
-    pinLayer = L.layerGroup().addTo(map);
+  }
 
+  function initInput() {
     var input = $('addr');
-    input.disabled = true;
-
-    // Pin drop is ARMED by the button beside the address field, so an idle
-    // click on the map (panning slip, closing a popup) never starts a route.
-    // One shot: a successful drop disarms it.
-    // moveend covers pan, zoom and fitBounds alike, so the readout follows the
-    // route fit as well as a hand drag.
-    map.on('moveend', updateMapScope);
-
-    map.on('click', function (e) {
-      if (pinArmed) {
-        hideDetail();
-        disarmPin();
-        pinLookup(e.latlng.lat, e.latlng.lng);
-        return;
-      }
-      // An idle tap asks "what precinct is this". This is the whole touch
-      // story: no cursor means no hover, so the tap opens the same detail
-      // card under the map that the markers use, with the same dismissals
-      // (close button, Escape, a tap outside the city). Marker clicks do not
-      // bubble here, so their own detail is never overridden.
-      var pr = insideCity(e.latlng.lat, e.latlng.lng) && precinctAt(e.latlng.lat, e.latlng.lng);
-      if (pr) showDetail(precinctInfoHtml(pr));
-      else hideDetail();
-    });
-    $('detailX').onclick = hideDetail;
-    $('pinBtn').onclick = function () { pinArmed ? disarmPin() : armPin(); };
-    document.addEventListener('keydown', function (e) {
-      if (e.key !== 'Escape') return;
-      // One surface per press: the pin is the more recent intent, so it backs
-      // out first and the detail survives that press.
-      if (pinArmed) disarmPin();
-      else hideDetail();
-    });
-
-    Promise.all([
-      fetch('data/graph.json').then(r => r.json()),
-      fetch('data/cameras.json').then(r => r.json()),
-      fetch('data/addresses.json').then(r => r.json()),
-      fetch('data/polling.json').then(r => r.json()),
-      fetch('data/boundary.json').then(r => r.json()).catch(function () { return null; }),
-      fetch('data/elections.json').then(r => r.json()).catch(function () { return null; }),
-      fetch('data/landcover.json').then(r => r.json()).catch(function () { return null; }),
-      fetch('data/neighbors.json').then(r => r.json()).catch(function () { return null; }),
-      fetch('data/precincts.json').then(r => r.json()).catch(function () { return null; })
-    ]).then(function (res) {
-      graph = new ALPRRouter.Graph(res[0]);
-      cachedCameras = res[1].cameras; cachedMeta = res[1].meta;
-      P = new Precincts(res[2], res[3]);
-      drawPollingPlaces();
-      if (res[4]) drawBoundary(res[4]);
-      landcover = res[6] || null;
-      neighbors = (res[7] && res[7].streets) || null;
-      precincts = (res[8] && res[8].precincts) || null;
-      if (ownBase && precincts) ownBase.setPrecincts(precincts);
-      ownBase.setData(graph, landcover);
-      // Only cameras inside the city are shown or counted. The Overpass pull
-      // is a rectangle, so most of what it returns is Wyoming, Kentwood and
-      // Walker -- outside the routes this tool can draw, and outside the map
-      // the veil says this tool is about.
-      cameras = cityCameras(cachedCameras);
-      elections = (res[5] && res[5].elections) || [];
-      // Statewide and statutory, so it is one object beside the list
-      // rather than a field repeated on every election.
-      electionDayHours = (res[5] && res[5].election_day_hours) || null;
-      activeEl = nextElection(elections);
-      renderElectionBanner();
-      graph.assignCameras(cameras);
-      drawCameras();
-      // The count in the explainer is read from the data, not typed into the
-      // copy, so it cannot drift when the camera file is refreshed.
-      var cc = $('camCount');
-      if (cc) cc.textContent = cameras.length;
-      // Optional: the Sources section this belonged to now lives in the
-      // repository README instead, so guard rather than assume the element.
-      var dn = $('dataNote');
-      if (dn) dn.innerHTML = 'This page is carrying ' +
-        graph.meta.edges.toLocaleString() + ' street segments, ' +
-        Object.keys(P.polling).length + ' polling places, and ' +
-        cameras.length + ' known license plate cameras inside the city.';
-      setSrcNote('Cached list: ' + cameras.length + ' cameras in the city. Complete as published.');
-      input.disabled = false;
-      // Autofocus on a phone pops the keyboard over the map before the person
-      // has seen anything, so it is desktop-only.
-      if (!isPhone()) input.focus();
-    }).catch(function () {
-      $('dataNote').innerHTML = '<span class="err">Could not load the map data files.</span>';
-    });
-
-    var t;
+    var timer;
     input.addEventListener('input', function () {
-      clearTimeout(t); t = setTimeout(refreshSuggestions, 120);
+      clearTimeout(timer); timer = setTimeout(refreshSuggestions, 120);
     });
     input.addEventListener('keydown', onInputKey);
     input.addEventListener('blur', function () {
       // let a click on an item land before the list closes
-      setTimeout(function () { closeAC(); }, 150);
+      setTimeout(closeAC, 150);
     });
     document.addEventListener('click', function (e) {
-      if (!$('addr').parentNode.contains(e.target)) closeAC();
+      if (!input.parentNode.contains(e.target)) closeAC();
     });
-    initTheme();
-    initLayers();
-    initMapHover();
-    initAbout();
-    $('resetBtn').onclick = reset;
-    $('srcCached').onclick = function () { useCached(); };
-    // The live lookup is this page's ONE outbound request, so the OSM side
-    // of the toggle never fires it directly: it opens a dialog that names
-    // who gets contacted, and only the dialog's explicit yes fetches.
+  }
+
+  // The live lookup is this page's ONE outbound request, so the OSM side of
+  // the toggle never fires it directly: it opens a dialog that names who gets
+  // contacted, and only the dialog's explicit yes fetches.
+  function initCameraSource() {
+    $('srcCached').onclick = useCached;
     var osmWrap = $('osmConfirm');
     function closeOsmConfirm() { osmWrap.hidden = true; }
     $('srcLive').onclick = function () { osmWrap.hidden = false; };
@@ -554,24 +516,79 @@
     });
   }
 
+  // One JSON file from data/. The first four the page cannot work without,
+  // so a failure there fails the whole load; the rest degrade to a page with
+  // no boundary veil, no election line or no precinct polygons.
+  function loadJson(name, optional) {
+    var p = fetch('data/' + name + '.json').then(function (r) { return r.json(); });
+    return optional ? p.catch(function () { return null; }) : p;
+  }
+
+  function loadData() {
+    var input = $('addr');
+    input.disabled = true;
+    Promise.all([
+      loadJson('graph'), loadJson('cameras'), loadJson('addresses'), loadJson('polling'),
+      loadJson('boundary', true), loadJson('elections', true), loadJson('landcover', true),
+      loadJson('neighbors', true), loadJson('precincts', true)
+    ]).then(function (res) {
+      var graphData = res[0], cameraData = res[1], addresses = res[2], polling = res[3];
+      var boundary = res[4], calendar = res[5], landcover = res[6];
+      var neighborData = res[7], precinctData = res[8];
+
+      graph = new ALPRRouter.Graph(graphData);
+      cachedCameras = cameraData.cameras; cachedMeta = cameraData.meta;
+      P = new Precincts(addresses, polling);
+      drawPollingPlaces();
+      if (boundary && boundary.rings) {
+        // boundary.json stores [lng, lat]; everything here wants [lat, lng].
+        cityRings = boundary.rings.map(function (ring) {
+          return ring.map(function (p) { return [p[1], p[0]]; });
+        });
+        drawBoundary();
+      }
+      neighbors = (neighborData && neighborData.streets) || null;
+      precincts = (precinctData && precinctData.precincts) || null;
+      if (precincts) ownBase.setPrecincts(precincts);
+      ownBase.setData(graph, landcover || null);
+      // Only cameras inside the city are shown or counted. The Overpass pull
+      // is a rectangle, so most of what it returns is Wyoming, Kentwood and
+      // Walker -- outside the routes this tool can draw, and outside the map
+      // the veil says this tool is about.
+      cameras = cityCameras(cachedCameras);
+      // Election day hours are statewide and statutory, so they are one
+      // object beside the list rather than a field repeated on every election.
+      electionDayHours = (calendar && calendar.election_day_hours) || null;
+      activeEl = nextElection((calendar && calendar.elections) || []);
+      renderElectionBanner();
+      graph.assignCameras(cameras);
+      drawCameras();
+      setSrcNote(cachedNote());
+      input.disabled = false;
+      // Autofocus on a phone pops the keyboard over the map before the person
+      // has seen anything, so it is desktop-only.
+      if (!isPhone()) input.focus();
+    }).catch(function () {
+      // The page is a lookup over these files: with them missing there is
+      // nothing to answer with, so say so where the answer would have gone.
+      showError('Could not load the map data files. If you are hosting this ' +
+        'yourself, check that the data folder sits next to this page.');
+    });
+  }
+
   // The city limits, drawn because routing stops at them: without the outline
   // a route that stops at the edge looks like a bug rather than the edge of
   // the data.
-  function drawBoundary(b) {
-    if (!b || !b.rings) return;
-    cityRings = b.rings;
+  function drawBoundary() {
+    if (!cityRings) return;
     boundaryLayer.clearLayers();
-
-    var holes = b.rings.map(function (ring) {
-      return ring.map(function (p) { return [p[1], p[0]]; });
-    });
 
     // Everything outside the city is veiled: routing stops at the line, and
     // fading the outside says so before anyone has to read that it does.
     // Built as one polygon whose outer ring is the world and whose holes are
     // the city, so the hole IS the covered area and the two can never disagree.
     var world = [[-85, -180], [-85, 180], [85, 180], [85, -180]];
-    L.polygon([world].concat(holes), {
+    L.polygon([world].concat(cityRings), {
       stroke: false,
       fillColor: getVar('--bg'),
       // The light basemap is already near-white, so fading toward the page
@@ -581,26 +598,18 @@
       className: 'city-veil'
     }).addTo(boundaryLayer);
 
-    L.polygon(holes, {
+    L.polygon(cityRings, {
       color: getVar('--dim'), weight: 2, opacity: .6,
       dashArray: '7 6', fill: false, interactive: false
     }).addTo(boundaryLayer);
   }
 
-  // Ray casting against the city rings. Used to fade cameras that sit outside
-  // the covered area, so the markers agree with the veil under them.
+  // Inside the city limits? Decides which cameras are shown and counted, and
+  // whether a tapped spot can be answered at all. The same ray cast as the
+  // precinct lookup, so the veil, the markers and the answer always agree.
+  // With no boundary file loaded, everything counts as inside.
   function insideCity(lat, lng) {
-    if (!cityRings) return true;
-    var inside = false;
-    for (var r = 0; r < cityRings.length; r++) {
-      var ring = cityRings[r];
-      for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-        var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
-        if (((yi > lat) !== (yj > lat)) &&
-            (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
-      }
-    }
-    return inside;
+    return !cityRings || Precincts.pointInRings(lat, lng, cityRings);
   }
 
   // Every polling place in the city, shown from the start. This is a voting
@@ -610,15 +619,16 @@
   function drawPollingPlaces(activePrecinct) {
     if (!P || !pollLayer) return;
     pollLayer.clearLayers();
-    var ring = getVar('--pin-ring'), gold = getVar('--warn');
     var seen = {};
     Object.keys(P.polling).forEach(function (pk) {
       var pl = P.pollingPlace(pk);
       if (!pl || pl.lat == null) return;
-      // Consolidated precincts share a building; draw it once.
+      // Consolidated precincts share a building; draw it once. The list at a
+      // spot keeps growing as later precincts land on it, so the detail reads
+      // it when opened rather than when the marker is made.
       var key = pl.lat.toFixed(5) + ',' + pl.lng.toFixed(5);
       if (seen[key]) { seen[key].push(pk); return; }
-      seen[key] = [pk];
+      var atThisSpot = seen[key] = [pk];
       var isActive = activePrecinct && String(pk) === String(activePrecinct);
       // A hollow ring: present without competing. Fifty-nine filled marks
       // buried the precinct numbers and the route underneath them.
@@ -631,15 +641,8 @@
         }),
         zIndexOffset: isActive ? 500 : 300, keyboard: false, riseOnHover: true
       }).addTo(pollLayer);
-      m.__precincts = seen[key];
-      if (hoverPopups()) {
-        m.bindPopup(function () { return m.__detail(); },
-                    { maxWidth: 280, className: 'cam-popup' });
-      } else {
-        m.on('click', function () { showDetail(m.__detail()); });
-      }
-      m.__detail = (function () {
-        var list = m.__precincts.sort(function (a, b) { return a - b; });
+      bindDetail(m, function () {
+        var list = atThisSpot.slice().sort(function (a, b) { return a - b; });
         return '<div class="destpop">' +
           '<div class="dt">Polling place</div>' +
           '<div class="dn">' + esc(displayCase(pl.name)) + '</div>' +
@@ -647,7 +650,7 @@
           (pl.entrance_note ? '<div class="de">' + esc(pl.entrance_note) + '</div>' : '') +
           '<div class="dw">Precinct' + (list.length > 1 ? 's ' : ' ') +
           esc(list.join(', ')) + '</div></div>';
-      });
+      }, 280);
     });
   }
 
@@ -686,14 +689,21 @@
     return pts[Math.round((deg % 360) / 22.5) % 16];
   }
 
+  // The bearing a camera faces, from OSM's direction tag, or null when it has
+  // none. Read by the popup and by the marker's view cone alike.
+  function cameraBearing(c) {
+    var f = c.f || {};
+    var raw = f.direction != null ? f.direction : f['camera:direction'];
+    return (raw != null && raw !== '' && !isNaN(parseFloat(raw))) ? parseFloat(raw) : null;
+  }
+
   function cameraPopup(c) {
     var f = c.f || {};
     var rows = '';
     // Direction first: what a camera points at is the thing that matters most
     // for whether you drive past it.
-    var dir = f.direction || f['camera:direction'];
-    if (dir != null && dir !== '' && !isNaN(parseFloat(dir))) {
-      var d = parseFloat(dir);
+    var d = cameraBearing(c);
+    if (d != null) {
       rows += '<div class="cf"><span class="ck">Faces</span>' +
         '<span class="cv">' + compass(d) + ' · ' + Math.round(d) + '°</span></div>';
     }
@@ -724,9 +734,7 @@
   // in OSM's `direction` tag, present on every camera in this data, and it is
   // the thing that decides whether driving a street actually passes a reader.
   function cameraIcon(c, flagged) {
-    var f = c.f || {};
-    var raw = f.direction != null ? f.direction : f['camera:direction'];
-    var deg = (raw != null && raw !== '' && !isNaN(parseFloat(raw))) ? parseFloat(raw) : null;
+    var deg = cameraBearing(c);
     var S = 58, C = S / 2;
     var fill = flagged ? '#ff2d2d' : '#ff4d4d';
     var cone = '';
@@ -826,16 +834,14 @@
   // Rendered from the data rather than written into the copy, so it stays true
   // when the camera file is refreshed.
   function renderCameraCount() {
-    var n = cameras ? cameras.length : 0;
-    var one = n === 1;
     var fold = $('camCountFold');
-    if (fold) {
-      // Sits above the Cache/OSM toggle now, so it must not name a source:
-      // that is the toggle's job.
-      fold.textContent = n + ' reported camera' + (one ? '' : 's') +
-        ' in the city. Volunteer-mapped and certainly incomplete, so treat ' +
-        'it as a floor rather than a full count.';
-    }
+    if (!fold) return;
+    var n = cameras ? cameras.length : 0;
+    // Sits above the Cache/OSM toggle, so it must not name a source: that is
+    // the toggle's job.
+    fold.textContent = n + ' reported camera' + (n === 1 ? '' : 's') +
+      ' in the city. Volunteer-mapped and certainly incomplete, so treat ' +
+      'it as a floor rather than a full count.';
   }
 
   // Cameras appear only once there is a route for them to matter to. A person
@@ -851,7 +857,6 @@
   // drawCameras runs on every route toggle.
   var obstacleSig = null;
   function syncLabelObstacles() {
-    if (!ownBase) return;
     var visible = layerState().cameras && camerasInScope();
     var pts = visible && cameras
       ? cameras.map(function (c) { return cameraDisplayPos(c); })
@@ -881,23 +886,10 @@
         zIndexOffset: flag[c.id] ? 600 : 400,
         keyboard: false
       });
-      // Desktop gets the detail AT the marker: with the map now 400-600px
-      // tall there is room for a popup, and eyes are already on the dot that
-      // was clicked. Touch keeps the card below the map, where a popup would
-      // fight fat fingers and the small viewport.
-      if (hoverPopups()) {
-        mk.bindPopup(function () { return cameraPopup(c); },
-                     { maxWidth: 300, className: 'cam-popup' });
-      } else {
-        mk.on('click', function () { showDetail(cameraPopup(c)); });
-      }
+      bindDetail(mk, function () { return cameraPopup(c); }, 300);
       mk.addTo(camLayer);
     });
     syncLabelObstacles();
-  }
-
-  function getVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000';
   }
 
   // ---- lookup ----------------------------------------------------------
@@ -914,7 +906,8 @@
     $('col').classList.remove('has-result');
     window.scrollTo({ top: 0, behavior: 'smooth' });
     disarmPin();
-    if (ownBase) { ownBase.setRouteStreets([], null); ownBase.setActivePrecinct(null); }
+    ownBase.setRouteStreets([], null);
+    ownBase.setActivePrecinct(null);
     drawPollingPlaces();
     drawCameras();
     map.setView(GR, 13);
@@ -929,6 +922,13 @@
   // thrown at you mid-keystroke.
 
   var acItems = [], acIndex = -1;
+
+  // The small grey word beside a suggestion that is not an exact hit, saying
+  // why it is being offered. Keyed by the `kind` precinct.js assigns.
+  var SUGGESTION_WHY = {
+    inferred: 'estimated', quadrant: 'did you mean',
+    near: 'nearest on this street', street: 'pick a number'
+  };
 
   function acBox() {
     var box = $('ac');
@@ -951,10 +951,7 @@
     var box = acBox();
     var hasNumber = P.parseTyped(text).number != null;
     var html = acItems.map(function (it, i) {
-      var why = it.kind === 'exact' ? '' :
-        it.kind === 'inferred' ? 'estimated' :
-        it.kind === 'quadrant' ? 'did you mean' :
-        it.kind === 'near' ? 'nearest on this street' : 'pick a number';
+      var why = SUGGESTION_WHY[it.kind] || '';
       return '<button type="button" class="ac-item" role="option" data-i="' + i + '">' +
         (it.number != null ? '<span class="num">' + it.number + '</span>' : '') +
         '<span class="st">' + esc(displayCase(it.street)) + '</span>' +
@@ -998,30 +995,31 @@
   function choose(item) {
     if (!item) return;
     closeAC();
+    var input = $('addr');
     if (item.number == null) {
       // a street was picked: keep any number already typed and reopen
-      var num = ($('addr').value.match(/^(\d+)/) || [])[1] || '';
-      $('addr').value = (num ? num + ' ' : '') + displayCase(item.street) + (num ? '' : ' ');
-      $('addr').focus();
+      var num = (input.value.match(/^(\d+)/) || [])[1] || '';
+      input.value = (num ? num + ' ' : '') + displayCase(item.street) + (num ? '' : ' ');
+      input.focus();
       refreshSuggestions();
       return;
     }
-    $('addr').value = item.number + ' ' + item.street;
-    var r = P.lookup($('addr').value);
+    input.value = item.number + ' ' + item.street;
+    var r = P.lookup(input.value);
     if (r.error) {
-      showError('Could not resolve ' + esc($('addr').value) + '.');
+      showError('Could not resolve ' + esc(input.value) + '.');
       return;
     }
     // Where the address was inferred from its neighbors, let the precinct
     // boundary overrule them. See refineWithPolygon in precinct.js.
-    if (graph) P.refineWithPolygon(r, function (n, st) { return graph.geocode(n, st); }, precincts);
-    $('hint').textContent = HINT_DEFAULT;
+    P.refineWithPolygon(r, function (n, st) { return graph.geocode(n, st); }, precincts);
+    setHint('');
     // Drop focus before rendering, not after. On a phone the soft keyboard is
     // most of the lower screen, and show() fits the map to the viewport it
     // finds, so blurring first means the fit is computed against the real
     // height rather than the keyboard-shortened one. The street-only branch
     // above deliberately keeps focus: that address is not finished yet.
-    $('addr').blur();
+    input.blur();
     show(r);
   }
 
@@ -1032,19 +1030,10 @@
   // residents vote somewhere this tool does not cover, and telling them "no
   // street matches" reads as a broken tool rather than an honest limit.
   function missExplanation(typed) {
-    var t = P.parseTyped(typed);
-    var street = (t.rest || typed || '').trim().toUpperCase();
-    var hit = null;
-    if (neighbors && street) {
-      hit = neighbors[street];
-      if (!hit) {
-        // try without a house number and with light normalization
-        var keys = Object.keys(neighbors), needle = street.replace(/\s+/g, ' ');
-        for (var i = 0; i < keys.length; i++) {
-          if (keys[i] === needle) { hit = neighbors[keys[i]]; break; }
-        }
-      }
-    }
+    // parseTyped already uppercases, collapses spaces and strips the house
+    // number, which is exactly the form neighbors.json is keyed by.
+    var street = P.parseTyped(typed).rest;
+    var hit = neighbors && street ? neighbors[street] : null;
     if (hit && hit.length) {
       var where = hit.length === 1 ? esc(hit[0])
         : esc(hit.slice(0, -1).join(', ')) + ' or ' + esc(hit[hit.length - 1]);
@@ -1081,7 +1070,7 @@
     $('pinBtn').classList.add('armed');
     $('pinBtn').setAttribute('aria-pressed', 'true');
     $('map').classList.add('pin-armed');
-    $('hint').textContent = 'Tap the map where you want to start from. Esc cancels.';
+    setHint('Tap the map where you want to start from. Esc cancels.');
     $('mapNote').textContent = 'Tap anywhere in the city to start from that spot.';
     scrollToResult('mapBlock');
   }
@@ -1092,10 +1081,10 @@
     $('pinBtn').classList.remove('armed');
     $('pinBtn').setAttribute('aria-pressed', 'false');
     $('map').classList.remove('pin-armed');
-    $('hint').textContent = HINT_DEFAULT;
+    setHint('');
   }
 
-  function pinLookup(lat, lng, src) {
+  function pinLookup(lat, lng) {
     if (!graph || !P) return;
     if (!insideCity(lat, lng)) {
       $('addr').value = ''; closeAC();
@@ -1112,10 +1101,8 @@
     }
     var place = P.pollingPlace(pr.precinct);
     $('addr').value = ''; closeAC();
-    $('hint').textContent = src === 'geo'
-      ? 'Routing from your location. Type an address to switch back.'
-      : 'Routing from your dropped pin. Type an address to switch back.';
-    show({ pin: true, geo: src === 'geo', lat: lat, lng: lng,
+    setHint('Routing from your dropped pin. Type an address to switch back.');
+    show({ pin: true, lat: lat, lng: lng,
            precinct: pr.precinct, ward: pr.ward, place: place });
   }
 
@@ -1137,18 +1124,13 @@
     var place = r.place;
     $('resultBlock').hidden = false;
 
-    // The answer as labelled facts, in two columns: WHEN on the left, WHERE
-    // on the right. One row for early voting, one for election day. A row's
-    // right cell is emitted only when there is a place to name, which is why
-    // the columns are placed explicitly in CSS rather than left to flow.
-    // Ward and Precinct are the FIRST ROW of the same grid, not a separate
-    // block above it, so they line up with the two columns underneath
-    // instead of floating in their own rhythm. Ward takes column one beside
-    // the place, Precinct column two beside the timing.
-    // Ward and Precinct are a rail down the left of the whole table, spanning
-    // every row, rather than a row of their own or a cell inside one. That is
-    // what keeps both place names starting at the same x: the identity names
-    // the whole answer, not the first row of it.
+    // The answer as labelled facts in a grid: one row for early voting, one
+    // for election day, each a WHEN cell and a WHERE cell. A row's where-cell
+    // is emitted only when there is a place to name, which is why the columns
+    // are placed explicitly in CSS rather than left to flow. Ward and Precinct
+    // are a rail down the left of the whole table, spanning every row, rather
+    // than a row of their own: that is what keeps both place names starting
+    // at the same x. The identity names the whole answer, not its first row.
     var html = '<div class="vi-rows"><div class="vi-grid"><div class="vi-rail">' +
       (r.ward ? '<div><div class="vi-lbl">Ward</div>' +
                 '<div class="vi-num">' + esc(r.ward) + '</div></div>' : '') +
@@ -1278,15 +1260,12 @@
     }
 
     var adv = [];
-    if (r.pin) adv.push(r.geo
-      ? 'From the location your device provided, so accuracy may vary. Your ' +
-        'legal precinct is set by your registered address.'
-      : 'The start location is based on where you dropped your pin. Your ' +
-        'real location is your registered voter address, so if you live ' +
-        'somewhere else, type that address instead.');
+    if (r.pin) adv.push('The start location is based on where you dropped ' +
+      'your pin. Your real location is your registered voter address, so if ' +
+      'you live somewhere else, type that address instead.');
     if (r.rivals) adv.push('This address sits on a precinct line and could be in ' +
       r.rivals.join(' or ') + '. Worth confirming with the clerk.');
-    else if (r.inferred && !r.fromPolygon) adv.push('This exact number is not in ' +
+    else if (r.inferred) adv.push('This exact number is not in ' +
       'the address list, so the precinct was taken from its neighbors and ' +
       'checked against the precinct boundary.');
     if (r.edgeMetres !== Infinity && r.edgeMetres < 30) adv.push('This address is close ' +
@@ -1329,12 +1308,14 @@
     return t >= e.early_voting_from && t <= e.early_voting_to && evSites(e).length > 0;
   }
 
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+                'August', 'September', 'October', 'November', 'December'];
+
+  // "2026-11-03" -> "November 3, 2026"
   function prettyDate(iso) {
     if (!iso) return '';
     var p = iso.split('-');
-    var months = ['January','February','March','April','May','June','July',
-                  'August','September','October','November','December'];
-    return months[Number(p[1]) - 1] + ' ' + Number(p[2]) + ', ' + p[0];
+    return MONTHS[Number(p[1]) - 1] + ' ' + Number(p[2]) + ', ' + p[0];
   }
 
   // The clerk publishes early voting hours as a weekday pattern rather than
@@ -1561,8 +1542,6 @@
       if (oSplit) oSplit.release();
     }
 
-    var originLabel = null;
-
     if (!fast || !avoid) {
       $('routeBlock').hidden = false;
       $('routes').innerHTML = '<div class="err">No drivable route between your address ' +
@@ -1593,7 +1572,7 @@
       fastExp: fastExp,
       avoidExp: avoid.cameraCount,
       flagged: fast.camsOnRoute,
-      opts: opts, origin: origin, place: place, originLabel: originLabel,
+      opts: opts, origin: origin, place: place,
       destSub: (pick.kind === 'early') ? 'Early voting site'
                                        : 'Precinct ' + r.precinct
     };
@@ -1634,25 +1613,20 @@
     pinLayer.clearLayers();
     var rp = routes[selected].pts;
     var brg = (rp && rp.length > 1) ? ALPRRouter.bearing(rp[0], rp[1]) : 0;
-    originArrow = marker([routes.origin.lat, routes.origin.lng], 'origin', routes.originLabel, brg);
+    originArrow = marker([routes.origin.lat, routes.origin.lng], 'origin', brg);
     // The flag stands alone on the map; the detail is a click away. A
     // permanent card beside it covered the streets around the destination,
     // which is exactly where a reader is trying to look.
-    var destM = marker([routes.place.lat, routes.place.lng], 'dest', 'Finish');
+    var destM = marker([routes.place.lat, routes.place.lng], 'dest');
     var p = routes.place;
-    var destHtml =
+    bindDetail(destM,
       '<div class="destpop">' +
       '<div class="dt">Finish</div>' +
       '<div class="dn">' + esc(displayCase(p.name)) + '</div>' +
       '<div class="da">' + esc(addressForDisplay(p.address)) + '</div>' +
       (p.entrance_note ? '<div class="de">' + esc(p.entrance_note) + '</div>' : '') +
       '<div class="dw">' + esc(routes.destSub) + '</div>' +
-      '</div>';
-    if (hoverPopups()) {
-      destM.bindPopup(destHtml, { maxWidth: 280, className: 'cam-popup' });
-    } else {
-      destM.on('click', function () { showDetail(destHtml); });
-    }
+      '</div>', 280);
 
     // With mid-block splitting the route normally begins at the address
     // itself, so these draw nothing. They stay for the fallback case where a
@@ -1694,15 +1668,13 @@
       map.fitBounds(fitB, fitOpts());
     }
 
-    if (ownBase) ownBase.setActivePrecinct(current && current.precinct);
+    ownBase.setActivePrecinct(current && current.precinct);
     drawPollingPlaces(current && current.precinct);
     // Tell the basemap which streets this route uses so it names them first.
-    if (ownBase) {
-      ownBase.setRouteStreets(
-        (routes[selected].steps || []).map(function (st) { return st.street; })
-          .filter(Boolean),
-        routes[selected].pts);
-    }
+    ownBase.setRouteStreets(
+      (routes[selected].steps || []).map(function (st) { return st.street; })
+        .filter(Boolean),
+      routes[selected].pts);
 
     renderDestPicker();
     renderRouteCards();
@@ -1758,14 +1730,6 @@
              paddingBottomRight: [pad, pad + 26] };
   }
 
-  // Two results are the same journey if they use the same roads, or if they
-  // are indistinguishable on every figure the page reports.
-  //
-  // The exposure counts must be passed in. The fastest route is computed with
-  // the camera data switched off, so its own cameraCount is always 0 and
-  // comparing it against the avoiding route's 0 would call two genuinely
-  // different routes identical whenever their distance and time happened to
-  // match, hiding a real choice from the reader.
   // "Would taking the cameras actually get you there faster?" Both routes come
   // out of the same search over the same graph, so this is a direct comparison
   // of their seconds and meters. The threshold is the same one the verdict
@@ -1775,11 +1739,19 @@
   // ONE predicate for both decisions that depend on it: whether the fastest
   // route is offered at all, and how its cost is described when it is.
   function noRealSaving(fast, avoid) {
-    var dMi = (avoid.meters - fast.meters) / 1609.34;
+    var dMi = (avoid.meters - fast.meters) / METERS_PER_MILE;
     var dMin = (avoid.seconds - fast.seconds) / 60;
     return dMi <= .05 && dMin <= .5;
   }
 
+  // Two results are the same journey if they use the same roads, or if they
+  // are indistinguishable on every figure the page reports.
+  //
+  // The exposure counts must be passed in. The fastest route is computed with
+  // the camera data switched off, so its own cameraCount is always 0 and
+  // comparing it against the avoiding route's 0 would call two genuinely
+  // different routes identical whenever their distance and time happened to
+  // match, hiding a real choice from the reader.
   function sameRoute(a, b, aExp, bExp) {
     if (!a || !b) return false;
     if (a.edges.length === b.edges.length &&
@@ -1889,13 +1861,15 @@
     }).addTo(routeLayer);
   }
 
-  function marker(latlng, kind, label, bearingDeg) {
+  // The start arrow or the finish flag. Both are 34px; only the anchor
+  // differs, since the flag stands on its pole rather than being centred.
+  function marker(latlng, kind, bearingDeg) {
     var ring = getVar('--pin-ring');
-    var html, size, anchor, tag;
+    var html, anchor;
     if (kind === 'origin') {
       // A compass arrow rotated to the first leg's bearing: the start of the
       // route says which way you set off, not just where you stand.
-      size = 34; anchor = [17, 17]; tag = 'Start';
+      anchor = [17, 17];
       html = '<div style="width:34px;height:34px;border-radius:50%;background:' +
         getVar('--accent') + ';border:3px solid ' + ring +
         ';box-shadow:0 1px 8px rgba(0,0,0,.5);display:flex;align-items:center;' +
@@ -1904,7 +1878,7 @@
         '<path d="M12 3l6 15-6-4-6 4z"/></svg></div>';
     } else {
       // A finish flag, because "finish" is what the end of a route is called.
-      size = 34; anchor = [6, 32]; tag = 'Finish';
+      anchor = [6, 32];
       html = '<div style="width:34px;height:34px;position:relative">' +
         '<div style="position:absolute;left:4px;top:0;width:3px;height:32px;' +
         'border-radius:2px;background:' + ring + ';box-shadow:0 1px 5px rgba(0,0,0,.45)"></div>' +
@@ -1916,14 +1890,14 @@
         '<rect x="11" y="10" width="5.5" height="5"/></g></svg></div>';
     }
     var m = L.marker(latlng, {
-      icon: L.divIcon({ className: '', html: html, iconSize: [size, size],
+      icon: L.divIcon({ className: '', html: html, iconSize: [34, 34],
         iconAnchor: anchor }),
       zIndexOffset: 1000
     }).addTo(pinLayer);
-    // The finish gets a permanent label bound by the caller; the start keeps
-    // a hover tooltip so the arrow stays uncluttered.
+    // The finish gets its detail bound by the caller; the start keeps a
+    // hover tooltip so the arrow stays uncluttered.
     if (kind === 'origin') {
-      m.bindTooltip(tag, { direction: 'top', offset: [0, -10] });
+      m.bindTooltip('Start', { direction: 'top', offset: [0, -10] });
     }
     return m;
   }
@@ -1935,7 +1909,7 @@
 
   function renderRouteCards() {
     var fast = routes.fast, avoid = routes.avoid;
-    var dMi = (avoid.meters - fast.meters) / 1609.34;
+    var dMi = (avoid.meters - fast.meters) / METERS_PER_MILE;
     var dMin = (avoid.seconds - fast.seconds) / 60;
     var saved = routes.avoidExp < routes.fastExp ? routes.fastExp - routes.avoidExp : 0;
 
@@ -1990,23 +1964,19 @@
       opt('avoid', avoid, routes.avoidExp) +
       opt('fast', fast, routes.fastExp) + '</div>';
 
-    if (saved > 0) {
+    // The cost line is the avoiding route's price tag, so it sits directly
+    // under the two buttons and only while that route is the selection.
+    // With Fastest selected it would be arguing with the reader's choice.
+    if (saved > 0 && selected === 'avoid') {
       var cost;
-      if (noRealSaving(fast, avoid)) cost = 'and costs you nothing';
+      if (noRealSaving(fast, avoid)) cost = 'costs you nothing';
       else {
         var parts = [];
         if (dMi > .05) parts.push(dMi.toFixed(1) + ' mi');
         if (dMin > .5) parts.push(Math.round(dMin) + ' min');
-        cost = 'for an extra ' + parts.join(' and ');
+        cost = 'costs an extra ' + parts.join(' and ');
       }
-      // The cost line is the avoiding route's price tag, so it sits directly
-      // under the two buttons and only while that route is the selection.
-      // With Fastest selected it would be arguing with the reader's choice.
-      if (selected === 'avoid') {
-        html += '<div class="verdict">Going around them ' +
-          (cost === 'and costs you nothing' ? 'costs you nothing'
-                                            : cost.replace(/^for /, 'costs ')) + '.</div>';
-      }
+      html += '<div class="verdict">Going around them ' + cost + '.</div>';
     }
     $('routes').innerHTML = html;
     Array.prototype.forEach.call($('routes').querySelectorAll('button[data-key]'), function (b) {
@@ -2041,19 +2011,18 @@
   function renderSteps() {
     var r = routes[selected];
     var steps = r.steps || graph.steps(r);
-    var html = '<ol class="steps">' + steps.map(function (st) {
+    var html = '<ol class="steps">' + steps.map(function (st, i) {
       var dist = st.meters ? '<span class="sd">' +
-        (st.meters < 160 ? Math.round(st.meters * 3.28084) + ' ft'
-                         : (st.meters / 1609.34).toFixed(1) + ' mi') + '</span>' : '';
+        (st.meters < 160 ? Math.round(st.meters * 3.28084) + ' ft' : fmtMi(st.meters)) +
+        '</span>' : '';
       var cam = st.cameras.length
         ? '<span class="scam">' + st.cameras.length + ' camera' +
           (st.cameras.length > 1 ? 's' : '') + '</span>' : '';
-      return '<li data-i="' + steps.indexOf(st) + '"' + (st.arrive ? ' class="arrive"' : '') +
+      return '<li data-i="' + i + '"' + (st.arrive ? ' class="arrive"' : '') +
         ' title="Show this part of the route on the map">' +
         (st.arrive ? '' : '<span class="glyph">' + turnGlyph(st.text) + '</span>') +
         '<span class="stext">' + esc(stepText(st)) + '</span>' + dist + cam + '</li>';
-    }).join('') + '</ol>' +
-    '';
+    }).join('') + '</ol>';
     $('steps').innerHTML = html;
 
     // A step is also a viewport: clicking it frames that stretch of the
@@ -2081,7 +2050,7 @@
                 return rp2 && rp2.length > 1
                   ? ALPRRouter.bearing(rp2[rp2.length - 2], rp2[rp2.length - 1]) : 0;
               })();
-          originArrow = marker(st.points[0], 'origin', null, hb);
+          originArrow = marker(st.points[0], 'origin', hb);
         }
         if (isPhone()) $('mapBlock').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       });
@@ -2114,20 +2083,35 @@
     return (list || []).filter(function (c) { return insideCity(c.lat, c.lng); });
   }
 
-  function useCached() {
-    liveState = 'idle';
-    $('srcCached').classList.add('on'); $('srcLive').classList.remove('on');
-    $('srcCached').disabled = false; $('srcLive').disabled = false;
-    cameras = cityCameras(cachedCameras);
+  // Which side of the Cache/OSM toggle is lit. OSM is disabled only while a
+  // fetch is in flight, so it cannot be fired twice.
+  function setSrcButtons(live, busy) {
+    $('srcLive').classList.toggle('on', live);
+    $('srcCached').classList.toggle('on', !live);
+    $('srcLive').disabled = !!busy;
+    $('srcCached').disabled = false;
+  }
+
+  function cachedNote() {
+    return 'Cached list: ' + cameras.length + ' cameras in the city. Complete as published.';
+  }
+
+  // Swap in a camera list, assign it to the graph, and redraw whatever route
+  // is on screen against it.
+  function useCameras(list) {
+    cameras = cityCameras(list);
     graph.assignCameras(cameras);
     reroute(true);
-    setSrcNote('Cached list: ' + cameras.length + ' cameras in the city. Complete as published.');
+  }
+
+  function useCached() {
+    setSrcButtons(false);
+    useCameras(cachedCameras);
+    setSrcNote(cachedNote());
   }
 
   function tryLive() {
-    liveState = 'loading';
-    $('srcLive').classList.add('on'); $('srcCached').classList.remove('on');
-    $('srcLive').disabled = true; $('srcCached').disabled = false;
+    setSrcButtons(true, true);
     setSrcNote('<span class="spin"></span>Asking OpenStreetMap for the current list…');
 
     liveOverpass().then(function (live) {
@@ -2138,15 +2122,13 @@
           'fewer than the ' + cachedCameras.length + ' already cached, so the answer ' +
           'looks incomplete.');
       }
+      // The cache is the floor: a live entry only ADDS an id the cache lacks.
       var byId = {};
       cachedCameras.forEach(function (c) { byId[c.id] = c; });
       live.forEach(function (c) { byId[c.id] = byId[c.id] || c; });
-      var merged = Object.keys(byId).map(function (k) { return byId[k]; });
-      cameras = cityCameras(merged);
-      var added = cameras.length - cityCameras(cachedCameras).length;
-      liveState = 'live';
-      graph.assignCameras(cameras);
-      reroute(true);
+      var before = cityCameras(cachedCameras).length;
+      useCameras(Object.keys(byId).map(function (k) { return byId[k]; }));
+      var added = cameras.length - before;
       setSrcNote('Live from OpenStreetMap: ' + cameras.length + ' cameras in the city' +
         (added > 0 ? ', ' + added + ' newer than the cache' : ', same as the cache') + '.');
     });
@@ -2155,11 +2137,8 @@
   // Failing back to the cache is always safe, because the cache is complete:
   // it can only ever show MORE than a broken live answer, never fewer.
   function liveFailed(why) {
-    liveState = 'failed';
-    $('srcCached').classList.add('on'); $('srcLive').classList.remove('on');
-    cameras = cityCameras(cachedCameras);
-    graph.assignCameras(cameras);
-    reroute(true);
+    setSrcButtons(false);
+    useCameras(cachedCameras);
     setSrcNote(why + ' Showing the cached list of ' + cameras.length +
       ' in the city instead, which is complete, so you are not seeing fewer ' +
       'cameras than you should. Flip to OSM to retry.', true);
@@ -2188,9 +2167,9 @@
           var lat = el.lat != null ? el.lat : (el.center && el.center.lat);
           var lng = el.lon != null ? el.lon : (el.center && el.center.lon);
           if (lat == null) return null;
-          var t = el.tags || {};
-          return { id: el.type[0] + el.id, lat: lat, lng: lng, operator: t.operator,
-                   zone: t['surveillance:zone'] || t.surveillance };
+          // Same shape as a cached entry, so the marker's view cone and the
+          // popup read a live camera exactly as they read a cached one.
+          return { id: el.type[0] + el.id, lat: lat, lng: lng, f: el.tags || {} };
         }).filter(Boolean);
       }).catch(function () { clearTimeout(timer); return null; });
   }

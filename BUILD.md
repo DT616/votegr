@@ -137,14 +137,16 @@ posting for that election rather than carrying the previous one's forward.
 ## Verifying a rebuild
 
 ```
-node test_router.mjs      # 76 assertions: routing, restrictions, addresses
-node audit_routes.mjs     # drives hundreds of real trips, checks every route
-npm ci && node test_page.mjs   # 93 assertions: the page itself, in a browser
-node compare_osrm.mjs 30  # differential check against OSRM
+node test_display_case.mjs         # display casing invariants over the real corpus
+node test_router.mjs               # 76 assertions: routing, restrictions, addresses
+node audit_routes.mjs              # drives hundreds of real trips, checks every route
+npm ci && node test_page.mjs       # 93 assertions: the page itself, in a browser
+node test_early_voting_states.mjs  # the four early voting states, from a dated fixture
+node compare_osrm.mjs 30           # differential check against OSRM
 ```
 
-The first three also run on every pull request, so a rebuild that breaks the
-routing or the page is caught before it can be merged and deployed.
+All but the OSRM comparison also run on every pull request, so a rebuild that
+breaks the routing or the page is caught before it can be merged and deployed.
 
 `audit_routes.mjs` is the one that matters. It routes across the real city and
 mechanically checks every result: edges join end to end, no edge is driven

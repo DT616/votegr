@@ -20,11 +20,11 @@ Two reasons:
 1. **Finding out where you vote should not require identifying yourself.** The
 state's Michigan Voter Information Center is accurate and it is the official
 source, but it asks for your name, your birth month and year, and your
-registration ZIP before it will tell your ward and precint number.  To find where to vote, you either have to give them your address or the personal info.
-THeir privacy notice you have to agree to states information such as a name or address may be released under a Freedom of
-Information Act request. The records of your searches or the fact you loooked them up could be subject to FOIA, and that didn't sit right with me.
+registration ZIP before it will tell your ward and precinct number. To find where to vote, you either have to give them your address or the personal info.
+Their privacy notice you have to agree to states information such as a name or address may be released under a Freedom of
+Information Act request. The records of your searches or the fact you looked them up could be subject to FOIA, and that didn't sit right with me.
 
-3. **Driving to perform a constitutoinally protected activity shouldn't be surveilled.**
+2. **Driving to perform a constitutionally protected activity shouldn't be surveilled.**
 Grand Rapids has automated license plate readers on traffic signals and utility poles. They photograph
 every passing vehicle, perform OCR, and store it with the time and place, whether or not anyone suspects
 you of anything, and can alert officers in realtime of a flagged vehicle. The records are also searchable
@@ -36,9 +36,11 @@ Copy the `site` folder to any web host and it works.
 
 ```
 site/index.html            the page
+site/router.css            its styles
 site/router.js             routing, geocoding, turn restrictions
 site/basemap.js            draws the map on a canvas, no tiles
 site/precinct.js           address -> ward, precinct, polling place
+site/display-case.js       title-cases the ALL CAPS street and place names for display
 site/app.js                the interface
 site/data/graph.json       street network, one-ways, speeds, turn restrictions
 site/data/cameras.json     known plate readers
@@ -106,15 +108,17 @@ search returns the one passing the fewest cameras, with each unavoidable camera 
 ## Checking the data
 
 ```bash
-node test_router.mjs      # 76 assertions: routing, restrictions, addresses
-node audit_routes.mjs     # drives hundreds of real trips, checks every route
-npm ci && node test_page.mjs   # 93 assertions: the page itself, in a browser
-node compare_osrm.mjs 30  # differential test against OSRM, the OSM reference
+node test_display_case.mjs         # display casing: vectors, then two invariants over the real corpus
+node test_router.mjs               # 76 assertions: routing, restrictions, addresses
+node audit_routes.mjs              # drives hundreds of real trips, checks every route
+npm ci && node test_page.mjs       # 93 assertions: the page itself, in a browser
+node test_early_voting_states.mjs  # the four early voting states, from a dated fixture
+node compare_osrm.mjs 30           # differential test against OSRM, the OSM reference
 ```
 
-The first three checks run on every pull request, and on any push to `main`. The
-`package.json` exists only so `test_page.mjs` has a browser to drive; the site
-has no build step and no dependencies.
+All but the OSRM comparison run on every pull request, and on any push to
+`main`. The `package.json` exists only so the two browser tests have a browser
+to drive; the site has no build step and no dependencies.
 
 `audit_routes.mjs` is the one that matters. It routes across the real city and
 mechanically checks every result: edges join end to end, no edge is driven
@@ -128,7 +132,7 @@ sending your trip to a routing server is the thing this tool exists to avoid.
 Turn costs were added to the router because that comparison showed our routes
 zigzagging between fast streets in ways OSRM would not.
 
-## Limits and Disclaimer:
+## Limits and disclaimer
 
 This tool is an estimate, and these are the ways it is wrong.
 
@@ -136,7 +140,7 @@ This tool is an estimate, and these are the ways it is wrong.
 map.** Addresses near a precinct boundary are genuinely ambiguous and the page
 says so, as it does for a number it had to infer from its neighbors.
 
-**Coverage is parcel addresses**, Meaning a brand new build may be missing
+**Coverage is parcel addresses**, meaning a brand new build may be missing
 entirely. More than half of all Grand Rapids mailing addresses are outside the
 city limits, in Wyoming, Kentwood, Walker, East Grand Rapids or one of the
 townships; the page detects those and says which jurisdiction you are in, but
