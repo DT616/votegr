@@ -175,7 +175,7 @@ Rapids City Clerk. **Camera locations, turn restrictions, water and parks come
 from OpenStreetMap and are ODbL**, so `graph.json`, `cameras.json` and
 `landcover.json` carry that obligation: keep the attribution and share
 derivatives alike. Much of the camera mapping is the work of the
-[DeFlock](https://deflock.me/) community, where you can also contribute to the
+[DeFlock](https://deflock.org/) community, where you can also contribute to the
 plate reader database and read more about the project.
 
 The light version is still here, at
