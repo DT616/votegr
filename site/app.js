@@ -1267,12 +1267,11 @@
     // exceptions, and they stay conditional.
     var adv = ['Note: Your voting location is based on the address where you ' +
       'registered to vote, not what you enter here. If you are not sure the ' +
-      'address you entered is your registered address, double-check with the ' +
+      'entered address is the same, double-check with the ' +
       '<a href="https://www.grandrapidsmi.gov/departments/clerks-office/" ' +
       'target="_blank" rel="noopener">Grand Rapids City Clerk</a> or the ' +
       '<a href="https://mvic.sos.state.mi.us/" target="_blank" ' +
-      'rel="noopener">Michigan Voter Information Center</a> for an ' +
-      'authoritative answer.'];
+      'rel="noopener">Michigan Voter Information Center</a>.'];
     if (r.rivals) adv.push('This address sits on a precinct line and could be in ' +
       r.rivals.join(' or ') + '. Worth confirming with the clerk.');
     else if (r.inferred) adv.push('This exact number is not in ' +
