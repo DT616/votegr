@@ -40,7 +40,8 @@ const server = createServer(async (req, res) => {
   } catch { res.writeHead(404).end('not found'); }
 });
 await new Promise(r => server.listen(0, '127.0.0.1', r));
-const URL_ = 'http://127.0.0.1:' + server.address().port + '/index.html';
+const ORIGIN = 'http://127.0.0.1:' + server.address().port;
+const URL_ = ORIGIN + '/index.html';
 
 // --- the widths that matter -------------------------------------------
 // 1280 is a desktop, 390 is the phone the masthead used to wrap on, and 320
@@ -55,6 +56,12 @@ for (const w of WIDTHS) {
   const page = await ctx.newPage();
   // The favicon 404 is the page not having one; everything else is a bug.
   const errors = [];
+  // Every URL the page asks for, so the claim the About sheet now makes in
+  // absolute terms can be checked rather than trusted. A Cache/OSM toggle used
+  // to fetch Overpass behind a confirm dialog; it is gone, and the page may
+  // only talk to the host it was served from.
+  const offsite = [];
+  page.on('request', r => { if (new URL(r.url()).origin !== ORIGIN) offsite.push(r.method() + ' ' + r.url()); });
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('response', r => { if (r.status() >= 400 && !/favicon\.ico$/.test(r.url())) errors.push(r.status() + ' ' + r.url()); });
   await page.goto(URL_, { waitUntil: 'networkidle' });
@@ -148,6 +155,74 @@ for (const w of WIDTHS) {
   });
   ok('the disclaimer is hidden until there is a result', !before.flagged && !before.shown);
 
+  // --- the countdown to election day ---
+  // Its failure modes are all quiet ones: a row that reflows every second, a
+  // screen reader read a new number every second, four zeroes where a date used
+  // to be, or a card title that has drifted under the line beneath it. None of
+  // them throw, so they are checked rather than watched for.
+  const cd1 = await page.evaluate(() => {
+    const box = document.getElementById('countdown');
+    const clock = document.getElementById('cdClock');
+    const px = el => parseFloat(getComputedStyle(el).fontSize);
+    const units = Array.from(clock.querySelectorAll('.cd-unit'));
+    const said = document.getElementById('cdSaid');
+    return {
+      shown: !box.hidden && getComputedStyle(box).display !== 'none',
+      labels: units.map(u => u.querySelector('.cd-lab').textContent),
+      seconds: units.length ? units[units.length - 1].querySelector('.cd-num').textContent : null,
+      clockWidth: clock.getBoundingClientRect().width,
+      digitsHidden: clock.getAttribute('aria-hidden') === 'true',
+      said: said.textContent,
+      saidInvisible: said.getBoundingClientRect().width <= 2,
+      note: document.getElementById('cdNote').textContent,
+      labelSize: px(document.getElementById('cdLabel')),
+      forSize: px(document.querySelector('.cd-for')),
+      whenSize: px(document.querySelector('.cd-when')),
+      numSize: px(document.querySelector('.cd-num')),
+      forColor: getComputedStyle(document.querySelector('.cd-for')).color,
+      whenColor: getComputedStyle(document.querySelector('.cd-when')).color,
+      footDate: document.querySelectorAll('#electionBarInfo .elec-date')[0].textContent,
+      overflow: box.scrollWidth - box.clientWidth,
+    };
+  });
+  ok('the countdown is on the page', cd1.shown);
+  ok('it counts in days, hours, minutes and seconds',
+     cd1.labels.join(',') === 'Days,Hours,Minutes,Seconds');
+  // A colon, not a comma: the election is the label and the day is the value.
+  ok('it names the election it is counting to', /^[^:]+: .+\d{4}$/.test(cd1.note));
+  // The footer prints the same date in a different voice; they read the same
+  // calendar and must not be able to disagree about it.
+  ok('it agrees with the footer about the date',
+     cd1.note.toLowerCase().includes(cd1.footDate.toLowerCase()));
+  ok('the election and its date are told apart by colour',
+     cd1.whenColor !== cd1.forColor);
+  // The card title heads the whole card, so it outranks the line two rows
+  // below it. It was sized off the footer's --label-size chrome once, which
+  // put it under the election name.
+  ok('the card title outranks the line beneath it',
+     cd1.labelSize >= cd1.forSize && cd1.labelSize >= cd1.whenSize);
+  ok('the clock still outranks them all', cd1.numSize > cd1.labelSize);
+  ok('the countdown does not scroll sideways', cd1.overflow <= 0);
+  // A screen reader would be read a new figure every second otherwise.
+  ok('the digits are hidden from a screen reader', cd1.digitsHidden);
+  ok('a sentence stands in for the digits', /\bday(s)? until\b/.test(cd1.said));
+  ok('that sentence is not on screen', cd1.saidInvisible);
+
+  await page.waitForTimeout(1300);
+  const cd2 = await page.evaluate(() => {
+    const clock = document.getElementById('cdClock');
+    const units = Array.from(clock.querySelectorAll('.cd-unit'));
+    return {
+      seconds: units[units.length - 1].querySelector('.cd-num').textContent,
+      clockWidth: clock.getBoundingClientRect().width,
+    };
+  });
+  ok('the seconds actually run', cd2.seconds !== cd1.seconds);
+  // Tabular figures and a padded seconds field, so the row is the same width
+  // at :09 as at :10 and nothing beside it twitches.
+  ok('running seconds do not move the row',
+     Math.abs(cd2.clockWidth - cd1.clockWidth) < 0.5);
+
   // --- a real lookup ---
   await page.fill('#addr', '');
   await page.type('#addr', '300 Monroe Ave NW', { delay: 25 });
@@ -160,6 +235,7 @@ for (const w of WIDTHS) {
     const map = document.getElementById('map');
     return {
       flagged: document.getElementById('col').classList.contains('has-result'),
+      countdownGone: getComputedStyle(document.getElementById('countdown')).display === 'none',
       precinct: (document.getElementById('precinctInfo').innerText || '').replace(/\s+/g, ' ').trim(),
       mapShown: !document.getElementById('mapBlock').hidden,
       mapDrawn: map.querySelectorAll('canvas, svg').length > 0 && map.getBoundingClientRect().height > 50,
@@ -176,6 +252,8 @@ for (const w of WIDTHS) {
   ok('300 Monroe Ave NW is Ward 2, Precinct 40',
      /ward\s*2\b/i.test(result.precinct) && /precinct\s*40\b/i.test(result.precinct));
   ok('the map is drawn', result.mapShown && result.mapDrawn);
+  // The answer carries its own Election day row; the column belongs to it.
+  ok('the countdown stands down for the answer', result.countdownGone);
   ok('the disclaimer appears with the result', result.shown);
   ok('the disclaimer is one paragraph', result.paragraphs === 1);
   ok('the disclaimer leads with what it is not', /^Not an official government tool\./.test(result.text));
@@ -186,6 +264,10 @@ for (const w of WIDTHS) {
   ok('a result does not make the footer scroll sideways', result.footOverflow <= 0);
 
   ok('nothing failed to load and nothing threw', errors.length === 0);
+  // Asserted after a full lookup and a drawn route, so it covers the paths a
+  // reader actually walks, not just the load.
+  ok('the page never talks to anyone but its own host', offsite.length === 0);
+  if (offsite.length) offsite.forEach(u => console.log('       ' + u));
   if (errors.length) errors.forEach(e => console.log('       ' + e));
 
   await ctx.close();

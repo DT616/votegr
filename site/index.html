@@ -34,9 +34,20 @@
 
 <main id="col">
 
-  <!-- The next election, as a dateline. It stays at the top of the page but
-       reads as a standing notice rather than a banner competing with the
-       headline for the first thing you look at. -->
+  <!-- The clock to election day. Rendered only once the calendar file says
+       there is a date to count to, and gone once an address has been
+       answered: from then on the answer's own Election day row carries the
+       date and the screen belongs to the result. -->
+  <section class="countdown" id="countdown" hidden>
+    <p class="cd-label" id="cdLabel">Election Day is In:</p>
+    <!-- The digits are decoration for a screen reader, which would otherwise
+         be read a new number every second. The sentence under them says the
+         same thing once, at the granularity that matters. -->
+    <div class="cd-clock" id="cdClock" aria-hidden="true"></div>
+    <p class="cd-note" id="cdNote"></p>
+    <p class="cd-said" id="cdSaid"></p>
+  </section>
+
   <section class="ask" id="intro">
     <p class="lede">Find your Grand Rapids ward, precinct and polling place
       directions that avoid known license plate readers. Free and open source,
@@ -144,25 +155,6 @@
        target="_blank" rel="noopener">GitHub</a>
   </nav>
 </footer>
-<div class="modal-wrap" id="osmConfirm" hidden>
-  <div class="modal-veil" data-close></div>
-  <div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="osmConfirmTitle">
-    <div class="modal-head">
-      <h2 id="osmConfirmTitle">Check OpenStreetMap?</h2>
-      <button type="button" class="modal-x" data-close aria-label="Close">&#215;</button>
-    </div>
-    <div class="modal-body">
-      <p class="body">This contacts OpenStreetMap&rsquo;s servers to fetch the
-        latest camera reports. It is the only network request this page can
-        make.</p>
-      <div class="confirm-row">
-        <button type="button" class="confirm-go" id="osmGo">Fetch from OSM</button>
-        <button type="button" class="confirm-stay" data-close>Stay cached</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="modal-wrap" id="aboutModal" hidden>
   <div class="modal-veil" data-close></div>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
@@ -176,14 +168,19 @@
       <p class="body">We created an engine that runs locally in your browser
         that finds your voter information based on where you live, and generates
         directions to your polling place while avoiding license plate cameras.
-        Everything the page needs is downloaded when you first visit, so your
-        address never leaves your browser. The lookup and the directions are
-        worked out right there. Once the page has loaded, it keeps working
-        with no connection at all.</p>
+        The data files come down once, when you first visit. Everything after
+        that happens on your device: the lookup and the directions are worked
+        out against those files, so your address never leaves your browser.
+        There is no geocoder to call, no routing server to ask, and nothing on
+        the page reporting what you looked up. Once it has loaded it makes no
+        requests at all, to us or to anyone else, and it keeps working with no
+        connection.</p>
       <p class="body">The files this page uses to compute your information were
         compiled from published city, state and county data sources.
-        Additionally, we also retrieve and synchronize the data that DeFlock
-        publishes on OpenStreetMap for projects like this to use.</p>
+        The camera locations come from the data DeFlock publishes on
+        OpenStreetMap for projects like this to use. That sync happens when the
+        site is built, not while you are reading it, so the list is as current
+        as the last publish rather than as current as this minute.</p>
 
       <h3>Why make this?</h3>
       <ol class="body why-list">
