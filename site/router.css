@@ -55,7 +55,7 @@
      (.04 to .12em) had accumulated across this file for what is a single
      job: the small uppercase label above or beside a value. Size and
      tracking are fixed here; colour still varies by role, which is the part
-     that carries meaning. Two rules deliberately opt out and say why. */
+     that carries meaning. Three rules deliberately opt out and say why. */
   --label-size: .74rem;
   --label-track: .1em;
 }
@@ -265,6 +265,98 @@ body {
 .rk-sw.fast  {
   background: repeating-linear-gradient(115deg,
     var(--route-fastsel) 0 5px, #fff 5px 8px);
+}
+
+/* ---- election day countdown ---- */
+/* A ticker, but a civic one: an instrument panel rather than a sale ending
+   soon. Sits above the lede because it is the standing fact the page is
+   about, and left-aligned on the same measure as the lede so it reads as part
+   of the page rather than a banner dropped on top of it. */
+.countdown {
+  margin: 0 0 20px;
+  padding: 13px 15px 14px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  max-width: 31rem;
+}
+.countdown[hidden] { display: none; }
+
+/* The third rule that steps off --label-size, on the same grounds .vi-grid
+   .vi-lbl does: this titles a whole card, not a word above a single value,
+   and it has to stay the largest label inside it. At .74rem it sat under the
+   election name two lines below and read as that line's caption. Tracking
+   eases with the size, as it does there. */
+.cd-label {
+  margin: 0 0 9px;
+  font-weight: 700; font-size: 1rem; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--accent);
+}
+
+.cd-clock { display: flex; align-items: flex-start; }
+.cd-unit {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 0 clamp(11px, 4vw, 20px);
+}
+.cd-unit:first-child { padding-left: 0; }
+/* Hairlines rather than gaps alone: four numbers in a row need to read as one
+   clock, and the rules do that without adding weight. */
+.cd-unit + .cd-unit { border-left: 1px solid var(--line); }
+.cd-num {
+  font-size: clamp(1.5rem, 7vw, 2.1rem);
+  font-weight: 700; line-height: 1; letter-spacing: -.02em;
+  color: var(--fg);
+  /* Fixed-width figures, so a running seconds field does not shove the row
+     sideways twice a second. */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+.cd-lab {
+  font-size: .62rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--dim);
+}
+
+/* Election day itself: the clock has nothing to count, so the slot carries
+   the word instead of four zeroes. */
+.cd-today {
+  font-size: clamp(1.5rem, 7vw, 2.1rem);
+  font-weight: 700; line-height: 1; letter-spacing: -.02em;
+  color: var(--poll);
+}
+
+.cd-note { margin: 12px 0 0; line-height: 1.5; }
+/* Which election, then the day it falls on: a label and its value on one
+   line, told apart by colour rather than by size. Just under .vi-val, which
+   is the same fact stated in the answer, and under .cd-label above them. */
+.cd-for, .cd-when {
+  font-size: .95rem; font-weight: 700; letter-spacing: -.01em;
+}
+.cd-for { color: var(--accent); }
+.cd-when { color: var(--fg); }
+
+/* The sentence a screen reader gets in place of the ticking digits. Clipped
+   rather than hidden: display:none would take it out of the reading order
+   along with everything else. */
+.cd-said {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
+
+/* Once there is an answer the countdown goes the way the lede does: the
+   answer carries its own Election day row, and the screen belongs to it. */
+#col.has-result .countdown { display: none; }
+
+/* Narrow phones: the four units stop fitting on one line at full size, so
+   everything steps down before the row wraps. */
+@media (max-width: 400px) {
+  .countdown { padding: 11px 12px 12px; }
+  .cd-unit { padding: 0 clamp(8px, 3.5vw, 14px); }
+  .cd-num, .cd-today { font-size: 1.4rem; }
+  .cd-lab { font-size: .58rem; letter-spacing: .07em; }
+  .cd-label { font-size: .88rem; letter-spacing: .05em; }
+  .cd-for, .cd-when { font-size: .87rem; }
 }
 
 /* ---- masthead ---- */
@@ -478,25 +570,6 @@ body {
   padding-left: 12px; border-left: 2px solid var(--warn);
 }
 
-/* ---- camera source ---- */
-.src { display: flex; gap: 8px; }
-.src button {
-  flex: 1; background: var(--raise); border: 1.5px solid var(--line);
-  color: var(--dim); padding: 9px; border-radius: 8px; cursor: pointer;
-  font: inherit; font-size: .88rem; font-weight: 600;
-  transition: border-color .12s, color .12s;
-}
-.src button.on { border-color: var(--accent); color: var(--accent); background: var(--panel); }
-.src button:disabled { opacity: .55; cursor: default; }
-.src-note { font-size: .87rem; color: var(--dim); margin-top: 10px; line-height: 1.5; }
-.src-note.bad { color: var(--warn); }
-.spin {
-  display: inline-block; width: 11px; height: 11px; margin-right: 7px;
-  border: 2px solid currentColor; border-right-color: transparent;
-  border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -1px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
 /* ---- legend + footer ---- */
 /* One ink for the whole key. It was label-at-full-strength over items-at-dim,
    which read as two levels of importance where there is only one. Note this
@@ -565,7 +638,6 @@ body {
 @keyframes flow { to { stroke-dashoffset: -28; } }
 @media (prefers-reduced-motion: reduce) {
   .route-flow { animation: none; }
-  .spin { animation: none; }
 }
 
 /* Very small phones: tighten the gutter and the masthead. */
@@ -1135,20 +1207,7 @@ ol.steps li .glyph {
   font-size: .68rem; font-weight: 700; letter-spacing: .1em;
   text-transform: uppercase; color: var(--dim);
 }
-.gear-panel .cam-count { font-size: .78rem; margin-bottom: 7px; }
-.gear-panel .src button { flex: 1; }
-.gear-panel .src-note { font-size: .78rem; margin-top: 7px; max-width: 15rem; }
-.modal-small { max-width: 24rem; }
-.confirm-row { display: flex; gap: 10px; margin-top: 14px; }
-.confirm-row button {
-  flex: 1; padding: 9px 12px; border-radius: 8px; font: inherit;
-  font-size: .9rem; cursor: pointer;
-}
-.confirm-go {
-  background: var(--accent); color: #fff; border: 1px solid var(--accent);
-  font-weight: 700;
-}
-.confirm-stay { background: var(--raise); color: var(--fg); border: 1px solid var(--line); }
+.gear-panel .cam-count { font-size: .78rem; margin-bottom: 2px; max-width: 15rem; }
 
 .gear-panel {
   position: absolute; top: 40px; right: 0; z-index: 900;

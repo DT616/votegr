@@ -157,7 +157,18 @@ the footnotes of the clerk's directory.
 
 ## Privacy
 
-The page downloads its data once and does everything in the browser.  
+The page downloads its data once and does everything in the browser. It makes
+no third-party request at all, and there is none it can make: no geocoder, no
+routing service, no analytics, no tiles. You can watch that in the network
+panel, and `test_page.mjs` asserts it, over a full session from load to drawn
+route.
+
+A **Cache / OSM** control under *Camera data* in the map's gear menu used to be
+the one exception, checking OpenStreetMap for readers mapped since the last
+publish. It asked first and named who got contacted, but it meant this section
+needed a caveat, and a privacy claim with a caveat is worth less to a reader
+than the occasional handful of cameras it added. Camera freshness is the
+build's job now: `scripts/refresh_cameras.py`, run daily by a workflow.
 
 We deliberately do not publish the OpenStreetMap usernames of the people who
 mapped these cameras, though the data contains them. They are real people

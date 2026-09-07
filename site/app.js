@@ -9,8 +9,11 @@
 
   var map, graph, P, cameras;
   var boundaryLayer, pollLayer, camLayer, routeLayer, pinLayer;
-  var cachedCameras = null, cachedMeta = null, current = null;
+  var cachedCameras = null, current = null;
   var activeEl = null, destChoice = null, electionDayHours = null;
+  // Kept beside activeEl because the countdown re-asks the calendar when the
+  // day rolls over under a page nobody has reloaded.
+  var electionList = null;
   var cityRings = null, ownBase = null;      // cityRings: [lat, lng] pairs
   var neighbors = null, precincts = null;
   var pinArmed = false;
@@ -345,7 +348,6 @@
     initLayers();
     initMapHover();
     initAbout();
-    initCameraSource();
     $('resetBtn').onclick = reset;
     loadData();
   }
@@ -440,11 +442,6 @@
         '</div>' +
         '<div class="gear-sec">Camera data</div>' +
         '<div class="cam-count" id="camCountFold"></div>' +
-        '<div class="src" id="srcToggle">' +
-        '<button type="button" id="srcCached" class="on">Cache</button>' +
-        '<button type="button" id="srcLive">OSM</button>' +
-        '</div>' +
-        '<div class="src-note" id="srcNote"></div>' +
         '</div>';
       // Clicks in the panel are settings work, not map gestures: they must
       // not drop a precinct card or move the map underneath.
@@ -499,23 +496,6 @@
     });
   }
 
-  // The live lookup is this page's ONE outbound request, so the OSM side of
-  // the toggle never fires it directly: it opens a dialog that names who gets
-  // contacted, and only the dialog's explicit yes fetches.
-  function initCameraSource() {
-    $('srcCached').onclick = useCached;
-    var osmWrap = $('osmConfirm');
-    function closeOsmConfirm() { osmWrap.hidden = true; }
-    $('srcLive').onclick = function () { osmWrap.hidden = false; };
-    $('osmGo').onclick = function () { closeOsmConfirm(); tryLive(); };
-    osmWrap.addEventListener('click', function (e) {
-      if (e.target.closest('[data-close]')) closeOsmConfirm();
-    });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && !osmWrap.hidden) closeOsmConfirm();
-    });
-  }
-
   // One JSON file from data/. The first four the page cannot work without,
   // so a failure there fails the whole load; the rest degrade to a page with
   // no boundary veil, no election line or no precinct polygons.
@@ -537,7 +517,7 @@
       var neighborData = res[7], precinctData = res[8];
 
       graph = new ALPRRouter.Graph(graphData);
-      cachedCameras = cameraData.cameras; cachedMeta = cameraData.meta;
+      cachedCameras = cameraData.cameras;
       P = new Precincts(addresses, polling);
       drawPollingPlaces();
       if (boundary && boundary.rings) {
@@ -559,11 +539,12 @@
       // Election day hours are statewide and statutory, so they are one
       // object beside the list rather than a field repeated on every election.
       electionDayHours = (calendar && calendar.election_day_hours) || null;
-      activeEl = nextElection((calendar && calendar.elections) || []);
+      electionList = (calendar && calendar.elections) || [];
+      activeEl = nextElection(electionList);
       renderElectionBanner();
+      startCountdown();
       graph.assignCameras(cameras);
       drawCameras();
-      setSrcNote(cachedNote());
       input.disabled = false;
       // Autofocus on a phone pops the keyboard over the map before the person
       // has seen anything, so it is desktop-only.
@@ -837,11 +818,13 @@
     var fold = $('camCountFold');
     if (!fold) return;
     var n = cameras ? cameras.length : 0;
-    // Sits above the Cache/OSM toggle, so it must not name a source: that is
-    // the toggle's job.
+    // Names its source. It used to sit above a Cache/OSM toggle and leave that
+    // to the toggle; with the toggle gone, nothing else on the map says where
+    // these came from or how old they can be.
     fold.textContent = n + ' reported camera' + (n === 1 ? '' : 's') +
-      ' in the city. Volunteer-mapped and certainly incomplete, so treat ' +
-      'it as a floor rather than a full count.';
+      ' in the city, from OpenStreetMap as of the last time this page was ' +
+      'published. Volunteer-mapped and certainly incomplete, so treat it as ' +
+      'a floor rather than a full count.';
   }
 
   // Cameras appear only once there is a route for them to matter to. A person
@@ -1448,6 +1431,114 @@
     }
     return { label: 'Early voting open',
              status: 'Through ' + prettyDayMonth(to), site: true };
+  }
+
+  // ---- election day countdown -----------------------------------------
+  //
+  // The clock counts to local midnight at the start of election day, because
+  // that is what "election day is in" means: the day arrives, not the polls
+  // open. The statutory hours are on the page now, in the answer's Election
+  // day row, so counting to 7 AM was available and still wrong for this
+  // label; a countdown to the opening bell would have to say so.
+  //
+  // Every tick recomputes from the current instant rather than decrementing a
+  // stored figure, so a throttled background tab, a sleeping laptop or a clock
+  // correction all come back right instead of drifting.
+  //
+  // The day figure is elapsed time, not a calendar subtraction. Michigan turns
+  // its clocks back on the Sunday before a November election, so a countdown
+  // that crosses that Sunday carries one extra real hour: at midnight the clock
+  // reads "58 days, 1 hour" where a calendar count would say 58 days flat. That
+  // is the true remaining time, and the seconds field has to be real time to
+  // tick at all, so the hour is kept rather than rounded away.
+  var cdTimer = null;
+
+  // Local midnight starting the given date. Built from parts for the same
+  // reason prettyDateLong is: new Date(iso) parses as UTC and lands on the
+  // evening before for anyone west of Greenwich.
+  function dayStart(iso) {
+    var p = String(iso || '').split('-');
+    if (p.length !== 3) return null;
+    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  }
+
+  function startCountdown() {
+    if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
+    renderCountdown();
+    // Only worth a heartbeat while there is something ticking; with no election
+    // on the calendar the section is hidden and stays hidden.
+    if (activeEl) cdTimer = setInterval(renderCountdown, 1000);
+  }
+
+  // The election named, then the day it falls on. A colon rather than a comma
+  // because these are a label and its value and not a list: "General Election,
+  // Tuesday, November 3" reads as three items of equal rank, which buries the
+  // one figure a reader came for.
+  function noteLine() {
+    return '<span class="cd-for">' + esc(activeEl.name) + ':</span> ' +
+      '<span class="cd-when">' + esc(prettyDateLong(activeEl.date)) + '</span>';
+  }
+
+  function renderCountdown() {
+    var box = $('countdown'), clock = $('cdClock'), note = $('cdNote'),
+        said = $('cdSaid'), label = $('cdLabel');
+    if (!box || !clock) return;
+
+    // The day can roll over under a page left open. Re-asking the calendar is
+    // cheaper than being wrong about which election is next, and the footer is
+    // redrawn with it so the two readings of the calendar cannot disagree.
+    if (activeEl && activeEl.date < todayStr()) {
+      activeEl = nextElection(electionList);
+      renderElectionBanner();
+    }
+
+    if (!activeEl) {
+      box.hidden = true;
+      if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
+      return;
+    }
+
+    var target = dayStart(activeEl.date);
+    if (!target) { box.hidden = true; return; }
+    var left = target.getTime() - Date.now();
+
+    if (left <= 0) {
+      // Election day itself. The clock has nothing left to count, and saying
+      // "0 days 0 hours" on the one day it matters would read as an error.
+      // "Election day is in: today" is not a sentence anyone says, so the label
+      // gives up its preposition for the one day it does not need it.
+      box.classList.add('is-today');
+      if (label) label.textContent = 'Election Day:';
+      clock.innerHTML = '<span class="cd-today">Today</span>';
+      if (note) note.innerHTML = noteLine();
+      if (said) said.textContent = 'The ' + activeEl.name + ' is today, ' +
+        prettyDateLong(activeEl.date) + '.';
+      box.hidden = false;
+      return;
+    }
+
+    box.classList.remove('is-today');
+    if (label) label.textContent = 'Election Day is In:';
+    var s = Math.floor(left / 1000);
+    var days = Math.floor(s / 86400); s -= days * 86400;
+    var hrs = Math.floor(s / 3600); s -= hrs * 3600;
+    var mins = Math.floor(s / 60); s -= mins * 60;
+
+    // Days unpadded because it is the figure being read; the rest padded so the
+    // row keeps its width and nothing shifts as the seconds run.
+    var unit = function (n, name, pad) {
+      return '<span class="cd-unit"><b class="cd-num">' +
+        (pad ? String(n).padStart(2, '0') : String(n)) +
+        '</b><span class="cd-lab">' + name + '</span></span>';
+    };
+    clock.innerHTML =
+      unit(days, 'Days', false) + unit(hrs, 'Hours', true) +
+      unit(mins, 'Minutes', true) + unit(s, 'Seconds', true);
+
+    if (note) note.innerHTML = noteLine();
+    if (said) said.textContent = days + (days === 1 ? ' day' : ' days') +
+      ' until the ' + activeEl.name + ' on ' + prettyDateLong(activeEl.date) + '.';
+    box.hidden = false;
   }
 
   function renderElectionBanner() {
@@ -2080,107 +2171,20 @@
       ', on ' + esc(Object.keys(names).join(', ')) + '. This route passes the fewest it can.</div>';
   }
 
-  // ---- camera source: cached is the floor, live may only ADD -----------
-
-  function setSrcNote(text, bad) {
-    var el = $('srcNote');
-    el.innerHTML = text;
-    el.className = 'src-note' + (bad ? ' bad' : '');
-  }
+  // ---- camera source ---------------------------------------------------
+  //
+  // One source: the cameras.json committed beside this page. A Cache/OSM
+  // toggle used to sit in the gear panel and ask Overpass for readers mapped
+  // since the file was built, behind a dialog naming who got contacted. It is
+  // gone. Keeping it meant the page could not simply say it makes no outbound
+  // requests, and a claim with an asterisk on it is worth less to a reader
+  // than the handful of cameras the live pull occasionally added. Freshness is
+  // the build's job now: scripts/refresh_cameras.py rewrites the file, and the
+  // daily workflow runs it. reroute() went with the toggle; nothing swaps a
+  // camera list under a drawn route any more.
 
   function cityCameras(list) {
     return (list || []).filter(function (c) { return insideCity(c.lat, c.lng); });
-  }
-
-  // Which side of the Cache/OSM toggle is lit. OSM is disabled only while a
-  // fetch is in flight, so it cannot be fired twice.
-  function setSrcButtons(live, busy) {
-    $('srcLive').classList.toggle('on', live);
-    $('srcCached').classList.toggle('on', !live);
-    $('srcLive').disabled = !!busy;
-    $('srcCached').disabled = false;
-  }
-
-  function cachedNote() {
-    return 'Cached list: ' + cameras.length + ' cameras in the city. Complete as published.';
-  }
-
-  // Swap in a camera list, assign it to the graph, and redraw whatever route
-  // is on screen against it.
-  function useCameras(list) {
-    cameras = cityCameras(list);
-    graph.assignCameras(cameras);
-    reroute(true);
-  }
-
-  function useCached() {
-    setSrcButtons(false);
-    useCameras(cachedCameras);
-    setSrcNote(cachedNote());
-  }
-
-  function tryLive() {
-    setSrcButtons(true, true);
-    setSrcNote('<span class="spin"></span>Asking OpenStreetMap for the current list…');
-
-    liveOverpass().then(function (live) {
-      $('srcLive').disabled = false;
-      if (!live) return liveFailed('OpenStreetMap did not answer.');
-      if (live.length < cachedCameras.length) {
-        return liveFailed('OpenStreetMap returned only ' + live.length + ' cameras, ' +
-          'fewer than the ' + cachedCameras.length + ' already cached, so the answer ' +
-          'looks incomplete.');
-      }
-      // The cache is the floor: a live entry only ADDS an id the cache lacks.
-      var byId = {};
-      cachedCameras.forEach(function (c) { byId[c.id] = c; });
-      live.forEach(function (c) { byId[c.id] = byId[c.id] || c; });
-      var before = cityCameras(cachedCameras).length;
-      useCameras(Object.keys(byId).map(function (k) { return byId[k]; }));
-      var added = cameras.length - before;
-      setSrcNote('Live from OpenStreetMap: ' + cameras.length + ' cameras in the city' +
-        (added > 0 ? ', ' + added + ' newer than the cache' : ', same as the cache') + '.');
-    });
-  }
-
-  // Failing back to the cache is always safe, because the cache is complete:
-  // it can only ever show MORE than a broken live answer, never fewer.
-  function liveFailed(why) {
-    setSrcButtons(false);
-    useCameras(cachedCameras);
-    setSrcNote(why + ' Showing the cached list of ' + cameras.length +
-      ' in the city instead, which is complete, so you are not seeing fewer ' +
-      'cameras than you should. Flip to OSM to retry.', true);
-  }
-
-  function reroute(keepView) {
-    if (!current) { drawCameras(); return; }
-    var b = keepView ? map.getBounds() : null;
-    routeTo(current, destChoice && destChoice.kind);
-    if (b) map.fitBounds(b, { animate: false });
-  }
-
-  function liveOverpass() {
-    var bb = cachedMeta.bbox;
-    var ql = '[out:json][timeout:60];(' +
-      'node["surveillance:type"="ALPR"](' + bb.join(',') + ');' +
-      'way["surveillance:type"="ALPR"](' + bb.join(',') + '););out center tags;';
-    var ctl = new AbortController();
-    var timer = setTimeout(function () { ctl.abort(); }, 25000);
-    return fetch('https://overpass-api.de/api/interpreter',
-      { method: 'POST', body: 'data=' + encodeURIComponent(ql), signal: ctl.signal })
-      .then(function (r) { clearTimeout(timer); if (!r.ok) throw new Error('http'); return r.json(); })
-      .then(function (j) {
-        if (j.remark && /timed out|truncated/i.test(j.remark)) return null;
-        return (j.elements || []).map(function (el) {
-          var lat = el.lat != null ? el.lat : (el.center && el.center.lat);
-          var lng = el.lon != null ? el.lon : (el.center && el.center.lon);
-          if (lat == null) return null;
-          // Same shape as a cached entry, so the marker's view cone and the
-          // popup read a live camera exactly as they read a cached one.
-          return { id: el.type[0] + el.id, lat: lat, lng: lng, f: el.tags || {} };
-        }).filter(Boolean);
-      }).catch(function () { clearTimeout(timer); return null; });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

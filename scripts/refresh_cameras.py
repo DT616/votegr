@@ -2,10 +2,10 @@
 """Pull known ALPR camera positions in the Grand Rapids area from OpenStreetMap
 via Overpass, and write the cached camera floor (site/data/cameras.json).
 
-This is the DEFAULT camera source and the completeness floor. The browser can
-optionally re-query Overpass live, but it may only ADD to this set, never show
-fewer than it (see the design's add-only / safety rule). So this file must be
-complete: the pull walks an endpoint fallback chain and REFUSES to write a
+This is the ONLY camera source. The browser used to be able to re-query
+Overpass live, adding to this set but never showing fewer; that control is
+gone, so the page shows exactly what this script last wrote and nothing
+corrects it at read time. So this file must be complete: the pull walks an endpoint fallback chain and REFUSES to write a
 truncated result (Overpass signals truncation with a 'remark' at HTTP 200, and
 its main front 504s under load -- the same lesson Blotter's ALPR ingest encodes).
 
