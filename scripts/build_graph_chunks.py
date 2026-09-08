@@ -115,6 +115,7 @@ def main():
 
     chunk_nodes = {}
     table = []
+    metas = {}
     for mcd, outline in sorted(outlines.items()):
         area = ringed(outline)
         keep = sorted(i for i in tree.query(area) if lines[i].intersects(area))
@@ -145,6 +146,10 @@ def main():
                 "ring_m": RING_M,
                 "nodes": len(here_nodes),
                 "edges": len(here_edges),
+                # Polyline vertices. The browser packs every coordinate in
+                # the county into one typed array and has to size it before
+                # it starts, so it needs this without opening the file.
+                "points": sum(len(e["p"]) for e in here_edges.values()),
                 "restrictions": len(here_restrictions),
                 "oneway": sum(1 for e in here_edges.values() if e["d"]),
                 "bbox": [round(min(lats), 6), round(min(lngs), 6),
@@ -176,10 +181,32 @@ def main():
             "edges": here_edges,
             "restrictions": here_restrictions,
         }
+        metas[mcd] = document["meta"]
         path = OUT_DIR / f"{mcd}.json"
         path.write_text(json.dumps(document, separators=(",", ":")) + "\n")
         table.append((names[mcd], len(here_edges), len(here_nodes),
                       len(here_restrictions), path.stat().st_size))
+
+    # The loader reads this first and nothing else until it has: it says
+    # which chunks exist and how big each one is, which is what lets the
+    # browser allocate its arrays once and then stream the chunks through
+    # one at a time, never holding more than one parsed document.
+    index = {
+        "note": "Written by build_graph_chunks.py. The sizes let a loader "
+                "allocate exactly once before reading any chunk. All chunks "
+                "share one build fingerprint and must be deployed together.",
+        "build": build_id,
+        "ring_m": RING_M,
+        "chunks": sorted(
+            ({"mcd": mcd, "jurisdiction": names[mcd],
+              "nodes": m["nodes"], "edges": m["edges"], "points": m["points"],
+              "restrictions": m["restrictions"], "bbox": m["bbox"]}
+             for mcd, m in sorted(metas.items())),
+            key=lambda c: c["mcd"]),
+    }
+    (OUT_DIR / "index.json").write_text(
+        json.dumps(index, separators=(",", ":")) + "\n")
+    print(f"wrote {OUT_DIR / 'index.json'} ({len(index['chunks'])} chunks)")
 
     verify_seams(outlines, chunk_nodes, names)
 

@@ -462,6 +462,73 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
   try { new R.Graph([chunk(GR), stale]); } catch (e) { refused = /build/.test(e.message); }
   ok('chunks from different builds are refused', refused);
 
+  // Streaming: the same graph, built without ever holding two chunks.
+  //
+  // Handing Graph all thirty parsed chunks costs 102 MiB at the moment it
+  // happens, against a 13 MiB steady state, and that transient is what
+  // decides whether the page survives on an older phone. Streaming from the
+  // index drops it to 40 MiB. The result has to be indistinguishable, or the
+  // saving is bought with a different graph.
+  const index = JSON.parse(fs.readFileSync('./site/data/graph/index.json', 'utf8'));
+  ok('the chunk index lists every chunk', index.chunks.length === 30);
+  ok('the index carries sizes to allocate from',
+     index.chunks.every((c) => c.nodes > 0 && c.edges > 0 && c.points > 0));
+
+  const twoChunks = { build: index.build,
+                      chunks: index.chunks.filter((c) => c.mcd === GR || c.mcd === KENTWOOD) };
+  const streamed = R.Graph.streaming(twoChunks);
+  streamed.addChunk(chunk(GR));
+  streamed.addChunk(chunk(KENTWOOD));
+  streamed.finish();
+
+  ok('streamed and merged agree on size',
+     streamed.nodeCount() === both.nodeCount() &&
+     streamed.edgeCount() === both.edgeCount() &&
+     streamed.restrictionCount === both.restrictionCount);
+
+  let coordsDiffer = 0;
+  for (let i = 0; i < both.nodeCount(); i++) {
+    if (both.nodeLat(i) !== streamed.nodeLat(i) ||
+        both.nodeLng(i) !== streamed.nodeLng(i)) coordsDiffer++;
+  }
+  ok('streamed and merged agree on every coordinate', coordsDiffer === 0);
+
+  let adjDiffer = 0;
+  for (let n = 0; n < both.nodeCount(); n++) {
+    if (JSON.stringify(both.linksFrom(n)) !== JSON.stringify(streamed.linksFrom(n))) {
+      adjDiffer++;
+    }
+  }
+  ok('streamed and merged agree on every adjacency list', adjDiffer === 0);
+
+  const src = both.snapToRoad(origin.lat, origin.lng).node;
+  const dst = both.snapToRoad(kentwood.lat, kentwood.lng).node;
+  ok('streamed and merged route identically',
+     JSON.stringify(both.route(src, dst).edges) ===
+     JSON.stringify(streamed.route(src, dst).edges));
+
+  // A restriction can name an edge that only arrives in a LATER chunk, so
+  // they are held and resolved at finish(). Feeding the same two chunks in
+  // the other order must not lose any.
+  const reversed = R.Graph.streaming(twoChunks);
+  reversed.addChunk(chunk(KENTWOOD));
+  reversed.addChunk(chunk(GR));
+  reversed.finish();
+  ok('chunk order does not change the graph',
+     reversed.nodeCount() === streamed.nodeCount() &&
+     reversed.edgeCount() === streamed.edgeCount() &&
+     reversed.restrictionCount === streamed.restrictionCount);
+
+  // The index reserves an upper bound. Understating it must fail loudly
+  // rather than silently truncate the county at the end of the array.
+  let overflowed = false;
+  try {
+    const tooSmall = R.Graph.streaming({ build: index.build,
+      chunks: [{ nodes: 10, edges: 10, points: 10 }] });
+    tooSmall.addChunk(chunk(GR));
+  } catch (e) { overflowed = /reserved/.test(e.message); }
+  ok('an index that understates the sizes is refused', overflowed);
+
   // A chunk document must survive being used twice: once alone, once merged.
   // Rewriting its endpoints in place would corrupt the second use.
   const doc = chunk(KENTWOOD);
