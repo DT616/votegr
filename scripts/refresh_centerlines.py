@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Pull the City of Grand Rapids street centerlines and write a normalized
-intermediate for build_graph.py.
+"""Pull the street centerlines and write a normalized intermediate for
+build_graph.py.
 
-Source: the City of Grand Rapids ArcGIS Online tenant, Street_Centerlines
-layer. This is the one public GR layer that carries traffic DIRECTION
-(TRAFFIC_ALIGN) and POSTED_SPEED per segment, which is what makes a legal
-client-side router possible. Address ranges per side let the browser geocode
-without any network call.
+Source: the layer published on the City of Grand Rapids ArcGIS Online tenant,
+which is not a city layer at all -- it is the REGIS/Kent County dataset, 39,209
+segments across 48 jurisdictions, and the city's own service simply hosts it.
+That discovery is what made the Kent County widening cheap: the streets were
+already here, behind a filter.
+
+It carries traffic DIRECTION (TRAFFIC_ALIGN) and POSTED_SPEED per segment,
+which is what makes a legal client-side router possible, and address ranges
+per side so the browser can geocode without any network call.
+
+Everything is pulled, with no jurisdiction filter. Chunks are cut from the
+precinct polygons rather than from this file, so segments beyond the county
+line are not waste: they are the overlap ring that lets a route leave a
+border jurisdiction instead of dead-ending at it.
 
 Reproducible + guarded, vote-gr style: refuses to write if the pull looks
 implausible (too few segments, or the one-way share collapses), so a bad
@@ -23,9 +32,7 @@ from pathlib import Path
 
 LAYER = ("https://services2.arcgis.com/L81TiOwAPO1ZvU9b/arcgis/rest/services/"
          "Transport_Street_Centerlines/FeatureServer/6/query")
-# Either side in the city catches boundary streets you actually drive on.
-WHERE = ("LEFT_JURIS='City of Grand Rapids' OR "
-         "RIGHT_JURIS='City of Grand Rapids'")
+WHERE = "1=1"
 OUT_FIELDS = [
     "OBJECTID", "PREFIX_DIRECTION", "STREET_NAME", "STREET_SUFFIX",
     "SUFFIX_DIRECTION", "TRAFFIC_ALIGN", "POSTED_SPEED",
@@ -41,7 +48,7 @@ UA = "vote-gr/1.0 (+https://github.com/DT616/votegr)"
 OUT = Path(__file__).resolve().parent.parent / "build" / "centerlines.json"
 
 # Guards
-MIN_SEGMENTS = 8000          # GR city is ~10.4k; well under this = bad pull
+MIN_SEGMENTS = 35000         # the region is ~39.2k; well under this = bad pull
 MIN_ONEWAY_SHARE = 0.02      # ~10% observed; a collapse to <2% = schema change
 
 
@@ -64,7 +71,7 @@ def main():
     # Cheap count first (etiquette: know the size before paging).
     cnt = _get({**base, "returnCountOnly": "true"})
     total = cnt.get("count")
-    print(f"upstream reports {total} segments for GR-city WHERE")
+    print(f"upstream reports {total} segments for the region")
     if total is None:
         sys.exit("no count returned; aborting")
 

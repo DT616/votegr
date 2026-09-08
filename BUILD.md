@@ -24,7 +24,7 @@ exceptions. Everything else runs on a bare interpreter.
 
 | File | Made by | From |
 |---|---|---|
-| `graph.json` | `build_graph.py`, then `build_restrictions.py` | city centerlines, sign inventory, OpenStreetMap |
+| `graph/<mcd>.json` | `build_graph.py`, `build_restrictions.py`, then `build_graph_chunks.py` | REGIS/Kent centerlines, OpenStreetMap restrictions |
 | `cameras.json` | `refresh_cameras.py` — **automated, see below** | OpenStreetMap |
 | `addresses.json` | `refresh_addresses.py` | Kent County parcels, matched to precincts |
 | `precincts.geojson` | `refresh_precincts.py` | Michigan Secretary of State |
@@ -73,11 +73,12 @@ step's output.
 
 ```
 # Routing graph
-python3 scripts/refresh_centerlines.py   # city centerlines        -> build/
-python3 scripts/build_graph.py           # compile the graph       -> site/data/graph.json
+python3 scripts/refresh_centerlines.py   # REGIS/Kent centerlines  -> build/
+python3 scripts/build_graph.py           # compile the county graph -> build/graph.json
 python3 scripts/refresh_osm_roads.py     # OSM ways + restrictions -> build/
-python3 scripts/refresh_signs.py         # city sign inventory     -> build/
-python3 scripts/build_restrictions.py    # attach restrictions     -> site/data/graph.json
+python3 scripts/refresh_osm_via_nodes.py # the relations' via nodes -> build/
+python3 scripts/build_restrictions.py    # attach restrictions     -> build/graph.json
+python3 scripts/build_graph_chunks.py    # cut per jurisdiction    -> site/data/graph/
 
 # Precincts, addresses, boundaries
 python3 scripts/refresh_precincts.py     # SOS precinct polygons   -> site/data/precincts.geojson
@@ -177,7 +178,6 @@ If an endpoint returns 429, back off rather than retrying immediately.
 | Data | Endpoint |
 |---|---|
 | Street centerlines, one-ways, speeds | `services2.arcgis.com/L81TiOwAPO1ZvU9b/…/Transport_Street_Centerlines/FeatureServer/6` |
-| Turn signs | `services2.arcgis.com/L81TiOwAPO1ZvU9b/…/signs/FeatureServer/0` |
 | Voting precincts | `services3.arcgis.com/dxRQUfTDNtfqZ301/…/VotingPrecinct/FeatureServer/0` |
 | Parcel addresses | `gis.kentcountymi.gov/agisprod/…/ParcelsWithCondos/FeatureServer/0` |
 | City limits, neighbouring streets | `gisagocss.state.mi.us/…/michigan_geographic_framework/MapServer` |
@@ -188,24 +188,131 @@ The precinct layer is statewide, so `refresh_precincts.py` filters it
 server-side with `CountyFIPS='081' AND MCDFIPS='34000'` and receives 59
 features rather than every precinct in Michigan.
 
-## Turn restrictions come from two sources
+## Archiving the pages we scrape
 
-`scripts/build_restrictions.py` merges them. OpenStreetMap contributes declared
-relations (this way, via this node, to that way). The City of Grand Rapids
-sign inventory contributes the MUTCD no-turn family, which is larger and
-uniquely records which signs have been RETIRED, so a restriction that no
-longer exists is not enforced forever.
+Every page this project reads is rewritten each election, so a `source_url` in
+a data file points at what the page says today and cannot be checked against
+what it said when we read it. Each scraped file therefore carries a Wayback
+capture in its provenance: `archived`, `archived_timestamp`, and an
+`archive_note` when the capture is older than the read.
 
-A sign is a point with a bearing rather than a declared relation, so turning
-one into a restriction is inference. The script decides how to read the
-DIRECTION column by MEASURING both interpretations against the OSM set and
-keeping whichever agrees and does not contradict; it reports the comparison
-on every run. Anything that cannot be tied to a junction unambiguously is
-dropped rather than guessed.
+**Without keys this is mostly citation, not capture.** Save Page Now's JSON
+API answers `401 You need to be logged in to use Save Page Now`, so anonymous
+runs fall back to the legacy endpoint, which takes a capture when it feels
+like it. Measured on 2026-09-08: the county index was captured; the city
+clerk's page was refused and the newest existing capture was 84 days old; of
+the thirty jurisdiction pages, 27 had a capture to cite with a median age of
+306 days and three had none at all. A year-old capture of a polling place page
+is a capture of the wrong election -- it proves the page existed, not that it
+said what we wrote down.
+
+**With keys it becomes reliable.** Sign in at archive.org, generate an S3 key
+pair at <https://archive.org/account/s3.php>, and export them:
+
+```bash
+export ARCHIVE_S3_KEY=...
+export ARCHIVE_S3_SECRET=...
+```
+
+`scripts/archive.py` picks them up from the environment on its own; nothing
+else changes and no script needs an argument. The keys are never read from a
+file in this repository and never written into one -- the only thing that
+reaches a data file is the resulting snapshot URL. In CI they belong in a
+repository secret, like the Civic key.
+
+With keys present the bulk path changes too: the thirty jurisdiction pages
+stop citing and start capturing, because SPN2's own `if_not_archived_within`
+does the deduplicating server-side, so a run where nothing has changed costs
+thirty cheap no-ops rather than thirty submissions.
+
+Archiving never fails a build. It is provenance, not data: a refusal, a
+timeout or a missing key leaves a note in the file and the refresh carries on.
+
+archive.today is deliberately not used. It fronts everything with a bot
+challenge, so a script cannot submit to it honestly.
+
+## The per-election step, which is not automatic
+
+Streets, parcels and precinct polygons change on a yearly cadence and their
+scripts can run unattended. **Election data cannot.** Polling places, early
+voting sites and their hours are published as prose on pages maintained by
+hand, under URLs that change, describing whichever election someone last
+edited them for. There is no feed. This is the part a person has to do, and
+pretending otherwise is how a voter ends up at a building that closed.
+
+Timing: MCL 168.662 bars moving a polling place or early voting site inside
+**60 days** of an election, so nothing before that date is final. Run this
+after it, and again in the last fortnight if anything looked unsettled.
+
+```bash
+python3 scripts/refresh_polling.py        # county pages -> site/data/polling/
+python3 scripts/refresh_early_voting.py   # county + city cross-check
+python3 scripts/refresh_gr_clerk.py       # the city's own dates and sites
+```
+
+Then **read what they wrote**. Each script checks shape, never sense: that
+every precinct came back with somewhere to vote, that a window ends before its
+election, that the page still names the jurisdiction asked for. None of that
+catches a page that is simply describing the wrong election, which is the most
+common failure and the one that has actually happened here.
+
+What a person has to do by hand, every election:
+
+1. **Read the three sources against each other.** `refresh_polling.py` prints
+   the city clerk's directory against the county's page for all 59 Grand
+   Rapids precincts; `refresh_early_voting.py` prints the county against the
+   city. Disagreement is the point of running them: in September 2026 the
+   county was still describing the August primary while the city had published
+   November, and it listed three early voting sites where the city had opened
+   four.
+2. **Check the election each file names.** `gr-clerk.json` carries `election`,
+   `early-voting.json` carries `election`; if either is not the election you
+   are publishing for, that source is stale and its contents must not ship.
+3. **Re-transcribe `polling.json` from the clerk's PDF.** The directory moves
+   to a new generated filename every election, so the URL in the file's
+   provenance will 404 -- find the current one from the clerk's elections page
+   rather than assuming it is gone. This is the only source carrying entrance
+   notes and the consolidation footnotes, where one precinct votes at
+   another's location for a single election.
+4. **Update `elections.json` by hand** with the election date, and with the
+   early voting window and hours read from `gr-clerk.json`. Never derive the
+   window from statute: the minimum is nine days ending the Sunday before, and
+   Grand Rapids opened on the thirteenth day for November 2026.
+5. **Check the archive stamps.** Each scraped file's provenance carries a
+   Wayback URL for the page it read. If it says the capture predates the read,
+   the archive is showing an older version of the page and the citation is
+   weaker than it looks -- submit one by hand at `web.archive.org/save/`.
+
+None of this is automatable and none of it should be pretended away. The
+durable fix is upstream: a Bureau of Elections records request returns the
+statewide polling list as a spreadsheet, one row per precinct, once per
+election. Until that is a standing arrangement, this checklist is the process.
+
+## Turn restrictions come from OpenStreetMap alone
+
+`scripts/build_restrictions.py` attaches declared OSM relations (this way, via
+this node, to that way) and nothing else. The centerlines carry no turn
+restrictions at all, which is the only reason a second source is involved.
+
+Matching is geometric, since the two datasets share no keys: for each OSM
+restriction the script finds the centerline node nearest the via point, then
+picks the incident edges whose bearings best match the OSM from- and to-ways.
+Anything that cannot be tied to a junction unambiguously is dropped rather
+than guessed, because a wrong restriction silently forbids a legal turn.
+240 attach across Kent County.
+
+The City of Grand Rapids sign inventory was the second source until the county
+widening and is no longer used. It covered one jurisdiction of thirty, had been
+frozen upstream since 2024-03-29, and inferring a ban from a sign's DIRECTION
+column was inference on top of inference. Dropping it cost 45 restrictions in
+Grand Rapids and bought one source, one licence, and the same treatment in
+every jurisdiction. `refresh_signs.py` is deleted; nothing reads
+`build/signs.json`.
 
 ## Licensing
 
-Code is public domain under the Unlicense. Road geometry, address ranges and posted speeds come from the
-City of Grand Rapids. **Turn restrictions and camera locations come from
+Code is public domain under the Unlicense. Road geometry, address ranges and
+posted speeds come from the REGIS/Kent County centerlines. **Turn restrictions
+and camera locations come from
 OpenStreetMap and are ODbL**, so `graph.json` and `cameras.json` carry an
 ODbL obligation: keep the attribution and share derivatives alike.

@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
-"""Attach OpenStreetMap turn restrictions to the city-centerline graph.
+"""Attach OpenStreetMap turn restrictions to the centerline graph.
 
-Run AFTER build_graph.py: it reads site/data/graph.json and writes the
+Run AFTER build_graph.py: it reads build/graph.json and writes the
 restrictions back into it. Keeping them inside that one file is deliberate --
 a restriction refers to edges by index, so if it lived in a separate file a
 graph rebuild would silently invalidate it.
 
-Why OSM for this and the city layer for everything else: the city centerlines
-are the better source (99.8% named, address ranges per side, authoritative
-posted speeds, freeways correctly modeled as one-way carriageways) but they
-carry no turn restrictions at all. OSM carries them and nothing else here
-beats the city data, so we take exactly the one thing that is missing.
+Why OSM for this and the centerlines for everything else: the centerlines are
+the better source (99.8% named, address ranges per side, authoritative posted
+speeds, freeways correctly modeled as one-way carriageways) but they carry no
+turn restrictions at all. OSM carries them and nothing else here beats the
+centerline data, so we take exactly the one thing that is missing.
+
+OSM is now the ONLY source. Grand Rapids publishes a 44,892-row sign
+inventory, and this script used to infer bans from the posted MUTCD no-turn
+signs and merge them in -- 45 restrictions the city had and OSM did not. That
+is gone. It covered one city out of thirty and had been frozen upstream since
+March 2024, so keeping it meant Grand Rapids alone carried restrictions its
+neighbours could never have, from a source nobody was refreshing. One source
+with one licence across every jurisdiction is worth more than 45 bans in one
+of them.
 
 Matching is geometric, not by id: the two datasets share no keys. For each OSM
 restriction we find the city node nearest its via point, then pick the incident
@@ -27,7 +36,7 @@ from provenance import provenance
 # Paths are anchored to the repository root, one level up from this
 # file, since these scripts live in scripts/ and write into site/data.
 ROOT = Path(__file__).resolve().parent.parent
-GRAPH = ROOT / "site" / "data" / "graph.json"
+GRAPH = ROOT / "build" / "graph.json"
 OSM = ROOT / "build" / "osm_roads.json"
 VIA = ROOT / "build" / "osm_via_nodes.json"
 
@@ -54,95 +63,6 @@ def bearing(a, b):
 
 def angdiff(a, b):
     return abs((a - b + 180) % 360 - 180)
-
-
-COMPASS = {
-    "N": 0, "NORTH": 0, "NE": 45, "NORTHEAST": 45,
-    "E": 90, "EAST": 90, "SE": 135, "SOUTHEAST": 135,
-    "S": 180, "SOUTH": 180, "SW": 225, "SOUTHWEST": 225,
-    "W": 270, "WEST": 270, "NW": 315, "NORTHWEST": 315,
-}
-
-# What each MUTCD code forbids, expressed as movements.
-SIGN_RULES = {
-    "R3-1":  {"ban": ["right"]},
-    "R3-2":  {"ban": ["left"]},
-    "R3-4":  {"ban": ["uturn"]},
-    "R3-18": {"ban": ["left", "right"]},
-    "R3-5R": {"only": "right"},
-    "R3-5L": {"only": "left"},
-    "R3-5A": {"only": "through"},
-}
-
-
-def movement(arrive_bearing, exit_bearing):
-    """Classify a turn from the bearing you arrived on to the one you leave on."""
-    d = ((exit_bearing - arrive_bearing + 540) % 360) - 180
-    a = abs(d)
-    if a < 35:
-        return "through"
-    if a > 150:
-        return "uturn"
-    return "right" if d > 0 else "left"
-
-
-def sign_restrictions(graph, nodes, edges, incident, signs, flip):
-    """Turn each sign into (from_edge, via_node, to_edge) bans.
-
-    `flip` selects how the DIRECTION column is read: False treats it as the
-    direction of travel the sign governs, True as the direction the sign
-    FACES (so travel is the reverse). Which one is correct is decided by
-    measurement against the OSM restrictions, not by assumption -- the two
-    give opposite answers and a wrong reading would forbid legal turns while
-    permitting banned ones.
-    """
-    out, unplaced = [], 0
-    for sg in signs:
-        rule = SIGN_RULES.get(sg.get("code"))
-        brg = COMPASS.get((sg.get("dir") or "").upper())
-        if not rule or brg is None:
-            unplaced += 1
-            continue
-        travel = (brg + 180) % 360 if flip else brg
-
-        # The intersection this sign governs is the one AHEAD of it in the
-        # direction of travel, not merely the closest node.
-        best = None
-        for ni, nd in enumerate(nodes):
-            d = hav([sg["lat"], sg["lng"]], nd)
-            if d > 60:
-                continue
-            to_node = bearing([sg["lat"], sg["lng"]], nd)
-            if angdiff(to_node, travel) > 55:      # behind or beside the sign
-                continue
-            if best is None or d < best[0]:
-                best = (d, ni)
-        if best is None:
-            unplaced += 1
-            continue
-        via = best[1]
-        cands = incident.get(via, [])
-        if len(cands) < 3:                          # not a real junction
-            unplaced += 1
-            continue
-
-        # The approach is the edge you arrive on travelling that way.
-        appr = min(cands, key=lambda c: angdiff(c["in"], travel))
-        if angdiff(appr["in"], travel) > BEARING_TOL:
-            unplaced += 1
-            continue
-
-        exits = [c for c in cands if c["edge"] != appr["edge"]]
-        if not exits:
-            unplaced += 1
-            continue
-        for ex in exits:
-            mv = movement(travel, ex["out"])
-            banned = (mv in rule["ban"]) if "ban" in rule else (mv != rule["only"])
-            if banned:
-                out.append({"f": appr["edge"], "v": via, "t": ex["edge"],
-                            "no": True, "src": "sign"})
-    return out, unplaced
 
 
 def main():
@@ -254,59 +174,11 @@ def main():
         seen.add(k)
         uniq.append(r)
 
-    # ---- second tier: the city's own sign inventory ----
-    signs_path = ROOT / "build" / "signs.json"
-    sign_rows, sign_stats = [], {}
-    if signs_path.exists():
-        signs = json.loads(signs_path.read_text())["signs"]
-        osm_keys = set((r["f"], r["v"], r["t"]) for r in uniq)
-        scored = {}
-        for flip in (False, True):
-            rows, unplaced = sign_restrictions(graph, nodes, edges, incident,
-                                               signs, flip)
-            keys = set((r["f"], r["v"], r["t"]) for r in rows)
-            agree = len(keys & osm_keys)
-            # A wrong reading of DIRECTION does not merely miss agreements, it
-            # bans the OPPOSITE movement. Contradiction is the sharper signal:
-            # a ban on a turn OSM explicitly permits at the same junction.
-            contradict = sum(
-                1 for r in rows
-                if any(o["f"] == r["f"] and o["v"] == r["v"] and o["t"] != r["t"]
-                       and not o["no"] for o in uniq))
-            scored[flip] = (agree, -contradict, rows, unplaced)
-            print("  DIRECTION as %s: %d restrictions, %d agree with OSM, "
-                  "%d contradict, %d unplaced"
-                  % ("facing" if flip else "travel", len(rows), agree,
-                     contradict, unplaced))
-        best_flip = max(scored, key=lambda k: (scored[k][0], scored[k][1]))
-        sign_rows = scored[best_flip][2]
-        sign_stats = {"reading": "facing" if best_flip else "travel",
-                      "agree": scored[best_flip][0]}
-        print("  -> reading DIRECTION as %s" % sign_stats["reading"])
-
-        seen2 = set((r["f"], r["v"], r["t"]) for r in uniq)
-        added = 0
-        for r in sign_rows:
-            k = (r["f"], r["v"], r["t"])
-            if k in seen2:
-                continue
-            seen2.add(k)
-            uniq.append(r)
-            added += 1
-        print("  added %d restrictions from signs (%d already known from OSM)"
-              % (added, len(sign_rows) - added))
-
     graph["restrictions"] = uniq
     graph["meta"]["restrictions"] = len(uniq)
-    graph["meta"]["restrictions_source"] = (
-        "OpenStreetMap (ODbL) + City of Grand Rapids sign inventory")
+    graph["meta"]["restrictions_source"] = "OpenStreetMap (ODbL)"
     # Re-stamp: build_graph.py wrote the block, but this step is what finishes
-    # the file, so its date is the one that means anything. The sign layer's
-    # own edit date is recorded because it is the reason nothing schedules a
-    # sign refresh: measured 2026-09-05, the layer had not been edited since
-    # 2024-03-29 and carries no temporary construction signs (no W20-, TC-,
-    # G20- or CW- codes in 44,892 rows), so a cadence there would be upstream
-    # load with no payload.
+    # the file, so its date is the one that means anything.
     prov = graph.get("provenance")
     if prov:
         prov.update(provenance(
@@ -317,13 +189,11 @@ def main():
             how_to_update=prov.get("how_to_update", ""),
             restrictions_from=[
                 "OpenStreetMap (ODbL), turn restriction relations",
-                "https://services2.arcgis.com/L81TiOwAPO1ZvU9b/arcgis/rest/"
-                "services/signs/FeatureServer/0",
             ],
-            sign_layer_last_edited="2024-03-29",
-            sign_layer_note="Frozen upstream. Permanent regulatory signs only; "
-                            "no temporary construction signage is published in "
-                            "it, so there is nothing for a schedule to catch."))
+            restrictions_note="OpenStreetMap only, across all 30 "
+                              "jurisdictions. The Grand Rapids sign inventory "
+                              "was dropped in favour of one source with one "
+                              "licence everywhere."))
     GRAPH.write_text(json.dumps(graph, separators=(",", ":")))
 
     print(f"attached {len(uniq)} turn restrictions "
