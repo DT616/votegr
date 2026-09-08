@@ -291,8 +291,8 @@
   // router then drives to. The two used to disagree: the map went to the
   // library you picked while the card still named the nearest.
   var LIST_TITLES = {
-    dropbox: 'Ballot drop boxes in Grand Rapids',
-    early: 'Early voting sites in Grand Rapids',
+    dropbox: 'Ballot drop boxes in Grand Rapids city',
+    early: 'Early voting sites in Grand Rapids city',
   };
 
   function wirePlaceLists(r) {
@@ -339,12 +339,15 @@
       html += '<li data-pick="' + i + '" data-kind="' + kind + '"' +
         ' role="button" tabindex="0" title="Get directions here"' +
         (i === chosen[kind] ? ' class="is-chosen"' : '') + '>' +
-        '<span class="bx-name">' + esc(boxLabel(b)) + '</span>' +
+        '<span class="bx-name">' + esc(boxLabel(b)) +
+        (b.metres != null
+          ? '<span class="bx-dist">' + RoutePanel.fmtMi(b.metres) +
+            ' as the crow flies</span>' : '') + '</span>' +
         '<span class="bx-addr">' + esc(addressForDisplay(b.address)) + '</span>' +
         (b.entrance_note || b.note
           ? '<span class="bx-where">Location: ' +
             esc(sentenceCase(b.entrance_note || b.note)) + '</span>' : '') +
-        (b.hours ? '<span class="bx-where">Open ' + esc(b.hours) + '</span>' : '') +
+        (b.hours ? '<span class="bx-where">' + esc(boxHours(b)) + '</span>' : '') +
         '</li>';
     });
     // The City Hall boxes are real and cannot be driven to as an address, so
@@ -360,8 +363,33 @@
     }
     // Everything here is inside the city, because everything this tool can
     // answer is. A Wyoming voter has drop boxes too; we do not have them.
-    return html + '</ul><p class="bx-hours">Grand Rapids locations only. ' +
-      'This tool covers the city.</p>';
+    return html + '</ul><p class="bx-hours">Grand Rapids city locations only. ' +
+      'This tool covers the city.</p>' + provenanceHtml();
+  }
+
+  // Where this list came from, said in the panel that shows it rather than
+  // only in a file nobody opens. These addresses move between elections and
+  // are typed by hand at the other end, so a reader deciding whether to trust
+  // one is entitled to see the source, the date it was read, and -- when the
+  // archive took a copy -- the page as it stood that day.
+  function provenanceHtml() {
+    var p = clerk && clerk.provenance;
+    if (!p) return '';
+    var bits = [];
+    if (p.source) {
+      bits.push(p.source_url
+        ? 'Source: <a href="' + esc(p.source_url) + '" target="_blank" ' +
+          'rel="noopener">' + esc(p.source) + '</a>'
+        : 'Source: ' + esc(p.source));
+    }
+    if (p.generated) bits.push('read ' + esc(Elections.monthDay(p.generated)));
+    if (p.archived) {
+      bits.push('<a href="' + esc(p.archived) + '" target="_blank" ' +
+        'rel="noopener">archived copy</a>');
+    }
+    if (!bits.length) return '';
+    return '<p class="bx-prov">' + bits.join(' \u00b7 ') +
+      (p.archive_note ? '<br>' + esc(p.archive_note) : '') + '</p>';
   }
 
   // The right-hand cell of every row: what it is called, when it applies, and
@@ -414,6 +442,15 @@
   function sentenceCase(s) {
     s = String(s || '').trim();
     return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+  }
+
+  // "Open 24/7" is what a shop is. A drop box is a slot in a wall, reachable
+  // whenever you are awake, and that is a different promise -- especially for
+  // someone deciding whether a late-evening trip is worth making.
+  function boxHours(box) {
+    if (!box || !box.hours) return '';
+    return /^24\/7$/.test(box.hours) ? 'Accessible 24/7'
+         : 'Accessible during ' + box.hours;
   }
 
   function boxLabel(box) {
@@ -1124,7 +1161,7 @@
         '<div class="pp-addr">' + esc(addressForDisplay(box.place.address)) +
         (box.place.note
           ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') +
-        (box.place.hours ? '<br>Open ' + esc(box.place.hours) : '') + '</div>' +
+        (box.place.hours ? '<br>' + esc(boxHours(box.place)) : '') + '</div>' +
         '<button type="button" class="box-open" id="boxListBtn">' +
         'Show all my drop box locations</button>';
       html += '</div>';
@@ -1583,6 +1620,9 @@
       return hit ? Object.assign({}, place, { lat: hit.lat, lng: hit.lng }) : null;
     }
     return {
+      // Carried through so the panel can say where its list came from. The
+      // file knows; without this the page did not.
+      provenance: data.provenance || null,
       election: data.election,
       early_voting: data.early_voting || null,
       sites: (data.early_voting_sites || []).map(fix).filter(Boolean),
@@ -1594,12 +1634,19 @@
     };
   }
 
+  // Sorted by how far away they are, with the distance carried along so the
+  // list can show it. Straight-line, not driving: ranking eleven boxes by
+  // road would mean eleven route searches to answer a question the reader is
+  // only skimming, and over a few miles of city street the two orders barely
+  // differ. The number is labelled as the crow flies so it is not read as a
+  // trip length -- the actual drive appears the moment one is chosen.
   function nearest(origin, places) {
     if (!origin || !places || !places.length) return null;
-    return places.slice().sort(function (a, b) {
-      return ALPRRouter.haversine(origin.lat, origin.lng, a.lat, a.lng) -
-             ALPRRouter.haversine(origin.lat, origin.lng, b.lat, b.lng);
-    });
+    return places.map(function (p) {
+      return Object.assign({}, p, {
+        metres: ALPRRouter.haversine(origin.lat, origin.lng, p.lat, p.lng)
+      });
+    }).sort(function (a, b) { return a.metres - b.metres; });
   }
 
   // Three places a ballot can go, and every one of them is a drive worth

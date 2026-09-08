@@ -537,7 +537,10 @@
       parts.push(locationRow({
         name: box.name || box.address || "Drop box",
         address: box.address || "Inside City Hall",
-        entrance_note: [box.note, box.hours ? `Open ${box.hours}` : null]
+        entrance_note: [box.note, box.hours
+          ? (/^24\/7$/.test(box.hours) ? "Accessible 24/7"
+             : `Accessible during ${box.hours}`)
+          : null]
           .filter(Boolean).join(" \u00b7 "),
       }, "ev-site"));
     }
