@@ -61,7 +61,6 @@ Included are the scripts that generated those files. `BUILD.md` has the order:
 scripts/
   refresh_centerlines.py  city street centerlines
   refresh_osm_roads.py    OpenStreetMap ways and turn restrictions
-  refresh_signs.py        city turn-sign inventory
   refresh_cameras.py      plate readers from OpenStreetMap
   refresh_landcover.py    water, parks, rail
   refresh_boundary.py     city limits
@@ -88,18 +87,20 @@ every one carries address ranges.
 neighborhood trip, the highway saves a minute at best, and surface streets
 are where the camera data actually applies.
 
-**Turn restrictions come from two places:** OpenStreetMap contributes declared
-relations. The city's sign inventory contributes the posted MUTCD no-turn
-signs, which is the larger source and uniquely records which signs have been
-**retired**, so a restriction that no longer exists is not enforced forever.
+**Turn restrictions come from OpenStreetMap, and only from there.** The
+centerlines carry none, so declared OSM relations (this way, via this node, to
+that way) are the whole source: 240 across Kent County. Matching is geometric,
+since the two datasets share no keys, and a restriction whose geometry does not
+match cleanly is dropped rather than guessed, because a wrong restriction
+silently forbids a legal turn.
 
-A sign is a point with a bearing rather than a declared relation, so turning
-one into a restriction is inference. `build_restrictions.py` decides how to
-read the sign's `DIRECTION` column by measuring both possible interpretations
-against the OpenStreetMap set and keeping whichever agrees and does not
-contradict; it prints that comparison on every run. Anything that cannot be
-tied to a junction unambiguously is dropped rather than guessed, which is why
-roughly half the signs are not used.
+Grand Rapids also publishes a 44,892-row sign inventory, and this project used
+to infer bans from the posted MUTCD no-turn signs and merge them in, adding 45
+restrictions OSM did not have. That is gone. It covered one jurisdiction out of
+thirty and had been frozen upstream since March 2024, so keeping it meant one
+city carried restrictions its neighbours could never have, from a source nobody
+was refreshing. One source with one licence everywhere is worth more than 45
+bans in one place.
 
 **Cameras are a routing cost, not a filter.** A camera-free route always beats
 a faster route that passes one, and where no clean route exists the same
@@ -179,7 +180,7 @@ doing something that carries risk.
 Code is public domain under the [Unlicense](UNLICENSE). Copy, host, revise, and
 change it without asking, with or without credit.
 
-The data is not ours to license. Streets, signs and address ranges are public
+The data is not ours to license. Streets and address ranges are public
 records of the City of Grand Rapids and Kent County; precinct boundaries are a
 public record of the State of Michigan; polling places come from the Grand
 Rapids City Clerk. **Camera locations, turn restrictions, water and parks come
