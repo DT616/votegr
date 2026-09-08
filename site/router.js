@@ -926,13 +926,91 @@
   //
   // Alleys are deprioritized rather than excluded: some addresses genuinely
   // only touch one, so they stay available at a penalty.
+  // A grid over the edges, so snapping an address does not walk the county.
+  //
+  // Scanning every edge cost 1.9ms against Grand Rapids and 14.2ms against
+  // all thirty jurisdictions, and it happens twice per lookup -- once for
+  // where you are and once for where you are going. Rural chunks make it
+  // worse than the edge count suggests, because their segments are long and
+  // carry many vertices each.
+  //
+  // Built once, lazily, and in the same compressed sparse row shape as the
+  // adjacency: a cell index for the lookup, then one flat Int32Array of edge
+  // ids. An object of arrays would have cost several MiB, which is most of
+  // what packing the graph just saved.
+  var SNAP_CELL = 0.01;                  // ~1.1km in latitude
+
+  Graph.prototype._snapGrid = function () {
+    if (this._grid) return this._grid;
+    var i, k, cells = {}, order = [], counts = [];
+    var self = this;
+    // Which cells an edge touches, deduplicated: a long segment crosses
+    // several, and a short one sits in one.
+    var cellsOf = function (ei, visit) {
+      var n = self.edgePointCount(ei), seen = null, last = '';
+      for (var q = 0; q < n; q++) {
+        var key = Math.round(self.edgePointLat(ei, q) / SNAP_CELL) + ':' +
+                  Math.round(self.edgePointLng(ei, q) / SNAP_CELL);
+        // Consecutive vertices are usually in the same cell, so a string
+        // compare skips almost every repeat without allocating a set.
+        if (key === last) continue;
+        last = key;
+        if (seen === null) seen = {};
+        if (seen[key]) continue;
+        seen[key] = 1;
+        visit(key);
+      }
+    };
+    for (i = 0; i < this._edgeCount; i++) {
+      if (this._eCls[i] === 1) continue;          // freeways are never snapped to
+      cellsOf(i, function (key) {
+        var at = cells[key];
+        if (at === undefined) { at = cells[key] = order.length; order.push(key); counts.push(0); }
+        counts[at]++;
+      });
+    }
+    var off = new Uint32Array(order.length + 1), run = 0;
+    for (i = 0; i < order.length; i++) { off[i] = run; run += counts[i]; }
+    off[order.length] = run;
+    var ids = new Int32Array(run), fill = off.slice();
+    for (i = 0; i < this._edgeCount; i++) {
+      if (this._eCls[i] === 1) continue;
+      cellsOf(i, function (key) { ids[fill[cells[key]]++] = i; });
+    }
+    this._grid = { cell: cells, off: off, ids: ids };
+    return this._grid;
+  };
+
   Graph.prototype.snapToRoad = function (lat, lng) {
-    var bestEdge = -1, bestD = Infinity, n = this.edgeCount();
-    for (var i = 0; i < n; i++) {
-      if (this.edgeClass(i) === 1) continue;  // never snap an end to a freeway
-      var d = this._distToEdge(lat, lng, i);
-      if (ALLEY.test(this.edgeName(i))) d += 120;   // metres of penalty
-      if (d < bestD) { bestD = d; bestEdge = i; }
+    var bestEdge = -1, bestD = Infinity, i, d;
+    var grid = this._snapGrid();
+    var la = Math.round(lat / SNAP_CELL), ln = Math.round(lng / SNAP_CELL);
+    var seen = {};
+    var consider = function (self, ei) {
+      if (seen[ei]) return;
+      seen[ei] = 1;
+      d = self._distToEdge(lat, lng, ei);
+      if (ALLEY.test(self.edgeName(ei))) d += 120;   // metres of penalty
+      if (d < bestD) { bestD = d; bestEdge = ei; }
+    };
+    // Widen a ring of cells until something is found. One ring covers a
+    // 3.3km square, which holds a road anywhere in the county; the loop is
+    // there for a point out in the lake or past the county line.
+    for (var ring = 1; ring <= 6 && bestEdge < 0; ring++) {
+      for (var dla = -ring; dla <= ring; dla++) {
+        for (var dln = -ring; dln <= ring; dln++) {
+          // Only the new perimeter on each widening.
+          if (ring > 1 && Math.abs(dla) !== ring && Math.abs(dln) !== ring) continue;
+          var at = grid.cell[(la + dla) + ':' + (ln + dln)];
+          if (at === undefined) continue;
+          for (i = grid.off[at]; i < grid.off[at + 1]; i++) consider(this, grid.ids[i]);
+        }
+      }
+    }
+    // splitAt's temporaries are never in the grid, and a second split during
+    // one lookup has to be able to snap to the first one's halves.
+    for (i = this._edgeCount; i < this.edgeCount(); i++) {
+      if (this.edgeClass(i) !== 1) consider(this, i);
     }
     if (bestEdge < 0) return this.nearestNode(lat, lng);
     var ea = this.edgeA(bestEdge), eb = this.edgeB(bestEdge);
