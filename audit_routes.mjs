@@ -28,24 +28,26 @@ graph.assignCameras(cams.filter(c => inside(c.lat, c.lng)));
 
 // degree map for the u-turn check
 const deg = new Map();
-graph.adj.forEach((list, n) => deg.set(n, list.length));
+for (let n = 0; n < graph.nodeCount(); n++) deg.set(n, graph.linksFrom(n).length);
 
 function auditRoute(r, label, problems) {
   if (!r) return;
   for (let i = 0; i < r.edges.length; i++) {
-    const eid = r.edges[i], e = graph.edges[eid];
+    const eid = r.edges[i];
     const from = r.nodes[i], to = r.nodes[i + 1];
+    const ea = graph.edgeA(eid), eb = graph.edgeB(eid);
+    const ed = graph.edgeDir(eid), name = graph.edgeName(eid) || eid;
     // 1. contiguity + 2. legality (direction actually permitted)
-    const fwd = e.a === from && e.b === to;
-    const rev = e.b === from && e.a === to;
+    const fwd = ea === from && eb === to;
+    const rev = eb === from && ea === to;
     if (!fwd && !rev) problems.push(`${label}: edge ${eid} not contiguous`);
-    else if (fwd && e.d === 2) problems.push(`${label}: ${e.n || eid} traversed against one-way`);
-    else if (rev && e.d === 1) problems.push(`${label}: ${e.n || eid} traversed against one-way`);
+    else if (fwd && ed === 2) problems.push(`${label}: ${name} traversed against one-way`);
+    else if (rev && ed === 1) problems.push(`${label}: ${name} traversed against one-way`);
     // 3. freeway
-    if (e.c === 1) problems.push(`${label}: freeway edge ${e.n || eid} used`);
+    if (graph.edgeClass(eid) === 1) problems.push(`${label}: freeway edge ${name} used`);
     // 4. turn legality
     if (i > 0 && !graph.turnAllowed(r.edges[i - 1], from, eid)) {
-      problems.push(`${label}: illegal turn onto ${e.n || eid}`);
+      problems.push(`${label}: illegal turn onto ${name}`);
     }
     // 5. u-turns only when forced
     if (i > 0 && r.edges[i - 1] === eid && (deg.get(from) || 0) > 1) {
