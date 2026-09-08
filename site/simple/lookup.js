@@ -232,12 +232,21 @@
       el("div", "ward",
         el("span", "wp-label", "Ward:"), el("span", "wp-value", String(wards[precinct])),
         el("span", "wp-label", "Precinct:"), el("span", "wp-value", String(precinct))),
+      // Same order as the map page: the drop box is usable first and for
+      // longest, early voting comes next, and election day is the deadline.
+      // Two pages answering one question should not disagree about the shape
+      // of the answer -- a reader who checks both should recognise the second
+      // one.
+      ...dropBoxes(),
+      ...earlyVoting(uncertain),
       ...pollingPlace(precinct, polling[String(precinct)]),
 
       // Said plainly rather than buried: an address that straddles a line, or
       // that we only inferred from its neighbours, is a guess and should be
       // checked. This is the whole reason the page exists, so it would be
-      // perverse to hide it.
+      // perverse to hide it. They sit under the polling place because that is
+      // the answer they qualify -- the precinct is what is uncertain, not the
+      // drop box.
       rivals ? advisory("ambiguous",
         `This address sits where precincts ${rivals.join(" and ")} meet, so we ` +
         "cannot tell which one it votes in. Please check with the city clerk or " +
@@ -249,11 +258,7 @@
       !rivals && edgeMetres <= NEAR_M ? advisory("boundary",
         `This address sits about ${Math.round(edgeMetres)} m from the edge of the ` +
         "precinct, which is too close to be certain. Please check with the city " +
-        "clerk or the Michigan Voter Information Center.") : null,
-
-      // Last, so the advisories stay next to the precinct answer they qualify.
-      ...earlyVoting(uncertain),
-      ...dropBoxes());
+        "clerk or the Michigan Voter Information Center.") : null);
 
     clearResult();
     resultBox.append(el("div", "card", body));
@@ -526,7 +531,7 @@
       parts.push(table);
     }
 
-    return [el("div", "ev-block", ...parts)];
+    return [el("div", "ev-block ev-early", ...parts)];
   }
 
   // Every drop box, with a directions link each. No "nearest": this page does
@@ -567,7 +572,7 @@
           .filter(Boolean).join(" \u00b7 "),
       }, "ev-site"));
     }
-    return [el("div", "ev-block", ...parts)];
+    return [el("div", "ev-block ev-boxes", ...parts)];
   }
 
   // ---- clicks outside the suggestion list close it ------------------------
