@@ -232,3 +232,15 @@ a.dir-btn svg { width: 1.15rem; height: 1.15rem; fill: currentColor; }
 /* The out-of-city answer reads like the other advisories, because that is
    what it is: an honest limit, not an error. */
 .advisory.outside { border-left-color: var(--dim); }
+
+/* The heading of a block, as opposed to a line of prose inside one. Early
+   voting and the drop boxes each open a section of several places, and at the
+   body size and colour those openers read as the first sentence of the block
+   rather than its title -- so a reader skimming for "where do I drop this"
+   had nothing to land on. Sized and coloured like the voting day heading
+   above them, with a rule to mark where the section starts. */
+.sec-head {
+  font-size: 1.02rem; font-weight: 650; color: var(--fg);
+  padding-bottom: .5rem; margin-bottom: .3rem;
+  border-bottom: 1px solid var(--line);
+}

@@ -77,6 +77,14 @@
   // the box can show the readable form without anything downstream noticing.
   const cased = (s) => (typeof displayCase === "function" ? displayCase(s) : s);
 
+  // The clerk types these however the day went: "gymnasium", "curbside",
+  // "Across from Calder Plaza". Only the first letter moves -- the rest can
+  // hold names that were capitalised on purpose.
+  const sentence = (s) => {
+    const text = String(s || "").trim();
+    return text ? text[0].toUpperCase() + text.slice(1) : "";
+  };
+
   function parseTyped(text) {
     const clean = text.toUpperCase().replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
     const match = clean.match(/^(\d+)\s*(.*)$/);
@@ -187,7 +195,7 @@
       el("div", "loc-text",
         el("div", "place", cased(place.name)),
         el("div", "addr", cased(place.address)),
-        place.entrance_note ? el("div", "note", place.entrance_note) : null));
+        place.entrance_note ? el("div", "note", sentence(place.entrance_note)) : null));
     if (place.address || (place.lat != null && place.lng != null)) {
       row.append(mapLink(place));
     }
@@ -489,8 +497,10 @@
 
     // The date carries the weight here, so it is the part set in bold.
     parts.push(open
-      ? el("div", "lead-2", "Vote early, through ", el("strong", "when", Elections.withWeekday(to)))
-      : el("div", "lead-2", "Vote early, ", el("strong", "when", Elections.withWeekday(from)),
+      ? el("div", "lead-2 sec-head", "Vote early, through ",
+           el("strong", "when", Elections.withWeekday(to)))
+      : el("div", "lead-2 sec-head", "Vote early, ",
+           el("strong", "when", Elections.withWeekday(from)),
            " through ", el("strong", "when", Elections.withWeekday(to))));
     parts.push(el("div", "ev-note",
       "Any Grand Rapids voter may use any of these, whatever precinct they are in."));
@@ -524,7 +534,7 @@
     const boxes = (clerk && clerk.drop_boxes) || [];
     if (!boxes.length || !election || clerk.election !== election.date) return [];
 
-    const parts = [el("div", "lead-2", "Drop off an absentee ballot")];
+    const parts = [el("div", "lead-2 sec-head", "Drop off an absentee ballot")];
     // A box is only useful once there is a ballot to put in it. Michigan
     // sends absentee ballots 40 days before an election, and a returned
     // ballot has to be in hand when the polls close.
