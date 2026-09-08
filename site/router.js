@@ -79,10 +79,10 @@
 
     if (docs.length > 1) throw new Error('Graph: only chunks can be merged');
     var doc = docs[0];
-    this.meta = doc.meta || {};
-    this.nodeId = null;
-    this.edgeId = null;
     this._pack(doc.nodes, doc.edges);
+    // After _pack, which writes a synthetic meta of its own: the document's
+    // is the one with the build and provenance in it.
+    this.meta = doc.meta || {};
     this._buildAdjacency();
     this._indexRestrictions(doc.restrictions || []);
   }
@@ -160,8 +160,10 @@
   //
   // So the graph is stored as flat typed arrays -- one Int32Array of
   // microdegrees for every coordinate in the county, one Uint32Array saying
-  // where each edge's points begin -- and the same county costs 5.7 MiB,
-  // less than half of what Grand Rapids alone costs today.
+  // where each edge's points begin. Measured as heap plus ArrayBuffers, fully
+  // initialised: the county as objects was 69.7 MiB, packed it is 12.9 MiB,
+  // and Grand Rapids alone used to be 11.8 MiB. The whole county now costs
+  // about what the city did.
   //
   // 1e-6 degrees is about 11cm. Road centrelines are not surveyed to
   // anything like that, so nothing is lost by leaving floating point behind.
@@ -938,27 +940,44 @@
   // adjacency: a cell index for the lookup, then one flat Int32Array of edge
   // ids. An object of arrays would have cost several MiB, which is most of
   // what packing the graph just saved.
-  var SNAP_CELL = 0.01;                  // ~1.1km in latitude
+  // ~550m in latitude. Measured on the county: 0.01 gave 2.8ms per snap
+  // inside the city, 0.005 gives 0.75ms, 0.0025 gives 0.24ms but costs
+  // 340ms to build and 72k entries. The middle one: four times faster per
+  // lookup for 126ms more at load, once.
+  var SNAP_CELL = 0.005;
 
   Graph.prototype._snapGrid = function () {
     if (this._grid) return this._grid;
     var i, k, cells = {}, order = [], counts = [];
     var self = this;
-    // Which cells an edge touches, deduplicated: a long segment crosses
-    // several, and a short one sits in one.
+    // Which cells an edge touches, deduplicated. Every cell each SEGMENT
+    // crosses, not just the cells its vertices fall in: a straight rural
+    // road can run a kilometre between two vertices, pass clean through a
+    // cell, and leave no vertex in it. Bucketed by vertices alone, a point
+    // in that cell never saw the road beside it and snapped to something
+    // further away -- which the comparison test against a full scan caught
+    // on 9 of 120 random points. The bounding rectangle of each segment is
+    // a slight over-inclusion for a diagonal, and cheap.
     var cellsOf = function (ei, visit) {
-      var n = self.edgePointCount(ei), seen = null, last = '';
-      for (var q = 0; q < n; q++) {
-        var key = Math.round(self.edgePointLat(ei, q) / SNAP_CELL) + ':' +
-                  Math.round(self.edgePointLng(ei, q) / SNAP_CELL);
-        // Consecutive vertices are usually in the same cell, so a string
-        // compare skips almost every repeat without allocating a set.
-        if (key === last) continue;
-        last = key;
-        if (seen === null) seen = {};
-        if (seen[key]) continue;
+      var n = self.edgePointCount(ei), seen = {};
+      var la1 = Math.round(self.edgePointLat(ei, 0) / SNAP_CELL);
+      var ln1 = Math.round(self.edgePointLng(ei, 0) / SNAP_CELL);
+      var mark = function (la, ln) {
+        var key = la + ':' + ln;
+        if (seen[key]) return;
         seen[key] = 1;
         visit(key);
+      };
+      if (n === 1) { mark(la1, ln1); return; }
+      for (var q = 1; q < n; q++) {
+        var la2 = Math.round(self.edgePointLat(ei, q) / SNAP_CELL);
+        var ln2 = Math.round(self.edgePointLng(ei, q) / SNAP_CELL);
+        var laLo = Math.min(la1, la2), laHi = Math.max(la1, la2);
+        var lnLo = Math.min(ln1, ln2), lnHi = Math.max(ln1, ln2);
+        for (var la = laLo; la <= laHi; la++) {
+          for (var ln = lnLo; ln <= lnHi; ln++) mark(la, ln);
+        }
+        la1 = la2; ln1 = ln2;
       }
     };
     for (i = 0; i < this._edgeCount; i++) {
@@ -977,8 +996,28 @@
       if (this._eCls[i] === 1) continue;
       cellsOf(i, function (key) { ids[fill[cells[key]]++] = i; });
     }
-    this._grid = { cell: cells, off: off, ids: ids };
+    // The grid's own extent, so a search knows when it has covered every
+    // occupied cell and can stop with an EXACT answer rather than at a cap.
+    var laLo = Infinity, laHi = -Infinity, lnLo = Infinity, lnHi = -Infinity;
+    for (i = 0; i < order.length; i++) {
+      var parts = order[i].split(':');
+      var la = +parts[0], ln = +parts[1];
+      if (la < laLo) laLo = la; if (la > laHi) laHi = la;
+      if (ln < lnLo) lnLo = ln; if (ln > lnHi) lnHi = ln;
+    }
+    this._grid = { cell: cells, off: off, ids: ids,
+                   laLo: laLo, laHi: laHi, lnLo: lnLo, lnHi: lnHi };
     return this._grid;
+  };
+
+  // Build the lazily-built indexes now, so the first lookup does not pay
+  // for them. The street index and the snap grid together are a few hundred
+  // milliseconds on a phone, which is fine at load and a visible stall on
+  // the first address someone types.
+  Graph.prototype.warm = function () {
+    this._streetIndex();
+    this._snapGrid();
+    return this;
   };
 
   Graph.prototype.snapToRoad = function (lat, lng) {
@@ -993,10 +1032,23 @@
       if (ALLEY.test(self.edgeName(ei))) d += 120;   // metres of penalty
       if (d < bestD) { bestD = d; bestEdge = ei; }
     };
-    // Widen a ring of cells until something is found. One ring covers a
-    // 3.3km square, which holds a road anywhere in the county; the loop is
-    // there for a point out in the lake or past the county line.
-    for (var ring = 1; ring <= 6 && bestEdge < 0; ring++) {
+    // Widen ring by ring, and do NOT stop at the first hit. A point near the
+    // edge of its cell can find a road 1.6km away in the far corner of ring
+    // 1 while a road 1.2km away sits just inside ring 2. Ring r has only
+    // been fully searched out to (r - 0.5) cells from the point, so the
+    // search continues until the best distance so far is inside that
+    // radius -- then nothing closer can exist in any wider ring.
+    //
+    // The only other way out is having covered every occupied cell, which
+    // the grid's extent tells us. So this returns exactly what a scan of
+    // every edge would, for any point, including one out in Lake Michigan:
+    // empty cells cost a single failed lookup each, so even a search that
+    // has to cross the whole county is a few thousand of those, not a walk
+    // over 39,000 edges.
+    var cellM = SNAP_CELL * 111320 * Math.cos(lat * Math.PI / 180);   // the shorter side
+    var reach = Math.max(Math.abs(la - grid.laLo), Math.abs(la - grid.laHi),
+                         Math.abs(ln - grid.lnLo), Math.abs(ln - grid.lnHi));
+    for (var ring = 1; ring <= reach + 1; ring++) {
       for (var dla = -ring; dla <= ring; dla++) {
         for (var dln = -ring; dln <= ring; dln++) {
           // Only the new perimeter on each widening.
@@ -1006,6 +1058,7 @@
           for (i = grid.off[at]; i < grid.off[at + 1]; i++) consider(this, grid.ids[i]);
         }
       }
+      if (bestEdge >= 0 && bestD < (ring - 0.5) * cellM) break;
     }
     // splitAt's temporaries are never in the grid, and a second split during
     // one lookup has to be able to snap to the first one's halves.

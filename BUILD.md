@@ -25,6 +25,10 @@ exceptions. Everything else runs on a bare interpreter.
 | File | Made by | From |
 |---|---|---|
 | `graph/<mcd>.json` | `build_graph.py`, `build_restrictions.py`, then `build_graph_chunks.py` | REGIS/Kent centerlines, OpenStreetMap restrictions |
+| `graph/index.json` | `build_graph_chunks.py` | sizes of every chunk, so the browser allocates once and streams them |
+| `addresses/<mcd>.json` | `refresh_addresses.py` | Kent County parcels, matched to precincts, one file per jurisdiction |
+| `polling/<mcd>.json` | `refresh_polling.py`, then `geocode_places.py` | Kent County's polling place and drop box pages, then parcel centroids and street centrelines for coordinates |
+| `early-voting.json` | `refresh_early_voting.py`, then `geocode_places.py` | Kent County's early voting page |
 | `cameras.json` | `refresh_cameras.py` — **automated, see below** | OpenStreetMap |
 | `addresses.json` | `refresh_addresses.py` | Kent County parcels, matched to precincts |
 | `precincts.geojson` | `refresh_precincts.py` | Michigan Secretary of State |
@@ -78,7 +82,7 @@ python3 scripts/build_graph.py           # compile the county graph -> build/gra
 python3 scripts/refresh_osm_roads.py     # OSM ways + restrictions -> build/
 python3 scripts/refresh_osm_via_nodes.py # the relations' via nodes -> build/
 python3 scripts/build_restrictions.py    # attach restrictions     -> build/graph.json
-python3 scripts/build_graph_chunks.py    # cut per jurisdiction    -> site/data/graph/
+python3 scripts/build_graph_chunks.py    # cut per jurisdiction    -> site/data/graph/ (+ index.json)
 
 # Precincts, addresses, boundaries
 python3 scripts/refresh_precincts.py     # SOS precinct polygons   -> site/data/precincts.geojson
@@ -87,10 +91,31 @@ python3 scripts/refresh_addresses.py     # parcels -> precincts    -> site/data/
 python3 scripts/refresh_boundary.py      # city limits             -> site/data/boundary.json
 python3 scripts/refresh_neighbors.py     # neighbouring street names -> site/data/neighbors.json
 
+# Places to vote, county-wide
+python3 scripts/refresh_polling.py       # county polling places + drop boxes -> site/data/polling/
+python3 scripts/refresh_early_voting.py  # county early voting sites -> site/data/early-voting.json
+python3 scripts/geocode_places.py        # coordinates for all of the above, in place
+
 # Map furniture and cameras
 python3 scripts/refresh_landcover.py     # water, parks, rail      -> site/data/landcover.json
 python3 scripts/refresh_cameras.py       # plate readers           -> site/data/cameras.json
 ```
+
+**`geocode_places.py` runs last and needs `node`.** It places every polling
+place, drop box and early voting site from the county parcel layer first and
+the street centrelines second, and the centreline pass runs `site/router.js`
+itself -- the same file the page loads -- so a coordinate computed at build
+time cannot drift from one the browser would compute. Pass `--parcels FILE` to
+cache the parcel pull (232,000 rows, a few minutes) between runs, and
+`--dry-run` to see the hit rate without writing. Anything it cannot place is
+listed by name at the end rather than guessed.
+
+**How the browser loads the graph.** It reads `graph/index.json`, allocates
+typed arrays once from the totals, then streams the thirty chunks through one
+at a time, a few fetches ahead, dropping each parsed document as it is folded
+in. Every jurisdiction ends up resident, so a route can cross a city line with
+no second fetch, and the peak while loading stays near the 13 MiB steady state
+rather than the 102 MiB that parsing all thirty at once would cost.
 
 **`build_restrictions.py` must follow `build_graph.py`.** A graph rebuild
 discards restrictions, so they have to be re-attached afterwards or the router

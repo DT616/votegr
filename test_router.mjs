@@ -529,6 +529,39 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
   } catch (e) { overflowed = /reserved/.test(e.message); }
   ok('an index that understates the sizes is refused', overflowed);
 
+  // The snap grid. snapToRoad used to walk every edge in the graph, which
+  // at county size is 14ms per call and happens twice per lookup; it now
+  // consults a cell index. An index that ever returned a DIFFERENT edge
+  // than the full scan would put the start of a route on the wrong street,
+  // so the two are compared directly, on random points spread over both
+  // jurisdictions and a few deliberately out in the middle of nowhere.
+  const brute = (g, lat, lng) => {
+    let bestEdge = -1, bestD = Infinity;
+    for (let i = 0; i < g.edgeCount(); i++) {
+      if (g.edgeClass(i) === 1) continue;
+      let d = g._distToEdge(lat, lng, i);
+      if (/\bALY\b|\bALLEY\b/.test(g.edgeName(i))) d += 120;
+      if (d < bestD) { bestD = d; bestEdge = i; }
+    }
+    return { edge: bestEdge, meters: bestD };
+  };
+  let snapAgree = 0, snapWorse = 0;
+  const TRIALS = 120;
+  for (let t = 0; t < TRIALS; t++) {
+    const lat = 42.84 + Math.random() * 0.17, lng = -85.75 + Math.random() * 0.2;
+    const a = both.snapToRoad(lat, lng), b = brute(both, lat, lng);
+    if (a.edge === b.edge) snapAgree++;
+    else if (a.meters > b.meters + 0.01) snapWorse++;   // a tie is not a miss
+  }
+  ok(`snap grid agrees with a full scan (${snapAgree}/${TRIALS} identical)`,
+     snapWorse === 0 && snapAgree > TRIALS * 0.95);
+  // A point far outside every cell still resolves to SOMETHING: the grid
+  // widens a few rings, then hands off to the nearest-node scan, which is
+  // what routing needs -- a node -- even when there is no edge close by.
+  const far = both.snapToRoad(43.4, -85.2);
+  ok('a point far off the network still resolves to a node',
+     far && far.node >= 0 && far.meters > 10000);
+
   // A chunk document must survive being used twice: once alone, once merged.
   // Rewriting its endpoints in place would corrupt the second use.
   const doc = chunk(KENTWOOD);
