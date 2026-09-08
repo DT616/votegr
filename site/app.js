@@ -1150,12 +1150,24 @@
   // itself about whether early voting is open is worse than one that says
   // nothing.
   function evWindow() {
-    if (clerk && clerk.early_voting) {
+    if (clerkForThisElection()) {
       return { early_voting_from: clerk.early_voting.from,
                early_voting_to: clerk.early_voting.to,
                early_voting_sites: clerk.sites };
     }
     return activeEl;
+  }
+
+  // The clerk's file is only about the election it names. gr-clerk.json says
+  // which one -- "election": "2026-11-03" -- and that has to be checked
+  // rather than assumed, because the page reads it beside a calendar that
+  // moves on its own. A file describing a finished election, or a calendar
+  // that has rolled to the next one, must not silently supply dates for an
+  // election it was never about. That is the same failure the county's early
+  // voting page has right now, in reverse.
+  function clerkForThisElection() {
+    return !!(clerk && clerk.early_voting && activeEl &&
+              clerk.election === activeEl.date);
   }
 
   function earlyVotingStatus() {
@@ -1378,7 +1390,7 @@
                        : graph.geocode(r.number, r.street);
 
     // The clerk's own sites when we have them, the calendar's otherwise.
-    var sites = (clerk && clerk.sites.length) ? clerk.sites
+    var sites = (clerkForThisElection() && clerk.sites.length) ? clerk.sites
               : Elections.sites(activeEl).filter(function (s) { return s.lat && s.lng; });
     var evState = Elections.windowState(evWindow());
     var ranked = nearest(origin, sites);
