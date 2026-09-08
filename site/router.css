@@ -593,6 +593,9 @@ body {
 .bx-dist { font-weight: 400; font-size: .82rem; color: var(--dim);
            white-space: nowrap; }
 .bx-addr, .bx-where { color: var(--dim); font-size: .87rem; }
+/* Hours only appear on a box whose hours are not the usual 24/7, so when one
+   shows up it is the exception and should read as one. */
+.bx-hours-odd { color: var(--warn); font-size: .87rem; font-weight: 600; }
 /* The one currently being routed to, so the list says where you are as well
    as where you could go. */
 .box-list li.is-chosen { background: var(--tint); }

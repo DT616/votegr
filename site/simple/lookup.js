@@ -555,25 +555,28 @@
              " through ", el("strong", "when", Elections.monthDay(election.date)))
         : el("span", null, "Through ",
              el("strong", "when", Elections.monthDay(election.date)))));
-    const inside = boxes.filter((b) => !b.address).length;
+    const odd = boxes.filter((b) => !/^24\/7$/.test(b.hours || "")).length;
     parts.push(el("div", "ev-note",
       (Elections.todayISO() < from
         ? `Ballots are mailed from ${Elections.monthDay(from)}, and boxes ` +
           "accept them until the polls close on election day. "
         : "Return it by the time the polls close on election day. ") +
       // Not our claim: MCL 168.761d requires the clerk to monitor each box.
-      "Drop boxes are accessible 24/7 and monitored by video surveillance, " +
-      "which Michigan law requires." +
-      (inside ? ` The ${inside === 1 ? "one" : inside} inside City Hall ` +
-                `${inside === 1 ? "follows" : "follow"} building hours.` : "")));
+      "Drop boxes are monitored by video surveillance, which Michigan law " +
+      "requires." +
+      (odd ? ` Most are accessible 24/7; ${odd === 1 ? "one is not, and its" : `${odd} are not, and their`}` +
+             " hours are listed with it."
+           : " They are accessible 24/7.")));
 
     for (const box of boxes) {
       parts.push(locationRow({
         name: box.name || box.address || "Drop box",
         address: box.address || "Inside City Hall",
-        // No hours per row: they are the same for every street box, and are
-        // said once under the dates above.
-        entrance_note: box.note || "",
+        // Hours per row ONLY where they differ from the usual 24/7. Eleven
+        // identical lines said nothing; the one different line is the whole
+        // point -- the City Hall box is weekdays 8 to 5.
+        entrance_note: [box.note, /^24\/7$/.test(box.hours || "") ? null : box.hours]
+          .filter(Boolean).join(" \u00b7 "),
       }, "ev-site"));
     }
     return [el("div", "ev-block ev-boxes", ...parts)];
