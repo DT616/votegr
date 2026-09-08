@@ -126,15 +126,22 @@ for (const width of [1280, 390, 320]) {
        clerk.early_voting_sites.some(s => answer.includes(s.name)));
 
     // --- drop boxes ------------------------------------------------------
-    const rows = await page.$$eval('.ev-block', blocks => {
-      const last = blocks[blocks.length - 1];
-      return last ? last.querySelectorAll('.loc').length : 0;
-    });
+    // By name, not by position. The blocks were reordered to match the map
+    // page and "the last one" stopped meaning the drop boxes.
+    const rows = await page.$$eval('.ev-boxes', blocks =>
+      blocks[0] ? blocks[0].querySelectorAll('.loc').length : 0);
     ok(`every drop box is listed (${clerk.drop_boxes.length})`,
        rows === clerk.drop_boxes.length);
     ok('with the dates that make a drop box usable',
        /Ballots are mailed from|Return it by the time the polls close/.test(answer));
   }
+
+  // The same order as the map page, which is the point of having one.
+  const order = await page.$$eval('.card-body > *', els => els.map(e => e.className));
+  const at = (cls) => order.findIndex(c => c.includes(cls));
+  ok('drop boxes come before early voting, which comes before the polling place',
+     at('ev-boxes') > -1 && at('ev-early') > at('ev-boxes') &&
+     order.findIndex(c => c === 'loc') > at('ev-early'));
 
   // --- a street outside the city ----------------------------------------
   const options = await pick(page, '100 ' + outsideStreet);
