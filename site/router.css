@@ -571,7 +571,13 @@ body {
 .box-list li[data-box]:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 1px;
 }
-.bx-name { font-weight: 650; }
+.bx-name { font-weight: 650; display: flex; justify-content: space-between;
+            align-items: baseline; gap: 12px; }
+/* The order of the list is by distance; this is what makes that legible.
+   Straight-line, and it says so, because the drive is longer and the reader
+   should not read one as the other. */
+.bx-dist { font-weight: 400; font-size: .82rem; color: var(--dim);
+           white-space: nowrap; }
 .bx-addr, .bx-where { color: var(--dim); font-size: .87rem; }
 /* The one currently being routed to, so the list says where you are as well
    as where you could go. */
