@@ -89,15 +89,16 @@ for (const [name, data, want] of CASES) {
     (document.querySelector('#precinctInfo .vi-hours') || {}).textContent || null);
 
   const got = await page.evaluate(() => {
-    const labels = [...document.querySelectorAll('#precinctInfo .vi-lbl')];
-    const live = labels.find(e => e.classList.contains('live'));
-    if (!live) return { label: null, site: false, status: null };
-    const group = live.parentElement;
-    // The site sits in the row's OTHER cell now, not inside the label's own
-    // group, and both where-cells carry a .pp-name. .vi-ev-site is what
-    // separates the early voting site from the polling place.
-    return { label: live.textContent.trim(),
-             status: (group.querySelector('.vi-val') || {}).textContent || null,
+    // The row, by name. Three rows now share one shape -- drop box, early
+    // voting, election day -- so "the cell with the live accent" no longer
+    // identifies this one: the drop box carries it too while it is accepting
+    // ballots.
+    const cell = document.querySelector('#precinctInfo .vi-when-early');
+    if (!cell) return { label: null, site: false, status: null };
+    // Both where-cells hold a .pp-name; .vi-ev-site is what separates the
+    // early voting site from the polling place.
+    return { label: (cell.querySelector('.vi-lbl') || {}).textContent.trim(),
+             status: (cell.querySelector('.vi-val') || {}).textContent || null,
              site: !!document.querySelector('.vi-ev-site .pp-name') };
   });
 
@@ -113,6 +114,55 @@ for (const [name, data, want] of CASES) {
   ok(`${name}: site ${want.site ? 'shown' : 'withheld'}`, got.site === want.site);
   await page.close();
 }
+// ---- election day itself ------------------------------------------------
+// On the day, the answer stops being a menu: early voting has closed and a
+// drop box is a race against the same 8pm the polls close at, so the polling
+// place leads the card and the directions point at it before anything is
+// clicked. Only reachable one day a year from real data, hence the fixture.
+//
+// The routed default is a SEPARATE question and only checked on the day: away
+// from it the polls already lead the picker, because "where do I vote" is
+// answered by election day until early voting actually opens. The card order
+// is the thing that differs, and it is what these two cases contrast.
+const ORDER_CASES = [
+  ['election day', base({ date: iso(0),
+                          early_voting_from: iso(-10), early_voting_to: iso(-2),
+                          early_voting_sites: SITES, early_voting_hours: HOURS }),
+   ['polling', 'dropbox'], /election day/i],
+  ['a month out', base({ date: iso(30),
+                         early_voting_from: iso(5), early_voting_to: iso(10),
+                         early_voting_sites: SITES, early_voting_hours: HOURS }),
+   ['dropbox', 'polling'], null],
+];
+
+for (const [name, data, want, routedWant] of ORDER_CASES) {
+  current = data;
+  const page = await browser.newPage();
+  await page.goto(URL_, { waitUntil: 'networkidle' });
+  await page.fill('#addr', '300 Monroe Ave NW');
+  await page.press('#addr', 'Enter');
+  await page.waitForSelector('#precinctInfo .vi-lbl', { timeout: 10000 });
+
+  const order = await page.evaluate(() =>
+    [...document.querySelectorAll('#precinctInfo .vi-where[data-kind]')]
+      .map(el => el.dataset.kind));
+  // Which destination the directions are already pointed at, read off the
+  // picker rather than the card: that is the one a reader gets by doing
+  // nothing, and it is the half of this that actually saves a wrong trip.
+  const routed = await page.evaluate(() => {
+    const on = document.querySelector('#destPick button.on, #destPick button[aria-pressed="true"]');
+    return on ? on.textContent.trim() : null;
+  });
+
+  console.log(`\n[${name}] order=${JSON.stringify(order)} routed=${JSON.stringify(routed)}`);
+  ok(`${name}: card order`, JSON.stringify(order) === JSON.stringify(want));
+  if (routedWant) {
+    ok(`${name}: directions already point at the polls`,
+       !!routed && routedWant.test(routed));
+  }
+  await page.close();
+}
+
 await browser.close(); server.close();
 console.log(`\n${fails === 0 ? 'all state checks passed' : fails + ' FAILED'}`);
 process.exit(fails ? 1 : 0);

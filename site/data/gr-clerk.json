@@ -1,14 +1,11 @@
 {
+ "src":"gr-clerk-current-election",
  "provenance":{
-  "description":"Grand Rapids early voting dates, sites and absentee drop boxes, from the City Clerk. The source of record for the city; the county's pages are the cross-check, not the other way round.",
-  "source":"City of Grand Rapids, City Clerk's Office",
-  "source_url":"https://www.grandrapidsmi.gov/departments/clerks-office/elections/current-election-information/",
+  "description":"Grand Rapids early voting dates, sites and absentee drop boxes, from the City Clerk.",
+  "source_registry":"sources.json",
   "generated":"2026-09-08",
-  "licence":"Public record of the City of Grand Rapids.",
   "how_to_update":"Run refresh_gr_clerk.py AND READ WHAT IT WROTE. This is a prose page maintained by hand and it carries copy errors: under the November heading it currently names the August election in a registration deadline. The script checks the shape, not the sense.",
-  "why_not_derived":"Michigan's minimum early voting window is nine days ending the Sunday before an election. Grand Rapids opens earlier than that, so the window is read from this page and never computed from the statute.",
-  "archived":"https://web.archive.org/web/20260908173614/https://www.grandrapidsmi.gov/departments/clerks-office/elections/current-election-information/",
-  "archived_timestamp":"20260908173614"
+  "why_not_derived":"Michigan's minimum early voting window is nine days ending the Sunday before an election. Grand Rapids opens earlier than that, so the window is read from this page and never computed from the statute."
  },
  "election":"2026-11-03",
  "early_voting":{
@@ -73,22 +70,26 @@
   {
    "name":"St. Peter and Paul School",
    "address":"1430 Quarry, NW",
-   "entrance_note":"gymnasium"
+   "entrance_note":"gymnasium",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"GRPS University",
    "address":"1400 Fuller NE",
-   "entrance_note":"gymnasium"
+   "entrance_note":"gymnasium",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"Ottawa Hills High School",
    "address":"2055 Rosewood SE",
-   "entrance_note":"old cafeteria"
+   "entrance_note":"old cafeteria",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"New Hope Baptist Church",
    "address":"130 Delaware SW",
-   "entrance_note":"gymnasium"
+   "entrance_note":"gymnasium",
+   "src":"gr-clerk-current-election"
   }
  ],
  "drop_boxes":[
@@ -96,67 +97,78 @@
    "name":null,
    "address":"300 Ottawa NW",
    "note":"Across from Calder Plaza",
-   "hours":"24/7"
+   "hours":"24/7",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"VanBelkum Library",
    "address":"1563 Plainfield NE",
    "note":"curbside",
-   "hours":"24/7"
+   "hours":"24/7",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"Yankee Clipper Library",
    "address":"2025 Leonard NE",
    "note":"bike rack",
-   "hours":"24/7"
+   "hours":"24/7",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"Westside Library",
    "address":"713 Bridge NW",
    "note":"parking lot side",
-   "hours":"24/7"
+   "hours":"24/7",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"West Leonard Library",
    "address":"1017 Leonard NW",
    "note":"east parking lot",
-   "hours":"24/7"
+   "hours":"24/7",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"Ottawa Hills Library",
    "address":"1150 Giddings SE",
    "note":"curbside",
-   "hours":"24/7"
+   "hours":"24/7",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"Madison Square Library",
    "address":"1201 Madison SE",
    "note":"building entrance",
-   "hours":"24/7"
+   "hours":"24/7",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"Main Library",
    "address":"110 Fountain NE",
    "note":"north side across from the library",
-   "hours":"24/7"
+   "hours":"24/7",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"Seymour Library Branch",
    "address":"2350 Eastern Avenue SE",
    "note":"parking lot behind library",
-   "hours":"24/7"
+   "hours":"24/7",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"GR Fire Department Division Station",
    "address":"16 Elm Street SW",
    "note":"curbside",
-   "hours":"24/7"
+   "hours":"24/7",
+   "src":"gr-clerk-current-election"
   },
   {
    "name":"City Hall",
-   "address":null,
-   "note":"Election Drop Boxes available during City Hall open hours on the Monroe and Calder Plaza levels.",
-   "hours":"City Hall open hours"
+   "address":"300 Monroe NW",
+   "note":"Monroe lobby and plaza level",
+   "hours":"Mon-Fri, 8am to 5pm",
+   "src":"mvic-voter-lookup"
   }
  ]
 }

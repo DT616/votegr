@@ -44,6 +44,9 @@
     return response.json();
   };
 
+  let neighbours = null;    // street -> the jurisdictions it is in
+  let clerk = null;         // gr-clerk.json: early voting and drop boxes
+
   // Set by render(); the Directions links start the route here.
   let typedAddress = null;
 
@@ -69,6 +72,19 @@
   // ---- matching what someone types against the index --------------------
 
   // "250 Monroe Ave. NW" -> { number: 250, rest: "MONROE AVE NW" }
+  // The street index is ALL CAPS because the parcel file is; that is not how
+  // anyone writes an address. parseTyped uppercases whatever it is handed, so
+  // the box can show the readable form without anything downstream noticing.
+  const cased = (s) => (typeof displayCase === "function" ? displayCase(s) : s);
+
+  // The clerk types these however the day went: "gymnasium", "curbside",
+  // "Across from Calder Plaza". Only the first letter moves -- the rest can
+  // hold names that were capitalised on purpose.
+  const sentence = (s) => {
+    const text = String(s || "").trim();
+    return text ? text[0].toUpperCase() + text.slice(1) : "";
+  };
+
   function parseTyped(text) {
     const clean = text.toUpperCase().replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
     const match = clean.match(/^(\d+)\s*(.*)$/);
@@ -177,9 +193,9 @@
   function locationRow(place, extraClass) {
     const row = el("div", extraClass ? `loc ${extraClass}` : "loc",
       el("div", "loc-text",
-        el("div", "place", place.name),
-        el("div", "addr", place.address),
-        place.entrance_note ? el("div", "note", place.entrance_note) : null));
+        el("div", "place", cased(place.name)),
+        el("div", "addr", cased(place.address)),
+        place.entrance_note ? el("div", "note", sentence(place.entrance_note)) : null));
     if (place.address || (place.lat != null && place.lng != null)) {
       row.append(mapLink(place));
     }
@@ -206,22 +222,41 @@
     return parts;
   }
 
+  // Today IS the day: early voting has closed, a drop box is a race against
+  // the poll close, and the polling place is simply the answer. The map page
+  // reorders for the same reason.
+  const isElectionDay = () => !!election && Elections.todayISO() === election.date;
+
   function render(found, resolvedAddress) {
     typedAddress = resolvedAddress;   // Directions links start from here
     const { precinct, edgeMetres, rivals, inferred } = found;
     // True when any of the three uncertainty advisories below will fire.
     const uncertain = Boolean(rivals || inferred || edgeMetres <= NEAR_M);
     const body = el("div", "card-body",
-      el("div", "lead", "Address: ", el("span", "addr-quote", resolvedAddress)),
+      el("div", "lead", "Address: ", el("span", "addr-quote", cased(resolvedAddress))),
       el("div", "ward",
         el("span", "wp-label", "Ward:"), el("span", "wp-value", String(wards[precinct])),
         el("span", "wp-label", "Precinct:"), el("span", "wp-value", String(precinct))),
-      ...pollingPlace(precinct, polling[String(precinct)]),
+      // Same order as the map page: the drop box is usable first and for
+      // longest, early voting comes next, and election day is the deadline --
+      // except on election day itself, when the deadline is now and the polls
+      // lead. Two pages answering one question should not disagree about the
+      // shape of the answer -- a reader who checks both should recognise the
+      // second one.
+      ...(isElectionDay()
+        ? [...pollingPlace(precinct, polling[String(precinct)]),
+           ...dropBoxes(),
+           ...earlyVoting(uncertain)]
+        : [...dropBoxes(),
+           ...earlyVoting(uncertain),
+           ...pollingPlace(precinct, polling[String(precinct)])]),
 
       // Said plainly rather than buried: an address that straddles a line, or
       // that we only inferred from its neighbours, is a guess and should be
       // checked. This is the whole reason the page exists, so it would be
-      // perverse to hide it.
+      // perverse to hide it. They sit under the polling place because that is
+      // the answer they qualify -- the precinct is what is uncertain, not the
+      // drop box.
       rivals ? advisory("ambiguous",
         `This address sits where precincts ${rivals.join(" and ")} meet, so we ` +
         "cannot tell which one it votes in. Please check with the city clerk or " +
@@ -233,10 +268,7 @@
       !rivals && edgeMetres <= NEAR_M ? advisory("boundary",
         `This address sits about ${Math.round(edgeMetres)} m from the edge of the ` +
         "precinct, which is too close to be certain. Please check with the city " +
-        "clerk or the Michigan Voter Information Center.") : null,
-
-      // Last, so the advisories stay next to the precinct answer they qualify.
-      ...earlyVoting(uncertain));
+        "clerk or the Michigan Voter Information Center.") : null);
 
     clearResult();
     resultBox.append(el("div", "card", body));
@@ -260,7 +292,14 @@
   function renderList() {
     optionList.textContent = "";
     suggestions.forEach((suggestion, i) => {
-      const option = el("li", null, suggestion.text);
+      // Every row names its jurisdiction, not only the ones from outside: a
+      // list where some rows are labelled and some are bare leaves the reader
+      // to work out that bare means answerable. "city" is load-bearing --
+      // Grand Rapids Township is a real, different place next door. Same rule
+      // as the map page's type-ahead.
+      const option = el("li", null, suggestion.text,
+        el("span", suggestion.outside ? "opt-where opt-outside" : "opt-where",
+           ` in ${suggestion.outside ? placeList(suggestion.outside) : GR_CITY}`));
       option.id = `opt-${i}`;
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", i === active ? "true" : "false");
@@ -284,10 +323,52 @@
       : matches.filter((street) => resolve(street, number))
                .slice(0, MAX_SUGGESTIONS)
                .map((street) => ({ text: `${number} ${street}`, street, number }));
+    suggestions = suggestions.concat(outsideMatches(rest, number, suggestions))
+                             .slice(0, MAX_SUGGESTIONS);
 
     active = -1;
     renderList();
     say(suggestions.length ? "" : notFoundHint(number, matches.length));
+  }
+
+  // More than half of all Grand Rapids mailing addresses are outside the city
+  // limits. Refusing to list those streets meant a person who typed their own
+  // address correctly got "no address found", which reads as a broken tool
+  // rather than an honest limit. They are offered last, filling only what the
+  // city's own matches leave, and labelled with where they actually are.
+  const outsideMatches = (rest, number, already) => {
+    if (!neighbours || !rest || rest.length < 2) return [];
+    const have = new Set(already.map((s) => s.street));
+    return Object.keys(neighbours)
+      .filter((name) => !have.has(name) && name.startsWith(rest))
+      .sort()
+      .slice(0, MAX_SUGGESTIONS)
+      .map((street) => ({
+        text: number === null ? street : `${number} ${street}`,
+        street, number, outside: neighbours[street] || [],
+      }));
+  };
+
+  const GR_CITY = "Grand Rapids city";
+
+  const placeList = (where) =>
+    where.length === 1 ? where[0]
+      : `${where.slice(0, -1).join(", ")} or ${where[where.length - 1]}`;
+
+  // Picking one is an answer, not a rejection: which jurisdiction it is in,
+  // and where to go instead. The address stays in the box, because it is
+  // right.
+  function renderOutside(picked) {
+    const where = placeList(picked.outside);
+    clearResult();
+    resultBox.append(el("div", "card", el("div", "card-body",
+      el("div", "lead", "Address: ", el("span", "addr-quote", cased(picked.text))),
+      advisory("outside",
+        `This address is in ${where}, not the City of Grand Rapids, so this ` +
+        "page cannot say where you vote. A Grand Rapids mailing address does " +
+        `not always mean you live in the city. Your clerk is the one for ${where}.`),
+      el("div", "ev-note", "The Michigan Voter Information Center at " +
+        "mvic.sos.state.mi.us has the polling place for any Michigan address."))));
   }
 
   const notFoundHint = (number, streetHits) => {
@@ -301,17 +382,23 @@
   function choose(index) {
     const picked = suggestions[index];
     if (!picked) return;
+    if (picked.outside) {
+      input.value = cased(picked.text);
+      closeList();
+      renderOutside(picked);
+      return;
+    }
 
     // A street on its own is half an address: put it in the box and wait.
     if (picked.number == null) {
-      input.value = `${picked.street} `;
+      input.value = `${cased(picked.street)} `;
       closeList();
       say("Now add the house number.");
       input.focus();
       return;
     }
 
-    input.value = picked.text;
+    input.value = cased(picked.text);
     closeList();
     clearResult();
     const found = resolve(picked.street, picked.number);
@@ -391,13 +478,29 @@
   // has not closed. Returns an empty array otherwise, so render can spread it
   // without a conditional. Once the window passes this goes quiet on its own,
   // with no edit to make and nothing to remember.
+  // The clerk's own dates and sites when the file is about THIS election, the
+  // calendar's otherwise. gr-clerk.json names the election it describes, and
+  // that is checked rather than assumed: a file about a finished election
+  // must not supply dates for the next one.
+  const clerkWindow = () => {
+    if (!clerk || !clerk.early_voting || !election ||
+        clerk.election !== election.date) return null;
+    return {
+      early_voting_from: clerk.early_voting.from,
+      early_voting_to: clerk.early_voting.to,
+      early_voting_sites: clerk.early_voting_sites || [],
+      early_voting_hours: null,
+    };
+  };
+
   function earlyVoting(uncertain) {
     if (!election) return [];
+    const source = clerkWindow() || election;
     const { early_voting_from: from, early_voting_to: to,
-            early_voting_sites: sites, early_voting_hours: hours } = election;
+            early_voting_sites: sites, early_voting_hours: hours } = source;
     if (!(sites || []).length) return [];
 
-    const state = Elections.windowState(election);
+    const state = Elections.windowState(source);
     if (state === "none" || state === "closed") return [];
     const open = state === "open";
 
@@ -412,9 +515,13 @@
     }
 
     // The date carries the weight here, so it is the part set in bold.
+    // The heading says what this is; the dates say when, underneath it. Run
+    // together on one line -- "Vote early, Tuesday, October 20, 2026 through
+    // Sunday, November 1, 2026" -- the label was lost inside its own subject.
+    parts.push(el("div", "lead-2 sec-head", "Vote early"));
     parts.push(open
-      ? el("div", "lead-2", "Vote early, through ", el("strong", "when", Elections.withWeekday(to)))
-      : el("div", "lead-2", "Vote early, ", el("strong", "when", Elections.withWeekday(from)),
+      ? el("div", "sec-sub", "Through ", el("strong", "when", Elections.withWeekday(to)))
+      : el("div", "sec-sub", el("strong", "when", Elections.withWeekday(from)),
            " through ", el("strong", "when", Elections.withWeekday(to))));
     parts.push(el("div", "ev-note",
       "Any Grand Rapids voter may use any of these, whatever precinct they are in."));
@@ -438,7 +545,57 @@
       parts.push(table);
     }
 
-    return [el("div", "ev-block", ...parts)];
+    return [el("div", "ev-block ev-early", ...parts)];
+  }
+
+  // Every drop box, with a directions link each. No "nearest": this page does
+  // no geocoding and cannot honestly rank them by distance, so it lists them
+  // and lets the reader pick the one they know.
+  function dropBoxes() {
+    const boxes = (clerk && clerk.drop_boxes) || [];
+    if (!boxes.length || !election || clerk.election !== election.date) return [];
+
+    const parts = [el("div", "lead-2 sec-head", "Drop off an absentee ballot")];
+    // A box is only useful once there is a ballot to put in it. Michigan
+    // sends absentee ballots 40 days before an election, and a returned
+    // ballot has to be in hand when the polls close.
+    const start = Elections.dayStart(election.date);
+    start.setDate(start.getDate() - 40);
+    const from = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}` +
+                 `-${String(start.getDate()).padStart(2, "0")}`;
+    parts.push(el("div", "sec-sub",
+      Elections.todayISO() < from
+        ? el("span", null, el("strong", "when", Elections.monthDay(from)),
+             " through ", el("strong", "when", Elections.monthDay(election.date)))
+        : el("span", null, "Through ",
+             el("strong", "when", Elections.monthDay(election.date)))));
+    const odd = boxes.filter((b) => !/^24\/7$/.test(b.hours || "")).length;
+    parts.push(el("div", "ev-note",
+      (Elections.todayISO() < from
+        ? `Ballots are mailed from ${Elections.monthDay(from)}, and boxes ` +
+          "accept them until the polls close on election day. "
+        : "Return it by the time the polls close on election day. ") +
+      // Not our claim: MCL 168.761d requires the clerk to monitor each box.
+      "Drop boxes are monitored by video surveillance, which Michigan law " +
+      "requires." +
+      (odd ? ` Most are accessible 24/7; ${odd === 1 ? "one is not, and its" : `${odd} are not, and their`}` +
+             " hours are listed with it."
+           : " They are accessible 24/7.")));
+
+    for (const box of boxes) {
+      parts.push(locationRow({
+        name: box.name || box.address || "Drop box",
+        address: box.address || "Inside City Hall",
+        // Hours per row ONLY where they differ from the usual 24/7. Eleven
+        // identical lines said nothing; the one different line is the whole
+        // point -- the City Hall box is weekdays 8 to 5.
+        entrance_note: [box.note,
+                        /^24\/7$/.test(box.hours || "") || !box.hours
+                          ? null : `Open hours: ${box.hours}`]
+          .filter(Boolean).join(" \u00b7 "),
+      }, "ev-site"));
+    }
+    return [el("div", "ev-block ev-boxes", ...parts)];
   }
 
   // ---- clicks outside the suggestion list close it ------------------------
@@ -453,11 +610,18 @@
     input.disabled = true;
     say("Loading...");
     try {
-      const [addresses, places, calendar] = await Promise.all([
+      const optional = (url) => getJSON(url).catch(() => null);
+      const [addresses, places, calendar, neighbourData, clerkData] = await Promise.all([
         getJSON("../data/addresses.json"),
         getJSON("../data/polling.json"),
         getJSON("../data/elections.json"),
+        // Both optional. A copy of this page hosted without them still
+        // answers the question it exists to answer; it just answers less.
+        optional("../data/neighbors.json"),
+        optional("../data/gr-clerk.json"),
       ]);
+      neighbours = (neighbourData && neighbourData.streets) || null;
+      clerk = clerkData || null;
 
       streets = addresses.streets;
       streetNames = Object.keys(streets);

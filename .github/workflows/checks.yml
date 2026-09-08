@@ -5,7 +5,7 @@
 # were run by whoever remembered. This is the step that makes remembering
 # unnecessary, and gives branch protection something real to require.
 #
-# Five suites, cheapest first, so an obvious break fails in seconds rather
+# Seven suites, cheapest first, so an obvious break fails in seconds rather
 # than after a browser download:
 #
 #   test_display_case.mjs         display casing, over the real corpus
@@ -13,6 +13,7 @@
 #   audit_routes.mjs              859 real trips, mechanically checked -- the one
 #                                 that matters, per the README, and only ~15s
 #   test_page.mjs                 the page in a real browser at three widths
+#   test_simple_page.mjs          /simple in a real browser at three widths
 #   test_early_voting_states.mjs  the four early voting states, from a fixture
 #   test_check_links.mjs          what the link checker makes of a response
 #
@@ -77,6 +78,12 @@ jobs:
 
       - name: The page in a browser
         run: node test_page.mjs
+
+      # The light version, which answers the same question from the same files
+      # and had no browser test at all until now. Its own file rather than
+      # more of test_page.mjs: different page, different failures.
+      - name: The /simple page in a browser
+        run: node test_simple_page.mjs
 
       # Four early voting states, only one of which the committed data can
       # reach on any given day, so this serves its own dated fixture.

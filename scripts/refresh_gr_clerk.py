@@ -32,9 +32,40 @@ import sys
 import urllib.request
 
 from archive import snapshot_or_note
+from sources import register
 
 URL = ("https://www.grandrapidsmi.gov/departments/clerks-office/elections/"
        "current-election-information/")
+SOURCE_ID = "gr-clerk-current-election"
+MVIC_ID = "mvic-voter-lookup"
+MVIC_URL = "https://mvic.sos.state.mi.us/"
+
+# Corrections from a source we cannot read automatically.
+#
+# The clerk's page describes the City Hall boxes in a sentence -- "available
+# during City Hall open hours on the Monroe and Calder Plaza levels" -- with
+# no address, so the scrape produces a location nobody can be routed to and an
+# hours string nobody can act on. The Michigan Voter Information Center, which
+# is fed from the Qualified Voter File, gives the same box as 300 Monroe NW,
+# Monroe lobby and plaza level, Monday to Friday 8am to 5pm.
+#
+# MVIC sits behind a bot challenge and this project does not drive one, so
+# that reading was done by hand, in a browser, on the date below. It is here
+# rather than hand-edited into the output because the output is generated: an
+# edit there would vanish on the next run, and the reason for it with it.
+#
+# Matched on the clerk's own name for the row, so if the clerk starts
+# publishing an address the override stops matching and their version wins.
+MVIC_READ = "2026-09-08"
+OVERRIDES = {
+    "City Hall": {
+        "name": "City Hall",
+        "address": "300 Monroe NW",
+        "note": "Monroe lobby and plaza level",
+        "hours": "Mon-Fri, 8am to 5pm",
+        "src": MVIC_ID,
+    },
+}
 UA = {"User-Agent": "vote-gr/1.0 (+https://github.com/DT616/votegr)"}
 OUT = pathlib.Path(__file__).resolve().parent.parent / "site" / "data" / "gr-clerk.json"
 
@@ -99,7 +130,8 @@ def main():
         if match:
             sites.append({"name": match.group(1).strip(),
                           "address": match.group(2).strip(),
-                          "entrance_note": (match.group(3) or "").strip() or None})
+                          "entrance_note": (match.group(3) or "").strip() or None,
+                          "src": SOURCE_ID})
 
     # Dated, one day per pair of lines: "Tuesday, October 20" / "11 am - 7 pm".
     # Dated days, taken only while they run CONSECUTIVELY from the first. The
@@ -135,34 +167,73 @@ def main():
             # written as prose and with hours instead of an address.
             if "City Hall" in line:
                 boxes.append({"name": "City Hall", "address": None,
-                              "note": line, "hours": "City Hall open hours"})
+                              "note": line, "hours": "City Hall open hours",
+                              "src": SOURCE_ID})
             continue
         match = BOX.match(line)
         if match:
             boxes.append({"name": match.group(1).strip(),
                           "address": match.group(2).strip(),
                           "note": (match.group(3) or "").strip() or None,
-                          "hours": "24/7"})
+                          "hours": "24/7", "src": SOURCE_ID})
         elif re.match(r"^\d+\s", line):
             boxes.append({"name": None, "address": line, "note": None,
-                          "hours": "24/7"})
+                          "hours": "24/7", "src": SOURCE_ID})
         elif boxes and boxes[-1].get("note") is None and boxes[-1]["name"] is None:
             boxes[-1]["note"] = line          # the description on its own line
+
+    # Apply the hand-read corrections, and only to rows the clerk still
+    # publishes the same way.
+    corrected = 0
+    for i, box in enumerate(boxes):
+        fix = OVERRIDES.get(box.get("name"))
+        if fix and not box.get("address"):
+            boxes[i] = dict(box, **fix)
+            corrected += 1
 
     if len(sites) < MIN_SITES or len(boxes) < MIN_BOXES:
         sys.exit(f"REFUSE: parsed {len(sites)} sites and {len(boxes)} drop "
                  f"boxes; the page has been rewritten")
 
+    # The source goes in the registry; the file keeps what is true of the file.
+    snapshot = snapshot_or_note(URL)
+    if corrected:
+        register(MVIC_ID,
+                 publisher="Michigan Voter Information Center, Bureau of Elections",
+                 url=MVIC_URL,
+                 licence="Public record of the State of Michigan.",
+                 retrieved=MVIC_READ,
+                 covers="Drop box addresses and hours the city clerk publishes "
+                        "only as prose",
+                 carried=False,
+                 note="Read by hand from a voter lookup on the date above, and "
+                      "NOT tracked: MVIC is behind a bot challenge, this "
+                      "project does not drive one, and nothing here will "
+                      "notice when it changes. Re-read it by hand whenever the "
+                      "clerk's page changes. It is recorded because the fact "
+                      "came from here and attributing it to the clerk would be "
+                      "false.")
+
+    src = register(
+        SOURCE_ID,
+        publisher="City of Grand Rapids, City Clerk's Office",
+        url=URL,
+        licence="Public record of the City of Grand Rapids.",
+        archived=snapshot,
+        covers="Grand Rapids early voting dates, sites and absentee drop boxes",
+        note="The source of record for the city. The county's pages are the "
+             "cross-check, not the other way round. GAP: the City Hall drop "
+             "box appears here only as prose, with no address and no hours, "
+             "so it cannot be routed to or acted on from this page alone. "
+             "Worth asking the clerk to publish it the way the other ten are.")
+
     document = {
+        "src": src,
         "provenance": {
             "description": "Grand Rapids early voting dates, sites and absentee "
-                           "drop boxes, from the City Clerk. The source of "
-                           "record for the city; the county's pages are the "
-                           "cross-check, not the other way round.",
-            "source": "City of Grand Rapids, City Clerk's Office",
-            "source_url": URL,
+                           "drop boxes, from the City Clerk.",
+            "source_registry": "sources.json",
             "generated": datetime.date.today().isoformat(),
-            "licence": "Public record of the City of Grand Rapids.",
             "how_to_update": "Run refresh_gr_clerk.py AND READ WHAT IT WROTE. "
                              "This is a prose page maintained by hand and it "
                              "carries copy errors: under the November heading "
@@ -174,7 +245,6 @@ def main():
                                "Grand Rapids opens earlier than that, so the "
                                "window is read from this page and never "
                                "computed from the statute.",
-            **snapshot_or_note(URL),
         },
         "election": election,
         "early_voting": {"from": dates[0], "to": dates[-1], "days": days},
@@ -188,7 +258,8 @@ def main():
     for site in sites:
         print(f"  {site['name']} - {site['address']}"
               f"{'  (' + site['entrance_note'] + ')' if site['entrance_note'] else ''}")
-    print(f"{len(boxes)} drop boxes")
+    print(f"{len(boxes)} drop boxes"
+          + (f", {corrected} corrected from MVIC" if corrected else ""))
     print(f"wrote {OUT} ({OUT.stat().st_size/1024:.0f} KB)")
 
 

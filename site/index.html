@@ -64,10 +64,12 @@
       </div>
       <button type="button" class="pin-btn" id="pinBtn" aria-pressed="false"
               title="Route from a spot on the map instead">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 21s-7-5.1-7-11a7 7 0 0 1 14 0c0 5.9-7 11-7 11z"/>
-          <circle cx="12" cy="10" r="2.6"/>
+        <!-- The same pin the type-ahead puts on every suggestion (PIN_SVG in
+             autocomplete.js). Filled, because a 2px outline at this size reads
+             as a circle rather than a pin. -->
+        <svg class="pin-glyph" viewBox="0 0 24 24" fill="currentColor"
+             fill-rule="evenodd" aria-hidden="true">
+          <path d="M12 2c-3.87 0-7 3.13-7 7 0 5.25 6.3 12.3 6.57 12.6a.58.58 0 0 0 .86 0C12.7 21.3 19 14.25 19 9c0-3.87-3.13-7-7-7zM12 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/>
         </svg>
       </button>
       <button type="button" class="pin-btn reset-btn" id="resetBtn" hidden
@@ -143,6 +145,17 @@
        target="_blank" rel="noopener">GitHub</a>
   </nav>
 </footer>
+<div class="modal-wrap" id="placeModal" hidden>
+  <div class="modal-veil" data-close></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="placeTitle">
+    <div class="modal-head">
+      <h2 id="placeTitle">Locations</h2>
+      <button type="button" class="modal-x" data-close aria-label="Close">&#215;</button>
+    </div>
+    <div class="modal-body" id="placeModalBody"></div>
+  </div>
+</div>
+
 <div class="modal-wrap" id="aboutModal" hidden>
   <div class="modal-veil" data-close></div>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
@@ -169,6 +182,24 @@
         OpenStreetMap for projects like this to use. That sync happens when the
         site is built, not while you are reading it, so the list is as current
         as the last publish rather than as current as this minute.</p>
+
+      <h3>What this does not hide</h3>
+      <p class="body">A route around the plate readers is a route around the
+        ones volunteers have mapped, and nothing more. Newly installed and
+        covert readers are not in the data, a camera watches a corridor rather
+        than a point, and the roads themselves are watched in ways no list
+        covers.</p>
+      <p class="body">The drop boxes are the plainest case, and worth saying
+        outright on a page that argues for privacy: <strong>every absentee
+        ballot drop box is under video surveillance</strong>. That is not an
+        accident of where they sit, it is
+        <a href="https://www.legislature.mi.gov/Laws/MCL?objectName=mcl-168-761d"
+           target="_blank" rel="noopener">MCL 168.761d</a>, which requires the
+        clerk to monitor each one. The statute says video monitoring does not
+        include storing the video, but do not read that as a promise about any
+        particular box. Voting in person, voting early and posting a ballot are
+        all watched at the far end; what this page can keep private is the
+        lookup and the journey.</p>
 
       <h3>Why make this?</h3>
       <ol class="body why-list">

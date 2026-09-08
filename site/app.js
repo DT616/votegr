@@ -18,6 +18,14 @@
   var neighbors = null, precincts = null;
   var pinArmed = false;
   var ac = null;            // the suggestion list, from autocomplete.js
+  var clerk = null;         // gr-clerk.json: early voting sites and drop boxes
+  var sources = {};         // sources.json: every upstream this site reads, by id
+  // Which place, within a kind, the reader picked from its list. The nearest
+  // is only the default: someone drops a ballot on the way to somewhere else,
+  // and the box outside the library they were visiting beats the one four
+  // streets closer to home. Reset whenever a new address is looked up, since
+  // "the third nearest" means something different from a different doorstep.
+  var chosen = { dropbox: 0, early: 0 };
   var routes = null, selected = 'avoid';
   var originArrow = null;   // the blue you-are-here arrow; steps advance it
   var GR = [42.9634, -85.6681];
@@ -271,6 +279,236 @@
   // know and cost a line of width on a phone. Stripped when drawing only.
   // The stored value keeps its ZIP: /simple builds "..., Grand Rapids, MI
   // 49504" from it to hand OpenStreetMap something it can geocode.
+  // The full list of somewhere-to-go, for either kind, in a panel rather than
+  // inline. Eleven addresses do not belong under the one address the row is
+  // about, and inline they buried it.
+  //
+  // It also has to live OUTSIDE the row. Nested inside it, a click on an entry
+  // bubbled to the cell's own handler, which re-routed to the nearest place a
+  // heartbeat after routing to the chosen one -- so picking one appeared to
+  // redraw the map and change nothing.
+  //
+  // Picking sets the choice for that kind, which the card then shows and the
+  // router then drives to. The two used to disagree: the map went to the
+  // library you picked while the card still named the nearest.
+  var LIST_TITLES = {
+    dropbox: 'Ballot drop boxes in Grand Rapids city',
+    early: 'Early voting sites in Grand Rapids city',
+  };
+
+  function wirePlaceLists(r) {
+    var wrap = $('placeModal'), body = $('placeModalBody'), title = $('placeTitle');
+    if (!wrap || !body) return;
+    var opts = destinations(r);
+
+    function close() { wrap.hidden = true; }
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !wrap.hidden) close();
+    });
+
+    ['dropbox', 'early'].forEach(function (kind) {
+      var btn = $(kind === 'dropbox' ? 'boxListBtn' : 'evListBtn');
+      var opt = opts.filter(function (o) { return o.kind === kind; })[0];
+      if (!btn || !opt) return;
+      btn.onclick = function () {
+        title.textContent = LIST_TITLES[kind];
+        body.innerHTML = placeListHtml(kind, opt);
+        wrap.hidden = false;
+        var x = wrap.querySelector('.modal-x');
+        if (x) x.focus();
+      };
+    });
+
+    wrap.onclick = function (e) {
+      if (e.target.closest('[data-close]')) { close(); return; }
+      var li = e.target.closest('li[data-pick]');
+      if (!li || !current) return;
+      chosen[li.dataset.kind] = Number(li.dataset.pick);
+      close();
+      // Redraw the card with the chosen place, then drive to it.
+      show(current, li.dataset.kind);
+    };
+    body.onkeydown = function (e) {
+      var li = e.target.closest && e.target.closest('li[data-pick]');
+      if (li && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); li.click(); }
+    };
+  }
+
+  function placeListHtml(kind, opt) {
+    var html = '<ul class="box-list">';
+    opt.all.forEach(function (b, i) {
+      html += '<li data-pick="' + i + '" data-kind="' + kind + '"' +
+        ' role="button" tabindex="0" title="Get directions here"' +
+        (i === chosen[kind] ? ' class="is-chosen"' : '') + '>' +
+        '<span class="bx-name">' + esc(boxLabel(b)) +
+        (b.metres != null
+          ? '<span class="bx-dist">' + RoutePanel.fmtMi(b.metres) + '</span>'
+          : '') + '</span>' +
+        '<span class="bx-addr">' + esc(addressForDisplay(b.address)) + '</span>' +
+        (b.entrance_note || b.note
+          ? '<span class="bx-where">Location: ' +
+            esc(sentenceCase(b.entrance_note || b.note)) + '</span>' : '') +
+        // "Open 24/7" is a whole sentence; a bare "Mon-Fri, 8am to 5pm" is not,
+        // and next to an address it can be read as the hours of the building
+        // rather than of the box. The label says which.
+        (b.hours
+          ? '<span class="' + (ALWAYS_OPEN.test(b.hours) ? 'bx-hours' : 'bx-hours-odd') +
+            '">' + (ALWAYS_OPEN.test(b.hours) ? 'Open 24/7'
+                                              : 'Open hours: ' + esc(b.hours)) + '</span>'
+          : '') +
+
+        '</li>';
+    });
+    // The City Hall boxes are real and cannot be driven to as an address, so
+    // they are listed and plainly not offered as a destination.
+    if (kind === 'dropbox') {
+      ((clerk && clerk.unrouted) || []).forEach(function (b) {
+        html += '<li class="bx-noroute"><span class="bx-name">' +
+          esc(boxLabel(b)) + '</span><span class="bx-where">' +
+          esc(sentenceCase(b.note || '')) + '</span>' +
+          '<span class="bx-addr">Inside the building, so there is no address ' +
+          'to route to.</span></li>';
+      });
+    }
+    // No caption under the list. Every row already carries its own distance,
+    // and every row is visibly a button, so a paragraph explaining the order
+    // and the click was telling the reader what they could see.
+    return html + '</ul>' + provenanceHtml();
+  }
+
+  // Where this list came from, said in the panel that shows it rather than
+  // only in a file nobody opens. These addresses move between elections and
+  // are typed by hand at the other end, so a reader deciding whether to trust
+  // one is entitled to see the source, the date it was read, and -- when the
+  // archive took a copy -- the page as it stood that day.
+  // Resolved through sources.json rather than read out of the data file. A
+  // record says which source it came from -- "src": "gr-clerk-current-election"
+  // -- and the registry says who that is, what licence it carries, when it was
+  // read and where the archive copy sits. So a list whose entries come from
+  // two places can credit both, without either file repeating a publisher's
+  // name on every row.
+  function provenanceHtml(opt) {
+    var ids = [], seen = {};
+    ((opt && opt.all) || []).concat([clerk || {}]).forEach(function (r) {
+      var id = r && r.src;
+      if (id && sources[id] && !seen[id]) { seen[id] = 1; ids.push(id); }
+    });
+    if (!ids.length) return '';
+
+    return '<p class="bx-prov">' + ids.map(function (id) {
+      var s = sources[id];
+      var bits = ['Source: <a href="' + esc(s.url) + '" target="_blank" ' +
+        'rel="noopener">' + esc(s.publisher) + '</a>'];
+      if (s.retrieved) bits.push('read ' + esc(Elections.monthDay(s.retrieved)));
+      if (s.archived) {
+        bits.push('<a href="' + esc(s.archived) + '" target="_blank" ' +
+          'rel="noopener">archived copy</a>');
+      }
+      return bits.join(' \u00b7 ') +
+        (s.archive_note ? '<br>' + esc(s.archive_note) : '');
+    }).join('<br>') + '</p>';
+  }
+
+  // The right-hand cell of every row: what it is called, when it applies, and
+  // -- when that window has not opened or has closed -- a line saying so. One
+  // shape for all three rows, so a reader compares them down the column
+  // instead of learning a new layout per row.
+  function whenCell(kind, state, extra) {
+    return '<div class="vi-when vi-when-' + kind + '">' +
+      '<div class="vi-lbl' + (state.live ? ' live' : '') + '">' +
+      esc(state.label) + '</div>' +
+      '<div class="vi-val">' + esc(state.status) + '</div>' +
+      (state.note ? '<div class="pp-note">' + esc(state.note) + '</div>' : '') +
+      (extra || '') + '</div>';
+  }
+
+  // A drop box is only useful once there is a ballot to put in it, and the
+  // dates for that are statute, not something a clerk publishes per box.
+  // Michigan sends absentee ballots to voters 40 days before an election, and
+  // a returned ballot must be in hand by the time the polls close. So a box
+  // standing open in September accepts nothing, and the page should say that
+  // rather than list an address as though it were ready.
+  var ABSENTEE_LEAD_DAYS = 40;
+
+  function absenteeState() {
+    if (!activeEl) return { label: 'Ballot drop box', status: 'No election scheduled' };
+    var start = Elections.dayStart(activeEl.date);
+    start.setDate(start.getDate() - ABSENTEE_LEAD_DAYS);
+    var from = start.getFullYear() + '-' +
+      String(start.getMonth() + 1).padStart(2, '0') + '-' +
+      String(start.getDate()).padStart(2, '0');
+    var range = Elections.dayMonth(from) + ' to ' + Elections.dayMonth(activeEl.date);
+    var today = Elections.todayISO();
+    if (today < from) {
+      return { label: 'Absentee voting upcoming', status: range, live: true,
+               note: 'Absentee ballots are mailed from ' +
+                     Elections.monthDay(from) + '. Boxes accept them from then '
+                     + 'until the polls close on election day. ' + boxAccess() };
+    }
+    if (today > activeEl.date) {
+      return { label: 'Absentee voting closed', status: range };
+    }
+    return { label: 'Absentee voting open', status: range, live: true,
+             note: 'A returned ballot has to be in the clerk\'s hands by the '
+                   + 'time the polls close on election day. ' + boxAccess() };
+  }
+
+  // Today IS the day. The three ways to vote stop being a menu at that point:
+  // early voting has closed, a drop box is a race against the poll close, and
+  // the polling place is simply the answer. So the card leads with it and the
+  // directions go there unless the reader asks otherwise.
+  function isElectionDay() {
+    return !!activeEl && Elections.todayISO() === activeEl.date;
+  }
+
+  // "bike rack" -> "Bike rack", and "Across from Calder Plaza" left alone.
+  // Only the first letter moves: the rest may hold names the clerk cased on
+  // purpose ("Monroe and Calder Plaza levels").
+  function sentenceCase(s) {
+    s = String(s || '').trim();
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+  }
+
+  // "Open 24/7" is what a shop is. A drop box is a slot in a wall, reachable
+  // whenever you are awake, and that is a different promise -- especially for
+  // someone deciding whether a late-evening trip is worth making.
+  // The card names what it is showing. Once the reader picks something other
+  // than the nearest, "nearest to you" is no longer true of it, and a label
+  // that keeps saying so is the card lying about its own contents.
+  function placeLabel(kind, dflt) {
+    return chosen[kind] ? 'Custom location selected' : dflt;
+  }
+
+  function customClass(kind) { return chosen[kind] ? ' is-custom' : ''; }
+
+  // True of every street box, so it is said once about all of them under the
+  // dates rather than eleven times down a column. The video monitoring is not
+  // our claim: MCL 168.761d requires the clerk to monitor each box. Worth
+  // saying either way -- someone routing around plate readers is entitled to
+  // know the destination is watched.
+  // Monitoring is true of every box: MCL 168.761d requires the clerk to
+  // monitor each one. Access is NOT -- the box in the City Hall lobby is open
+  // weekdays, 8 to 5, and somebody driving there on a Saturday with a ballot
+  // finds a locked building. So the sentence claims only what holds for all of
+  // them, and the rows carry hours wherever they differ.
+  function boxAccess() {
+    var odd = ((clerk && clerk.boxes) || []).filter(function (b) {
+      return !ALWAYS_OPEN.test(b.hours || '');
+    }).length;
+    return 'Drop boxes are monitored by video surveillance, which Michigan law ' +
+      'requires.' +
+      (odd ? ' Most are accessible 24/7; ' + (odd === 1 ? 'one is not, and its'
+                                                        : odd + ' are not, and their') +
+             ' hours are on the list.'
+           : ' They are accessible 24/7.');
+  }
+
+  var ALWAYS_OPEN = /^24\/7$/;
+
+  function boxLabel(box) {
+    return displayCase(box.name || box.address || 'Drop box');
+  }
+
   function addressForDisplay(a) {
     return displayCase(String(a || '').replace(/,\s*\d{5}(-\d{4})?\s*$/, ''));
   }
@@ -483,7 +721,7 @@
   function initInput() {
     ac = Autocomplete.attach({
       input: $('addr'),
-      suggest: function (text, limit) { return P.suggest(text, limit); },
+      suggest: suggestWithNeighbours,
       hasNumber: function (text) { return P.parseTyped(text).number != null; },
       onChoose: choose,
       onMiss: function (text) { showError(missExplanation(text)); }
@@ -504,11 +742,13 @@
     Promise.all([
       loadJson('graph'), loadJson('cameras'), loadJson('addresses'), loadJson('polling'),
       loadJson('boundary', true), loadJson('elections', true), loadJson('landcover', true),
-      loadJson('neighbors', true), loadJson('precincts', true)
+      loadJson('neighbors', true), loadJson('precincts', true),
+      loadJson('gr-clerk', true), loadJson('sources', true)
     ]).then(function (res) {
       var graphData = res[0], cameraData = res[1], addresses = res[2], polling = res[3];
       var boundary = res[4], calendar = res[5], landcover = res[6];
-      var neighborData = res[7], precinctData = res[8];
+      var neighborData = res[7], precinctData = res[8], clerkData = res[9];
+      var sourceData = res[10];
 
       graph = new ALPRRouter.Graph(graphData);
       cachedCameras = cameraData.cameras;
@@ -535,6 +775,8 @@
       electionDayHours = (calendar && calendar.election_day_hours) || null;
       electionList = (calendar && calendar.elections) || [];
       activeEl = Elections.next(electionList);
+      sources = (sourceData && sourceData.sources) || {};
+      clerk = placeCoords(clerkData);
       renderElectionBanner();
       startCountdown();
       graph.assignCameras(cameras);
@@ -749,6 +991,13 @@
   function choose(item) {
     if (!item) return;
     ac.close();
+    if (item.kind === 'outside') {
+      $('addr').value = (item.number != null ? item.number + ' ' : '') +
+        displayCase(item.street);
+      $('addr').blur();
+      chooseOutside(item);
+      return;
+    }
     var input = $('addr');
     if (item.number == null) {
       // a street was picked: keep any number already typed and reopen
@@ -758,7 +1007,12 @@
       ac.refresh();
       return;
     }
-    input.value = item.number + ' ' + item.street;
+    // The box shows the address the way it is written, not the way the index
+    // stores it. ALL CAPS is how the parcel file happens to hold a street, not
+    // how anyone writes one, and the lookup uppercases whatever it is given --
+    // so nothing downstream cares and the reader gets their own address back.
+    input.value = item.number + ' ' + displayCase(item.street);
+    resetChoices();
     var r = P.lookup(input.value);
     if (r.error) {
       showError('Could not resolve ' + esc(input.value) + '.');
@@ -775,6 +1029,62 @@
     // above deliberately keeps focus: that address is not finished yet.
     input.blur();
     show(r);
+  }
+
+  // A street in Wyoming or Kentwood is a real street that a person with a
+  // Grand Rapids mailing address may well live on, and typing it used to end
+  // in an error only once they pressed Enter. It is now offered in the list
+  // like any other street, labelled with the jurisdiction it is actually in,
+  // so the answer arrives at the moment of picking rather than after a
+  // rejection.
+  //
+  // These come last and only fill what the city's own suggestions leave. A
+  // city street is what this tool can answer, and one that matches should
+  // never be pushed down the list by a neighbour.
+  var GR_CITY = 'Grand Rapids city';
+
+  function suggestWithNeighbours(text, limit) {
+    var out = P.suggest(text, limit) || [];
+    // Say which jurisdiction EVERY suggestion is in, not only the ones from
+    // outside. A list where some rows are labelled and some are bare reads as
+    // "these are the odd ones"; a reader still has to know that the unlabelled
+    // ones are the answerable ones. "city" is not padding either -- Grand
+    // Rapids Township is a real, different place next door.
+    out.forEach(function (o) { if (!o.where) o.where = [GR_CITY]; });
+    if (out.length >= limit || !neighbors) return out;
+
+    var typed = P.parseTyped(text);
+    if (!typed.rest || typed.rest.length < 2) return out;
+    var have = {};
+    out.forEach(function (o) { have[o.street] = 1; });
+
+    var names = Object.keys(neighbors).filter(function (name) {
+      return !have[name] && name.indexOf(typed.rest) === 0;
+    }).sort();
+
+    for (var i = 0; i < names.length && out.length < limit; i++) {
+      var where = neighbors[names[i]] || [];
+      out.push({ street: names[i], number: typed.number, kind: 'outside',
+                 where: where });
+    }
+    return out;
+  }
+
+  // Picking one of those is an answer, not a failure: it says which
+  // jurisdiction the street is in and who to ask there. The address stays in
+  // the box, because it is a real address and the reader typed it correctly.
+  function chooseOutside(item) {
+    var where = item.where && item.where.length
+      ? (item.where.length === 1 ? esc(item.where[0])
+         : esc(item.where.slice(0, -1).join(', ')) + ' or ' +
+           esc(item.where[item.where.length - 1]))
+      : 'another jurisdiction';
+    setHint('');
+    showError('That address is in ' + where + ', not the City of Grand ' +
+      'Rapids, so this tool cannot say where you vote. A Grand Rapids mailing ' +
+      'address does not always mean you live in the city. Your clerk is the ' +
+      'one for ' + where + ', and the Michigan Voter Information Center at ' +
+      'mvic.sos.state.mi.us will have your polling place.');
   }
 
   // Most of the "Grand Rapids" postal area is not the City of Grand Rapids.
@@ -849,6 +1159,7 @@
         'belong to another clerk.');
       return;
     }
+    resetChoices();
     var pr = precinctAt(lat, lng);
     if (!pr) {
       showError('Could not place that spot in a precinct. Try dropping the ' +
@@ -871,7 +1182,7 @@
     routeLayer.clearLayers(); pinLayer.clearLayers();
   }
 
-  function show(r) {
+  function show(r, focusKind) {
     current = r;
     $('col').classList.add('has-result');
     revealMap();
@@ -895,75 +1206,126 @@
       '<div><div class="vi-lbl">Precinct</div>' +
       '<div class="vi-num">' + esc(r.precinct) + '</div></div></div>';
 
-    // --- early voting row -------------------------------------------------
-    // The site is named only while the window is genuinely open. ev can still
-    // come back empty then, because destinations() also wants sites with
-    // coordinates and an origin to measure from: with the window open and our
-    // site list short, the honest thing is to say so and name nothing rather
-    // than blame the calendar for a gap of our own. destinations() already
-    // ranks by distance from this origin, so the nearest is read back from it
-    // rather than sorted a second time here.
+    // Three ways to cast a ballot, in the order a voter can act on them:
+    // the drop box is open first and for longest, early voting comes next,
+    // and election day is the deadline. Every row reads the same way -- the
+    // place and its hours on the left, when it applies on the right -- so the
+    // three can be compared down a column instead of re-read one at a time.
+    // A row whose window has not opened, or has closed, says so where the
+    // dates are.
+    //
+    // Each is built into its own string rather than appended straight to the
+    // page, because on election day the order changes: see below.
+    var boxHtml = '', evHtml = '', pollHtml = '';
+
+    // --- absentee drop box ------------------------------------------------
+    // Returning an absentee ballot is the one trip here made entirely at a
+    // time of your own choosing, which makes it the one where a record of the
+    // journey is least excusable. It gets the same camera-aware routing as a
+    // trip to the polls.
+    var box = destinations(r).filter(function (o) { return o.kind === 'dropbox'; })[0];
+    if (box) {
+      boxHtml += '<div class="vi-where vi-dropbox' + customClass('dropbox') +
+        '" data-kind="dropbox">' +
+        '<div class="vi-lbl">' +
+        esc(placeLabel('dropbox', 'Ballot drop box nearest to you')) + '</div>' +
+        '<div class="pp-name">' + esc(boxLabel(box.place)) + '</div>' +
+        '<div class="pp-addr">' + esc(addressForDisplay(box.place.address)) +
+        (box.place.note
+          ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') +
+        (box.place.hours
+          ? (ALWAYS_OPEN.test(box.place.hours)
+              ? '<br>Open 24/7'
+              : '<br><strong class="bx-hours-odd">Open hours: ' +
+                esc(box.place.hours) + '</strong>')
+          : '') +
+        '</div>' +
+        '<button type="button" class="box-open" id="boxListBtn">' +
+        'Show all drop box locations</button>';
+      boxHtml += '</div>';
+
+      boxHtml += whenCell('dropbox', absenteeState(), '');
+    }
+
+    // --- early voting -----------------------------------------------------
     var evState = earlyVotingForBlock();
     if (evState) {
+      // ev can come back empty with a window published, because destinations()
+      // also wants sites with coordinates and an origin to measure from: the
+      // honest thing then is to give the dates and name nothing, rather than
+      // blame the calendar for a gap of our own. destinations() already ranks
+      // by distance from this origin, so the nearest is read back from it.
       var ev = evState.site
         ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
         : null;
-      // .vi-ev-site names this cell: both where-cells hold a .pp-name and
-      // nothing else told them apart.
-      if (ev) {
-        html += '<div class="vi-where vi-ev-site" data-kind="early">' +
-          '<div class="vi-lbl">Early Voting Site Nearest to You:</div>' +
-          '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
-          '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
-          '</div>';
-      }
-      html += '<div class="vi-when' + (ev ? '' : ' vi-full') + '">' +
-        '<div class="vi-lbl live">' + esc(evState.label) + '</div>' +
-        '<div class="vi-val">' + esc(evState.status) + '</div>' +
-        (ev ? evHoursHtml(activeEl) : '') +
+      evHtml += '<div class="vi-where vi-ev-site' + (ev ? customClass('early') : ' vi-full') + '"' +
+        (ev ? ' data-kind="early"' : '') + '>' +
+        '<div class="vi-lbl">' +
+        esc(placeLabel('early', 'Early voting site nearest to you')) + '</div>' +
+        (ev
+          ? '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
+            '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) +
+            (ev.place.entrance_note
+              ? '<br>Location: ' + esc(sentenceCase(ev.place.entrance_note)) : '') +
+            '</div>' +
+            (ev.all.length > 1
+              ? '<div class="pp-note">Early voting is not tied to your ' +
+                'precinct. Any Grand Rapids voter may use any of these ' +
+                ev.all.length + ' sites.</div>' +
+                '<button type="button" class="box-open" id="evListBtn">' +
+                'Show all my early voting site options</button>'
+              : '')
+          : '<div class="pp-addr">No site published yet.</div>') +
         '</div>';
+      evHtml += whenCell('early', { label: evState.label, status: evState.status,
+                                    live: true },
+                         ev ? evHoursHtml(activeEl) : '');
     }
 
-    // --- election day row -------------------------------------------------
-    // Where first, then when, matching the column order so the collapsed
-    // single column stacks the same way. With no upcoming election at all
-    // there is no when-cell, so the place spans the row.
-    html += '<div class="vi-where' + (activeEl ? '' : ' vi-full') +
+    // --- election day -----------------------------------------------------
+    pollHtml += '<div class="vi-where' + (activeEl ? '' : ' vi-full') +
       '" data-kind="polling"><div class="vi-lbl">Election day polling place</div>';
     if (place) {
       // The name and address ARE the show-on-map control: clicking the place
       // takes you to the place. A separate link said in four words what the
       // affordance can say in zero.
       var clickable = !!(place.lat && place.lng);
-      html += '<div' + (clickable
+      pollHtml += '<div' + (clickable
           ? ' class="pp-place" id="showPlaceBtn" role="button" tabindex="0"' +
             ' title="Show it on the map"'
           : '') + '>' +
         '<div class="pp-name">' + esc(displayCase(place.name)) + '</div>' +
         '<div class="pp-addr">' + esc(addressForDisplay(place.address)) +
-        (place.entrance_note ? '<br>' + esc(place.entrance_note) : '') + '</div>' +
+        (place.entrance_note
+          ? '<br>Location: ' + esc(sentenceCase(place.entrance_note)) : '') + '</div>' +
         '</div>';
       if (place.consolidated_with) {
-        html += '<div class="pp-note">Precinct ' + esc(r.precinct) + ' votes with precinct ' +
+        pollHtml += '<div class="pp-note">Precinct ' + esc(r.precinct) + ' votes with precinct ' +
           esc(place.consolidated_with) + ' this election' +
           (place.note ? ', because ' + esc(place.note).toLowerCase() : '') + '.</div>';
       }
     } else {
-      html += '<div class="err">No polling place on file for precinct ' + esc(r.precinct) + '.</div>';
+      pollHtml += '<div class="err">No polling place on file for precinct ' + esc(r.precinct) + '.</div>';
     }
-    html += '</div>';
+    pollHtml += '</div>';
 
     if (activeEl) {
-      html += '<div class="vi-when">' +
-        '<div class="vi-lbl">Election day</div>' +
-        '<div class="vi-val">' + esc(Elections.withWeekday(activeEl.date)) + '</div>' +
-        (electionDayHours && electionDayHours.open && electionDayHours.close
+      pollHtml += whenCell('polling',
+        { label: 'Election day', status: Elections.withWeekday(activeEl.date) },
+        electionDayHours && electionDayHours.open && electionDayHours.close
           ? '<div class="vi-hours"><span class="vi-hours-lbl">Hours:</span> ' +
             esc(Elections.shortTime(electionDayHours.open)) + ' to ' +
             esc(Elections.shortTime(electionDayHours.close)) + '</div>'
-          : '') +
-        '</div>';
+          : '');
     }
+
+    // Normally the order is the order a voter can act: the box is open first
+    // and for longest, then early voting, then the deadline. On the day of the
+    // election that argument inverts -- the deadline is now, and the polling
+    // place is the only one of the three that is not either shut or a race
+    // against the same clock -- so it moves to the top.
+    html += isElectionDay() ? pollHtml + boxHtml + evHtml
+                            : boxHtml + evHtml + pollHtml;
 
     html += '</div></div>';
     $('precinctInfo').innerHTML = html;
@@ -975,6 +1337,8 @@
     // Only when there is something to choose between. With a single
     // destination there is nothing to toggle, and the polling place keeps its
     // older job of framing itself on the map.
+    wirePlaceLists(r);
+
     var destCells = $('precinctInfo').querySelectorAll('[data-kind]');
     var multi = destinations(r).length > 1;
     Array.prototype.forEach.call(destCells, function (cell) {
@@ -1046,13 +1410,14 @@
       'checked against the precinct boundary.');
     if (r.edgeMetres !== Infinity && r.edgeMetres < 30) adv.push('This address is close ' +
       'to a precinct boundary, so the answer is less certain.');
-    if (r.ambiguousStreet) adv.push('Read as ' + esc(r.street) + '. Other streets also match what you typed.');
+    if (r.ambiguousStreet) adv.push('Read as ' + esc(displayCase(r.street)) +
+      '. Other streets also match what you typed.');
     // Last, because it is about the drive rather than the answer, and the
     // drive is what the reader goes to next.
     adv.push('Obey all traffic signs and laws.');
     $('advisory').innerHTML = '<div class="advisory">' + adv.join(' ') + '</div>';
 
-    routeTo(r);
+    routeTo(r, focusKind);
     // After routeTo, because the blocks it fills are hidden until then and a
     // hidden element has no offset to scroll to.
     scrollToResult('resultBlock');
@@ -1119,9 +1484,35 @@
   // which also wants a site list: with a window published and no sites the
   // window is still open and it is our data that is short, and saying nothing
   // about the dates would blame the calendar for a gap of our own.
+  // The clerk's published dates when we have them, the calendar's otherwise.
+  // ONE accessor, because the answer block, the footer bar and the
+  // destination list each ask this question and a page that disagrees with
+  // itself about whether early voting is open is worse than one that says
+  // nothing.
+  function evWindow() {
+    if (clerkForThisElection()) {
+      return { early_voting_from: clerk.early_voting.from,
+               early_voting_to: clerk.early_voting.to,
+               early_voting_sites: clerk.sites };
+    }
+    return activeEl;
+  }
+
+  // The clerk's file is only about the election it names. gr-clerk.json says
+  // which one -- "election": "2026-11-03" -- and that has to be checked
+  // rather than assumed, because the page reads it beside a calendar that
+  // moves on its own. A file describing a finished election, or a calendar
+  // that has rolled to the next one, must not silently supply dates for an
+  // election it was never about. That is the same failure the county's early
+  // voting page has right now, in reverse.
+  function clerkForThisElection() {
+    return !!(clerk && clerk.early_voting && activeEl &&
+              clerk.election === activeEl.date);
+  }
+
   function earlyVotingStatus() {
-    var to = activeEl.early_voting_to;
-    switch (Elections.windowState(activeEl)) {
+    var to = evWindow().early_voting_to;
+    switch (Elections.windowState(evWindow())) {
       case 'none':   return 'Start date TBD';
       case 'closed': return 'Ended ' + Elections.monthDay(to);
       case 'before': return Elections.monthDay(activeEl.early_voting_from) +
@@ -1148,17 +1539,27 @@
   // a date range that does not exist yet.
   function earlyVotingForBlock() {
     if (!activeEl) return null;
-    var to = activeEl.early_voting_to;
-    switch (Elections.windowState(activeEl)) {
+    var window = evWindow();
+    var to = window.early_voting_to;
+    switch (Elections.windowState(window)) {
       case 'none':
         return null;
       case 'closed':
         return { label: 'Early voting closed',
                  status: 'Ended ' + Elections.dayMonth(to), site: false };
       case 'before':
+        // Name the site before the window opens, but only when the CLERK has
+        // published it for this election. The old rule withheld it until the
+        // window was open, which made sense when the calendar carried sites
+        // with no dates and a site named early might not have been settled.
+        // With gr-clerk.json checked against the election it names, an
+        // upcoming site is a published, dated fact, and a voter planning
+        // around it is better served knowing where than being told to come
+        // back in October.
         return { label: 'Early voting upcoming',
-                 status: Elections.dayMonth(activeEl.early_voting_from) +
-                         ' to ' + Elections.dayMonth(to), site: false };
+                 status: Elections.dayMonth(window.early_voting_from) +
+                         ' to ' + Elections.dayMonth(to),
+                 site: clerkForThisElection() };
       default:
         return { label: 'Early voting open',
                  status: 'Through ' + Elections.dayMonth(to), site: true };
@@ -1212,6 +1613,7 @@
     // redrawn with it so the two readings of the calendar cannot disagree.
     if (activeEl && activeEl.date < Elections.todayISO()) {
       activeEl = Elections.next(electionList);
+      clerk = placeCoords(clerkData);
       renderElectionBanner();
     }
 
@@ -1287,30 +1689,116 @@
   }
 
   // Which destinations are available for this voter right now.
+  // The clerk publishes addresses, not coordinates, so each one is geocoded
+  // here against the same street graph the route is drawn on. Deliberately
+  // not stored in the data file: a coordinate written down at build time can
+  // drift from the streets it is supposed to sit on, and this cannot.
+  //
+  // The addresses arrive the way a person writes them -- "1430 Quarry, NW",
+  // "2350 Eastern Avenue SE" -- with the street type sometimes spelled out
+  // and sometimes missing. canonStreet already reduces both to the same key,
+  // so all fourteen resolve with no special handling. Alleys share a name
+  // with the street they run behind ("FULLER ALY NE"), and they collide in
+  // that index, but an alley carries no address ranges so it is skipped on
+  // its way past rather than needing a rule.
+  function placeCoords(data) {
+    if (!data || !graph) return null;
+    function fix(place) {
+      var m = /^(\d+)\s+(.+)$/.exec(place.address || '');
+      var hit = m && graph.geocode(Number(m[1]), m[2]);
+      return hit ? Object.assign({}, place, { lat: hit.lat, lng: hit.lng }) : null;
+    }
+    return {
+      // Carried through so the panel can say where its list came from. The
+      // file knows; without this the page did not.
+      provenance: data.provenance || null,
+      src: data.src || null,
+      election: data.election,
+      early_voting: data.early_voting || null,
+      sites: (data.early_voting_sites || []).map(fix).filter(Boolean),
+      // A box with no street address -- the City Hall lobby ones -- cannot be
+      // routed to, so it is not offered as a destination. It is still real,
+      // and the answer block names it.
+      boxes: (data.drop_boxes || []).map(fix).filter(Boolean),
+      unrouted: (data.drop_boxes || []).filter(function (b) { return !b.address; })
+    };
+  }
+
+  // Sorted by how far away they are, with the distance carried along so the
+  // list can show it. Straight-line, not driving: ranking eleven boxes by
+  // road would mean eleven route searches to answer a question the reader is
+  // only skimming, and over a few miles of city street the two orders barely
+  // differ. The number is labelled as the crow flies so it is not read as a
+  // trip length -- the actual drive appears the moment one is chosen.
+  function nearest(origin, places) {
+    if (!origin || !places || !places.length) return null;
+    return places.map(function (p) {
+      return Object.assign({}, p, {
+        metres: ALPRRouter.haversine(origin.lat, origin.lng, p.lat, p.lng)
+      });
+    }).sort(function (a, b) { return a.metres - b.metres; });
+  }
+
+  // Three places a ballot can go, and every one of them is a drive worth
+  // routing around the cameras: voting on the day, voting early, and posting
+  // an absentee ballot. The last is the one with the strongest case for it --
+  // dropping a ballot off is a discretionary errand, at a time of your
+  // choosing, and there is no reason a record of it should exist.
+  function resetChoices() { chosen = { dropbox: 0, early: 0 }; }
+
+  var ARRIVED_M = 150;
+
+  // What the finish flag calls itself.
+  function destSub(pick, r) {
+    return pick.kind === 'early' ? 'Early voting site'
+         : pick.kind === 'dropbox' ? 'Absentee ballot drop box'
+         : 'Precinct ' + r.precinct;
+  }
+
   function destinations(r) {
     var out = [];
-    if (Elections.isOpen(activeEl)) {
-      var origin = r.pin ? { lat: r.lat, lng: r.lng }
-                         : graph.geocode(r.number, r.street);
-      var sites = Elections.sites(activeEl).filter(function (s) { return s.lat && s.lng; });
-      if (origin && sites.length) {
-        sites = sites.slice().sort(function (a, b) {
-          return ALPRRouter.haversine(origin.lat, origin.lng, a.lat, a.lng) -
-                 ALPRRouter.haversine(origin.lat, origin.lng, b.lat, b.lng);
-        });
-        out.push({ kind: 'early', label: 'Early voting', place: sites[0],
-                   all: sites });
-      }
+    var origin = r.pin ? { lat: r.lat, lng: r.lng }
+                       : graph.geocode(r.number, r.street);
+
+    // The clerk's own sites when we have them, the calendar's otherwise.
+    var sites = (clerkForThisElection() && clerk.sites.length) ? clerk.sites
+              : Elections.sites(activeEl).filter(function (s) { return s.lat && s.lng; });
+    var evState = Elections.windowState(evWindow());
+    var ranked = nearest(origin, sites);
+    if (ranked && evState !== 'closed') {
+      out.push({ kind: 'early', label: 'Early voting',
+                 place: ranked[chosen.early] || ranked[0],
+                 all: ranked, state: evState });
     }
+
     if (r.place && r.place.lat) {
       out.push({ kind: 'polling', label: 'Election day', place: r.place });
+    }
+
+    var boxes = nearest(origin, clerk && clerk.boxes);
+    if (boxes) {
+      out.push({ kind: 'dropbox', label: 'Drop box',
+                 place: boxes[chosen.dropbox] || boxes[0],
+                 all: boxes });
+    }
+
+    // Early voting leads only while it is actually open; before it starts,
+    // election day is still the answer to "where do I vote". And on the day
+    // itself the polls lead outright, whatever a published early voting window
+    // still says -- that is where a voter has to be by 8pm, and it is what the
+    // directions should already be pointed at when the answer appears.
+    if (out.length > 1 && (evState !== 'open' || isElectionDay())) {
+      out.sort(function (a, b) {
+        var rank = { polling: 0, early: 1, dropbox: 2 };
+        return rank[a.kind] - rank[b.kind];
+      });
     }
     return out;
   }
 
   // ---- routing + drawing ----------------------------------------------
 
-  function routeTo(r, forcedKind) {
+  function routeTo(r, forcedKind, which) {
     var opts = destinations(r);
     routeLayer.clearLayers(); pinLayer.clearLayers();
 
@@ -1321,6 +1809,11 @@
     var pick = null;
     if (forcedKind) pick = opts.filter(function (o) { return o.kind === forcedKind; })[0];
     if (!pick) pick = opts[0];
+    // A kind can hold several places -- eleven drop boxes, four early voting
+    // sites -- and the nearest is only the default. `which` names one of them.
+    if (pick && which != null && pick.all && pick.all[which]) {
+      pick = Object.assign({}, pick, { place: pick.all[which] });
+    }
     destChoice = pick;
     markDestination();
 
@@ -1334,6 +1827,23 @@
       return;
     }
     var place = pick.place;
+
+    // 300 Monroe NW routed to the drop box at 300 Monroe NW and produced a
+    // quarter-mile walk, because both ends snap to the nearest road node and
+    // the router dutifully drove between them. Nobody needs directions to the
+    // building they are standing in, and giving them makes the whole page look
+    // like it is not paying attention. So the panel says so instead.
+    //
+    // 150m is the block: far enough to cover an address geocoded to the middle
+    // of a long parcel, close enough that "already here" is not a lie.
+    if (ALPRRouter.haversine(origin.lat, origin.lng, place.lat, place.lng) <= ARRIVED_M) {
+      // Still a `routes` object, so the destination picker stays live: being
+      // at the drop box is a good moment to ask for the polling place.
+      routes = { here: true, opts: opts, origin: origin, place: place,
+                 destSub: destSub(pick, r) };
+      renderAll(true);
+      return;
+    }
 
     // Split both ends into the graph so a route starts at the address and
     // finishes at the door, rather than at whichever intersection happened to
@@ -1396,8 +1906,7 @@
       avoidExp: avoid.cameraCount,
       flagged: fast.camsOnRoute,
       opts: opts, origin: origin, place: place,
-      destSub: (pick.kind === 'early') ? 'Early voting site'
-                                       : 'Precinct ' + r.precinct
+      destSub: destSub(pick, r)
     };
     if (identical) selected = 'avoid';
     // Default to the clean route, but do not fight a choice already made.
@@ -1420,8 +1929,34 @@
     // is exactly the constant offset that kept showing up in verification.
     map.invalidateSize(false);
 
-    drawCameras(routes.flagged);
     routeLayer.clearLayers();
+    pinLayer.clearLayers();
+
+    if (routes.here) {
+      drawCameras({});
+      renderDestPicker();
+      $('routes').innerHTML =
+        '<div class="here"><div class="here-h">You\u2019re already here</div>' +
+        '<div class="here-b">' + esc(displayCase(routes.place.name || '')) +
+        ' is at the address you searched, so there is nothing here to navigate. ' +
+        'Pick another destination above for directions.</div></div>';
+      $('steps').innerHTML = ''; $('unavoid').innerHTML = '';
+      renderRouteKey();
+      var hereM = marker([routes.place.lat, routes.place.lng], 'dest');
+      var hp = routes.place;
+      bindDetail(hereM,
+        '<div class="destpop">' +
+        '<div class="dt">You are here</div>' +
+        '<div class="dn">' + esc(displayCase(hp.name)) + '</div>' +
+        '<div class="da">' + esc(addressForDisplay(hp.address)) + '</div>' +
+        (hp.entrance_note ? '<div class="de">' + esc(hp.entrance_note) + '</div>' : '') +
+        '<div class="dw">' + esc(routes.destSub) + '</div>' +
+        '</div>', 280);
+      if (fit) map.setView([routes.place.lat, routes.place.lng], 17, { animate: false });
+      return;
+    }
+
+    drawCameras(routes.flagged);
 
     if (!routes.identical) {
       var other = selected === 'avoid' ? 'fast' : 'avoid';
@@ -1432,8 +1967,8 @@
 
     // Start and finish are drawn here, not in routeTo, because the start
     // arrow points the way the SELECTED route leaves, and that changes when
-    // the reader flips between fastest and avoiding.
-    pinLayer.clearLayers();
+    // the reader flips between fastest and avoiding. (The layer was cleared
+    // at the top, alongside the route layer.)
     var rp = routes[selected].pts;
     var brg = (rp && rp.length > 1) ? ALPRRouter.bearing(rp[0], rp[1]) : 0;
     originArrow = marker([routes.origin.lat, routes.origin.lng], 'origin', brg);
@@ -1626,7 +2161,7 @@
   function renderRouteKey() {
     var k = $('routeKey');
     if (!k) return;
-    if (!routes || routes.identical) { k.hidden = true; k.innerHTML = ''; return; }
+    if (!routes || routes.here || routes.identical) { k.hidden = true; k.innerHTML = ''; return; }
     var row = function (kind, label) {
       return '<span class="rk-row' + (selected === kind ? ' on' : '') + '">' +
         '<i class="rk-sw ' + kind + '"></i>' + label + '</span>';

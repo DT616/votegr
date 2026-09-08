@@ -225,3 +225,34 @@ a.dir-btn svg { width: 1.15rem; height: 1.15rem; fill: currentColor; }
 .ev-hours .is-today { color: var(--fg); font-weight: 600; }
 
 .ev-site { margin-top: 1.3rem; }
+
+/* Where an out-of-city street actually is, said in the option itself. */
+.opt-where { color: var(--dim); font-size: .9em; }
+/* Outside the city is the one case where the label changes the answer, so it
+   is the one that is not grey. */
+.opt-outside { color: var(--warn); }
+
+/* The out-of-city answer reads like the other advisories, because that is
+   what it is: an honest limit, not an error. */
+.advisory.outside { border-left-color: var(--dim); }
+
+/* The dates a heading applies to, under it rather than inside it. Quiet
+   enough to read as a subtitle, with the dates themselves picked out because
+   they are the part a reader is actually checking. */
+.sec-sub {
+  font-size: .92rem; color: var(--dim); margin: -.05rem 0 .55rem;
+  line-height: 1.45;
+}
+.sec-sub .when { color: var(--fg); font-weight: 650; }
+
+/* The heading of a block, as opposed to a line of prose inside one. Early
+   voting and the drop boxes each open a section of several places, and at the
+   body size and colour those openers read as the first sentence of the block
+   rather than its title -- so a reader skimming for "where do I drop this"
+   had nothing to land on. Sized and coloured like the voting day heading
+   above them, with a rule to mark where the section starts. */
+.sec-head {
+  font-size: 1.06rem; font-weight: 700; color: var(--fg);
+  padding-bottom: .45rem; margin-bottom: .45rem;
+  border-bottom: 1px solid var(--line);
+}

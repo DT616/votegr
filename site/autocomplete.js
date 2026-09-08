@@ -59,12 +59,32 @@
 
     function close() { element().hidden = true; index = -1; }
 
+    // One glyph, drawn once. Every row in the list is a place on the map, and
+    // the same pin marks the button that says "pick a place on the map" -- so
+    // the two read as the same idea rather than two unrelated controls.
+    // Filled rather than stroked: at 15px a 2px outline collapses into a blob,
+    // and evenodd keeps the hole a hole whichever way the arc is wound.
+    var PIN_SVG =
+      '<svg class="pin-glyph" viewBox="0 0 24 24" width="15" height="15" ' +
+      'aria-hidden="true" fill="currentColor" fill-rule="evenodd">' +
+      '<path d="M12 2c-3.87 0-7 3.13-7 7 0 5.25 6.3 12.3 6.57 12.6a.58.58 0 0 0 .86 0' +
+      'C12.7 21.3 19 14.25 19 9c0-3.87-3.13-7-7-7z' +
+      'M12 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>';
+
     function itemHtml(it, i) {
-      var why = SUGGESTION_WHY[it.kind] || '';
-      return '<button type="button" class="ac-item" role="option" data-i="' + i + '">' +
+      // A per-item note wins over the per-kind one: a street outside the city
+      // has to name WHICH place it is in, and that differs per street.
+      var why = it.why || SUGGESTION_WHY[it.kind] || '';
+      return '<button type="button" class="ac-item' +
+        (it.kind === 'outside' ? ' is-outside' : '') +
+        '" role="option" data-i="' + i + '">' +
+        '<span class="ac-pin">' + PIN_SVG + '</span>' +
         (it.number != null ? '<span class="num">' + it.number + '</span>' : '') +
         '<span class="st">' + esc(cased(it.street)) + '</span>' +
-        (why ? '<span class="why">' + why + '</span>' : '') + '</button>';
+        (why ? '<span class="why">' + why + '</span>' : '') +
+        (it.where && it.where.length
+          ? '<span class="ac-where">in ' + esc(it.where.join(' or ')) + '</span>'
+          : '') + '</button>';
     }
 
     function refresh() {

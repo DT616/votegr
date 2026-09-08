@@ -33,8 +33,11 @@
 
   // Freeway-bound and ramp-locator shorthand. Title-casing these produces
   // gibberish ("Nb So"), and they read as codes rather than words.
+  // GR is the city's own shorthand and appears in venue names the clerk
+  // publishes ("GR Fire Department Division Station", "GRPS University").
+  // Without it here, displayCase renders the city's name as "Gr".
   var ACRONYMS = { US: 1, NB: 1, SB: 1, EB: 1, WB: 1,
-                   SO: 1, NO: 1, EO: 1, WO: 1 };
+                   SO: 1, NO: 1, EO: 1, WO: 1, GR: 1, GRPS: 1 };
 
   // UPPER when immediately followed by a number: US 131, M 6, I 196.
   var HWY = { US: 1, M: 1, I: 1 };
