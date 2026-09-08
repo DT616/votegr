@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Pull known ALPR camera positions in the Grand Rapids area from OpenStreetMap
-via Overpass, and write the cached camera floor (site/data/cameras.json).
+"""Pull known ALPR camera positions across Kent County from OpenStreetMap via
+Overpass, and write the cached camera floor (site/data/cameras.json).
 
 This is the ONLY camera source. The browser used to be able to re-query
 Overpass live, adding to this set but never showing fewer; that control is
@@ -19,8 +19,16 @@ import urllib.request
 from pathlib import Path
 from provenance import provenance
 
-# GR city bbox with ~2km margin (S, W, N, E) for Overpass.
-BBOX = (42.87, -85.78, 43.05, -85.55)
+# Kent County with ~2km margin (S, W, N, E) for Overpass. The county's own
+# precinct polygons span 42.768..43.294 N, -85.791..-85.310 W.
+#
+# This was the Grand Rapids city bbox (42.87, -85.78, 43.05, -85.55) until the
+# lookup went county-wide. That bbox is 373 km2 of a 2,280 km2 county: outside
+# it there were no cameras ON FILE, which is not the same fact as no cameras,
+# and the page would have told a Rockford voter their trip passed none. A
+# camera set that stops at a line the reader cannot see is worse than no
+# avoidance at all, because it reads as a clean bill of health.
+BBOX = (42.75, -85.81, 43.31, -85.29)
 
 ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
@@ -30,6 +38,11 @@ ENDPOINTS = [
 UA = "vote-gr/1.0 (+https://github.com/DT616/votegr)"
 OUT = Path(__file__).resolve().parent.parent / "site" / "data" / "cameras.json"
 MIN_CAMERAS = 20   # GR metro has hundreds; a handful back = truncated/broken
+# Widening the box must not LOSE cameras. Overpass returning a clean but
+# short result is indistinguishable from a real decline unless we say what
+# we already had, and a silent drop here quietly re-opens the exact hole
+# this widening closes.
+FLOOR_IS_PREVIOUS = True
 
 QL = f"""[out:json][timeout:60];
 (
@@ -117,6 +130,21 @@ def main():
     if len(cams) < MIN_CAMERAS:
         sys.exit(f"REFUSE: only {len(cams)} cameras (< {MIN_CAMERAS}); "
                  "likely truncated or wrong bbox")
+
+    # Every camera we already published must still be here. A strictly larger
+    # bbox cannot honestly return fewer, so a drop means a truncated answer
+    # dressed up as a complete one -- which is the one failure this file's
+    # whole design is against.
+    if FLOOR_IS_PREVIOUS and OUT.exists():
+        try:
+            had = {c["id"] for c in json.loads(OUT.read_text()).get("cameras", [])}
+        except (ValueError, KeyError):
+            had = set()
+        lost = had - {c["id"] for c in cams}
+        if lost:
+            sys.exit(f"REFUSE: {len(lost)} camera(s) in the committed file are "
+                     f"missing from this result, e.g. {sorted(lost)[:5]}. A wider "
+                     "bbox cannot return fewer; treat this as a truncated query.")
 
     payload = {
         "meta": {
