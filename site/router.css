@@ -375,10 +375,18 @@ body {
 .block { padding: 18px 0; border-top: 1px solid var(--line); }
 /* The block heading is a different role from the labels inside it, so it
    sits off the label scale on purpose. Until now nothing in the page used
-   this rule: the answer block had no heading at all. */
+   this rule: the answer block had no heading at all.
+   
+   It titles the whole answer -- three destinations, their dates and a map --
+   so it carries more weight than the labels beneath it, and takes the page's
+   foreground colour rather than the dimmed one the small labels use. At the
+   old size and colour it read as one more label in a column of them. */
 .block h2 {
-  margin: 0 0 14px; font-size: 1rem; font-weight: 700;
-  letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+  margin: 0 0 16px; font-size: 1.28rem; font-weight: 800;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--fg);
+}
+@media (max-width: 640px) {
+  .block h2 { font-size: 1.12rem; letter-spacing: .05em; }
 }
 
 /* ---- address input ---- */
