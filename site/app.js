@@ -963,7 +963,11 @@
       ac.refresh();
       return;
     }
-    input.value = item.number + ' ' + item.street;
+    // The box shows the address the way it is written, not the way the index
+    // stores it. ALL CAPS is how the parcel file happens to hold a street, not
+    // how anyone writes one, and the lookup uppercases whatever it is given --
+    // so nothing downstream cares and the reader gets their own address back.
+    input.value = item.number + ' ' + displayCase(item.street);
     resetChoices();
     var r = P.lookup(input.value);
     if (r.error) {

@@ -72,6 +72,11 @@
   // ---- matching what someone types against the index --------------------
 
   // "250 Monroe Ave. NW" -> { number: 250, rest: "MONROE AVE NW" }
+  // The street index is ALL CAPS because the parcel file is; that is not how
+  // anyone writes an address. parseTyped uppercases whatever it is handed, so
+  // the box can show the readable form without anything downstream noticing.
+  const cased = (s) => (typeof displayCase === "function" ? displayCase(s) : s);
+
   function parseTyped(text) {
     const clean = text.toUpperCase().replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
     const match = clean.match(/^(\d+)\s*(.*)$/);
@@ -351,7 +356,7 @@
     const picked = suggestions[index];
     if (!picked) return;
     if (picked.outside) {
-      input.value = picked.text;
+      input.value = cased(picked.text);
       closeList();
       renderOutside(picked);
       return;
@@ -359,14 +364,14 @@
 
     // A street on its own is half an address: put it in the box and wait.
     if (picked.number == null) {
-      input.value = `${picked.street} `;
+      input.value = `${cased(picked.street)} `;
       closeList();
       say("Now add the house number.");
       input.focus();
       return;
     }
 
-    input.value = picked.text;
+    input.value = cased(picked.text);
     closeList();
     clearResult();
     const found = resolve(picked.street, picked.number);
