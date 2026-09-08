@@ -467,6 +467,12 @@ body {
   box-shadow: inset 0 0 0 2px var(--accent),
               inset 0 1px 0 var(--bevel-hi), inset 0 -1px 0 var(--bevel-lo);
 }
+/* A place the reader chose rather than the nearest one. Dashed, and outside
+   the cell, so it reads differently from the solid inset ring that marks
+   where the directions currently go -- a cell is often both at once. Picking
+   the nearest again clears it, which is how you get back. */
+.vi-where.is-custom { outline: 2px dashed var(--accent); outline-offset: 3px; }
+
 /* Inside a selected cell the place block must not paint over the ring's
    inner edge on hover. */
 .vi-dest.is-dest .pp-place:hover { background: var(--tint-hover); }

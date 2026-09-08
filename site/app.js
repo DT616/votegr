@@ -448,6 +448,15 @@
   // "Open 24/7" is what a shop is. A drop box is a slot in a wall, reachable
   // whenever you are awake, and that is a different promise -- especially for
   // someone deciding whether a late-evening trip is worth making.
+  // The card names what it is showing. Once the reader picks something other
+  // than the nearest, "nearest to you" is no longer true of it, and a label
+  // that keeps saying so is the card lying about its own contents.
+  function placeLabel(kind, dflt) {
+    return chosen[kind] ? 'Custom location selected' : dflt;
+  }
+
+  function customClass(kind) { return chosen[kind] ? ' is-custom' : ''; }
+
   function boxHours(box) {
     if (!box || !box.hours) return '';
     return /^24\/7$/.test(box.hours) ? 'Accessible 24/7'
@@ -1156,8 +1165,10 @@
     // trip to the polls.
     var box = destinations(r).filter(function (o) { return o.kind === 'dropbox'; })[0];
     if (box) {
-      html += '<div class="vi-where vi-dropbox" data-kind="dropbox">' +
-        '<div class="vi-lbl">Ballot drop box nearest to you</div>' +
+      html += '<div class="vi-where vi-dropbox' + customClass('dropbox') +
+        '" data-kind="dropbox">' +
+        '<div class="vi-lbl">' +
+        esc(placeLabel('dropbox', 'Ballot drop box nearest to you')) + '</div>' +
         '<div class="pp-name">' + esc(boxLabel(box.place)) + '</div>' +
         '<div class="pp-addr">' + esc(addressForDisplay(box.place.address)) +
         (box.place.note
@@ -1181,9 +1192,10 @@
       var ev = evState.site
         ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
         : null;
-      html += '<div class="vi-where vi-ev-site' + (ev ? '' : ' vi-full') + '"' +
+      html += '<div class="vi-where vi-ev-site' + (ev ? customClass('early') : ' vi-full') + '"' +
         (ev ? ' data-kind="early"' : '') + '>' +
-        '<div class="vi-lbl">Early voting site nearest to you</div>' +
+        '<div class="vi-lbl">' +
+        esc(placeLabel('early', 'Early voting site nearest to you')) + '</div>' +
         (ev
           ? '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
             '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) +
