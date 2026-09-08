@@ -148,6 +148,50 @@ def parse_polling(lines):
     return rows
 
 
+CLERK_HEADING = re.compile(r"^(.+?)\s+Clerk Information$", re.I)
+PHONE = re.compile(r"^Phone:\s*(.+)$", re.I)
+CLERK_BLOCK_END = re.compile(
+    r"^(Note|Absentee|Election Day|Drop Box|must\b|be delivered)", re.I)
+
+
+def parse_clerk(lines):
+    """The clerk's office: address and phone.
+
+    Worth carrying because for 24 of the 30 jurisdictions the county lists no
+    drop box at all, and the page's own instruction is to deliver an absentee
+    ballot "to the clerk or the dropbox listed on your absentee ballot". Where
+    there is no box, this address IS the answer -- and it is also who to ask,
+    which the page currently only knows for Grand Rapids.
+
+    The block runs from "<Jurisdiction> Clerk Information" to the drop box
+    heading. Its lines are the street address, the city line, a website link
+    and a phone, in an order that varies between pages, so they are classified
+    rather than counted.
+    """
+    try:
+        start = next(i for i, line in enumerate(lines) if CLERK_HEADING.match(line))
+    except StopIteration:
+        return None
+    address, phone = [], None
+    for line in lines[start + 1:start + 12]:
+        # The block ends at the next thing on the page, whatever that is. A
+        # township with no drop box has no drop box HEADING either, so a fixed
+        # window ran straight on into the absentee note and filed "Absentee
+        # ballots" as part of the clerk's street address.
+        if CLERK_BLOCK_END.match(line):
+            break
+        found = PHONE.match(line)
+        if found:
+            phone = found.group(1).strip()
+        elif re.search(r"website$", line, re.I):
+            continue
+        else:
+            address.append(line)
+    if not address and not phone:
+        return None
+    return {"address": ", ".join(address), "phone": phone}
+
+
 def parse_dropboxes(lines):
     """[{name, address, hours}] from the absentee section. Stops at the polling
     heading so a venue never gets read as a drop box."""
@@ -196,6 +240,7 @@ def main():
 
         rows = parse_polling(lines)
         boxes = parse_dropboxes(lines)
+        clerk = parse_clerk(lines)
         places = {}
         for row in rows:
             key = (row["ward"], row["precinct"])
@@ -208,7 +253,9 @@ def main():
         document = {
             "provenance": {
                 "description": f"{names[mcd]} Election Day polling places and "
-                               "absentee drop boxes, by precinct.",
+                               "absentee drop boxes, by precinct, with the "
+                               "clerk's office -- which is where an absentee "
+                               "ballot goes when no drop box is listed.",
                 "source": "Kent County Clerk / Register of Deeds, "
                           "Drop Box & Polling Locations",
                 "source_url": f"{BASE}/{slug}",
@@ -225,6 +272,7 @@ def main():
             },
             "mcd": mcd,
             "jurisdiction": names[mcd],
+            "clerk": clerk,
             "precincts": places,
             "drop_boxes": boxes,
         }
