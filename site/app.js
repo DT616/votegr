@@ -370,11 +370,10 @@
           'to route to.</span></li>';
       });
     }
-    // Everything here is inside the city, because everything this tool can
-    // answer is. A Wyoming voter has drop boxes too; we do not have them.
-    return html + '</ul><p class="bx-hours">Ordered by straight-line distance ' +
-      'from the address you typed; the driving route appears when you pick ' +
-      'one. Grand Rapids city locations only.</p>' + provenanceHtml();
+    // No caption under the list. Every row already carries its own distance,
+    // and every row is visibly a button, so a paragraph explaining the order
+    // and the click was telling the reader what they could see.
+    return html + '</ul>' + provenanceHtml();
   }
 
   // Where this list came from, said in the panel that shows it rather than
