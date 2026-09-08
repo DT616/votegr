@@ -157,6 +157,11 @@ def compare_city(county, city):
         print(f"  the city's hours mention: {', '.join(city['dates_mentioned'])}")
 
 
+# A house number followed by a word: "8085 Byron Center Ave. SW". Deliberately
+# loose -- it is a floor on what counts as a location, not a parser.
+LOOKS_LIKE_A_PLACE = re.compile(r"\d+\s+\w")
+
+
 def main():
     request = urllib.request.Request(URL, headers=UA)
     with urllib.request.urlopen(request, timeout=60) as response:
@@ -222,7 +227,20 @@ def main():
         while j < len(lines) and lines[j] not in known \
                 and aliases.get(lines[j], lines[j]) not in known \
                 and lines[j] != "Dates/Times:":
-            places.append(lines[j])
+            # A location must LOOK like one. This loop ends at the next
+            # jurisdiction heading, and the last jurisdiction on the page has
+            # no next heading -- so it ran to the end of the document and
+            # swallowed the footer. Wyoming, the last one, shipped with "Where
+            # is My Drop Box/Polling Location?", a sentence of instructions,
+            # and four stray digits listed as places to go and vote.
+            #
+            # Every real entry the county writes is "Name, 1234 Street" and
+            # every piece of furniture that got in lacked a house number, so
+            # that is the test. Checked against all 30 jurisdictions: it keeps
+            # 32 locations, drops exactly the 6 bad lines, and leaves no
+            # jurisdiction empty.
+            if LOOKS_LIKE_A_PLACE.search(lines[j]):
+                places.append(lines[j])
             j += 1
         if hours and places:
             sites[index[name]] = {"jurisdiction": name, "hours": hours,
