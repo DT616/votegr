@@ -38,6 +38,8 @@ import urllib.request
 import html as html_module
 
 URL = "https://www.kentcountymi.gov/250/Drop-Box-Polling-Locations"
+CITY_URL = ("https://www.grandrapidsmi.gov/departments/clerks-office/"
+            "elections/early-voting/")
 UA = {"User-Agent": "vote-gr/1.0 (+https://github.com/DT616/votegr)"}
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -45,6 +47,11 @@ PRECINCTS = ROOT / "site" / "data" / "precincts.json"
 OUT = ROOT / "site" / "data" / "early-voting.json"
 
 MIN_SITES = 20            # 29 jurisdictions list one; well under this is a broken parse
+MIN_CITY_SITES = 2        # the city has run three or four; one means a broken parse
+
+CITY_SITES_HEADING = "Early Voting Sites"
+CITY_HOURS_HEADING = "Early Voting Dates and Times"
+CITY_SITE = re.compile(r"^(.+?)\s+[-\u2013]\s+(\d+\s+.+)$")
 
 MONTHS = ["January", "February", "March", "April", "May", "June", "July",
           "August", "September", "October", "November", "December"]
@@ -53,6 +60,9 @@ ELECTION = re.compile(
 WINDOW = re.compile(
     r"Early Voting will take place\s+\w+day,\s*(%s)\s+(\d{1,2})\s*[-–]\s*"
     r"\w+day,\s*(%s)\s+(\d{1,2})" % ("|".join(MONTHS), "|".join(MONTHS)), re.I)
+# Any month-and-day in the city's hours text, which is what reveals which
+# election that page is describing -- it never names one.
+DATE_HINT = re.compile(r"\b(%s)\s+(\d{1,2})\b" % "|".join(MONTHS), re.I)
 
 
 def lines_of(page):
@@ -65,6 +75,84 @@ def lines_of(page):
 def iso(month_name, day, year):
     month = MONTHS.index(month_name.title()) + 1
     return f"{year:04d}-{month:02d}-{int(day):02d}"
+
+
+def fetch_lines(url):
+    request = urllib.request.Request(url, headers=UA)
+    with urllib.request.urlopen(request, timeout=60) as response:
+        return lines_of(response.read().decode("utf-8", "replace"))
+
+
+def parse_city(lines):
+    """Grand Rapids' own early voting page, as a second opinion on the county's.
+
+    The city is the one jurisdiction with a source of its own worth reading:
+    the county page describes whichever election it was last updated for, and
+    in September 2026 that was still the August primary, while the city had
+    already published November -- including a fourth site the county does not
+    list.
+
+    No window is inferred. Michigan's minimum is nine days ending the Sunday
+    before the election, but a city may open earlier, so a range invented here
+    could be wrong in the direction that matters. What the page states is
+    recorded: the sites, the hours as written, and any month-and-day mentioned
+    in them, which is what reveals WHICH election is being described.
+    """
+    try:
+        start = lines.index(CITY_SITES_HEADING)
+        stop = lines.index(CITY_HOURS_HEADING)
+    except ValueError:
+        return None
+
+    sites = []
+    for line in lines[start + 1:stop]:
+        match = CITY_SITE.match(line)
+        if match:
+            sites.append({"name": match.group(1).strip(),
+                          "address": match.group(2).strip()})
+
+    # The hours are broken across lines by the footnote marker: "Saturdays",
+    # "*", ", Sundays, Monday, ... - 9:00 a.m. - 5:00 p.m." are three lines of
+    # one sentence. A line that is only a marker, or that opens with a comma,
+    # belongs to the line above it.
+    hours, hints = [], []
+    for line in lines[stop + 1:stop + 12]:
+        if line.lower().startswith("please click") or line == "Current Election Information":
+            break
+        if line in ("*", "**") or line.startswith(","):
+            if hours:
+                hours[-1] = (hours[-1] + line).replace(" ,", ",")
+            continue
+        hours.append(line)
+    for line in hours:
+        for found in DATE_HINT.finditer(line):
+            hints.append(f"{found.group(1).title()} {int(found.group(2))}")
+    return {"sites": sites, "hours": hours, "dates_mentioned": sorted(set(hints))}
+
+
+def compare_city(county, city):
+    """What the two say about Grand Rapids, side by side. Neither is corrected
+    from the other."""
+    def key(text):
+        text = re.sub(r"[^a-z0-9 ]", " ", text.lower())
+        return " ".join(w for w in text.split()
+                        if w not in {"st", "sts", "saint", "the", "school", "church"})
+
+    county_sites = county["locations"] if county else []
+    print(f"\nGrand Rapids: county lists {len(county_sites)}, "
+          f"the city clerk lists {len(city['sites'])}")
+    theirs = [key(s) for s in county_sites]
+    for site in city["sites"]:
+        k = key(site["name"])
+        if not any(k in t or t in k for t in theirs):
+            print(f"  ONLY ON THE CITY PAGE: {site['name']} - {site['address']}")
+    ours = [key(s["name"]) for s in city["sites"]]
+    for line in county_sites:
+        k = key(line.split(",")[0])
+        if not any(k in o or o in k for o in ours):
+            print(f"  only on the county page: {line}")
+    if city["dates_mentioned"]:
+        print(f"  the city's hours mention: {', '.join(city['dates_mentioned'])}")
 
 
 def main():
@@ -143,6 +231,11 @@ def main():
         sys.exit(f"REFUSE: only {len(sites)} early voting sites parsed "
                  f"(expected at least {MIN_SITES}); unmatched: {unknown[:5]}")
 
+    city = parse_city(fetch_lines(CITY_URL))
+    if not city or len(city["sites"]) < MIN_CITY_SITES:
+        sys.exit(f"REFUSE: parsed {len(city['sites']) if city else 0} early "
+                 f"voting sites from {CITY_URL}; the page has been rewritten")
+
     document = {
         "provenance": {
             "description": "Kent County early voting sites and hours, one per "
@@ -170,6 +263,11 @@ def main():
         "election": election,
         "early_voting": window,
         "sites": sites,
+        # Grand Rapids' own page, read as a second opinion on the county's.
+        # Deliberately NOT merged: where the two disagree, both readings are
+        # kept so the disagreement is visible instead of resolved by whichever
+        # script ran last.
+        "grand_rapids_clerk": dict(city, source_url=CITY_URL),
     }
     OUT.write_text(json.dumps(document, separators=(",", ":"), indent=1) + "\n")
 
@@ -186,6 +284,7 @@ def main():
     print(f"{len(sites)} of {len(index)} jurisdictions listed, {total} sites")
     if unknown:
         print(f"unmatched jurisdiction names: {unknown}")
+    compare_city(sites.get("34000"), city)
     print(f"wrote {OUT} ({OUT.stat().st_size/1024:.0f} KB)")
 
 
