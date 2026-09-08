@@ -60,7 +60,9 @@
     function close() { element().hidden = true; index = -1; }
 
     function itemHtml(it, i) {
-      var why = SUGGESTION_WHY[it.kind] || '';
+      // A per-item note wins over the per-kind one: a street outside the city
+      // has to name WHICH place it is in, and that differs per street.
+      var why = it.why || SUGGESTION_WHY[it.kind] || '';
       return '<button type="button" class="ac-item" role="option" data-i="' + i + '">' +
         (it.number != null ? '<span class="num">' + it.number + '</span>' : '') +
         '<span class="st">' + esc(cased(it.street)) + '</span>' +

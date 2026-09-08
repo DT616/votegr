@@ -596,7 +596,7 @@
   function initInput() {
     ac = Autocomplete.attach({
       input: $('addr'),
-      suggest: function (text, limit) { return P.suggest(text, limit); },
+      suggest: suggestWithNeighbours,
       hasNumber: function (text) { return P.parseTyped(text).number != null; },
       onChoose: choose,
       onMiss: function (text) { showError(missExplanation(text)); }
@@ -864,6 +864,13 @@
   function choose(item) {
     if (!item) return;
     ac.close();
+    if (item.kind === 'outside') {
+      $('addr').value = (item.number != null ? item.number + ' ' : '') +
+        displayCase(item.street);
+      $('addr').blur();
+      chooseOutside(item);
+      return;
+    }
     var input = $('addr');
     if (item.number == null) {
       // a street was picked: keep any number already typed and reopen
@@ -890,6 +897,54 @@
     // above deliberately keeps focus: that address is not finished yet.
     input.blur();
     show(r);
+  }
+
+  // A street in Wyoming or Kentwood is a real street that a person with a
+  // Grand Rapids mailing address may well live on, and typing it used to end
+  // in an error only once they pressed Enter. It is now offered in the list
+  // like any other street, labelled with the jurisdiction it is actually in,
+  // so the answer arrives at the moment of picking rather than after a
+  // rejection.
+  //
+  // These come last and only fill what the city's own suggestions leave. A
+  // city street is what this tool can answer, and one that matches should
+  // never be pushed down the list by a neighbour.
+  function suggestWithNeighbours(text, limit) {
+    var out = P.suggest(text, limit) || [];
+    if (out.length >= limit || !neighbors) return out;
+
+    var typed = P.parseTyped(text);
+    if (!typed.rest || typed.rest.length < 2) return out;
+    var have = {};
+    out.forEach(function (o) { have[o.street] = 1; });
+
+    var names = Object.keys(neighbors).filter(function (name) {
+      return !have[name] && name.indexOf(typed.rest) === 0;
+    }).sort();
+
+    for (var i = 0; i < names.length && out.length < limit; i++) {
+      var where = neighbors[names[i]] || [];
+      out.push({ street: names[i], number: typed.number, kind: 'outside',
+                 where: where, why: 'in ' + where.join(' or ') });
+    }
+    return out;
+  }
+
+  // Picking one of those is an answer, not a failure: it says which
+  // jurisdiction the street is in and who to ask there. The address stays in
+  // the box, because it is a real address and the reader typed it correctly.
+  function chooseOutside(item) {
+    var where = item.where && item.where.length
+      ? (item.where.length === 1 ? esc(item.where[0])
+         : esc(item.where.slice(0, -1).join(', ')) + ' or ' +
+           esc(item.where[item.where.length - 1]))
+      : 'another jurisdiction';
+    setHint('');
+    showError('That address is in ' + where + ', not the City of Grand ' +
+      'Rapids, so this tool cannot say where you vote. A Grand Rapids mailing ' +
+      'address does not always mean you live in the city. Your clerk is the ' +
+      'one for ' + where + ', and the Michigan Voter Information Center at ' +
+      'mvic.sos.state.mi.us will have your polling place.');
   }
 
   // Most of the "Grand Rapids" postal area is not the City of Grand Rapids.
