@@ -89,15 +89,16 @@ for (const [name, data, want] of CASES) {
     (document.querySelector('#precinctInfo .vi-hours') || {}).textContent || null);
 
   const got = await page.evaluate(() => {
-    const labels = [...document.querySelectorAll('#precinctInfo .vi-lbl')];
-    const live = labels.find(e => e.classList.contains('live'));
-    if (!live) return { label: null, site: false, status: null };
-    const group = live.parentElement;
-    // The site sits in the row's OTHER cell now, not inside the label's own
-    // group, and both where-cells carry a .pp-name. .vi-ev-site is what
-    // separates the early voting site from the polling place.
-    return { label: live.textContent.trim(),
-             status: (group.querySelector('.vi-val') || {}).textContent || null,
+    // The row, by name. Three rows now share one shape -- drop box, early
+    // voting, election day -- so "the cell with the live accent" no longer
+    // identifies this one: the drop box carries it too while it is accepting
+    // ballots.
+    const cell = document.querySelector('#precinctInfo .vi-when-early');
+    if (!cell) return { label: null, site: false, status: null };
+    // Both where-cells hold a .pp-name; .vi-ev-site is what separates the
+    // early voting site from the polling place.
+    return { label: (cell.querySelector('.vi-lbl') || {}).textContent.trim(),
+             status: (cell.querySelector('.vi-val') || {}).textContent || null,
              site: !!document.querySelector('.vi-ev-site .pp-name') };
   });
 
