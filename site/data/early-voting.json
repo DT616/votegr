@@ -5,6 +5,8 @@
   "source_url":"https://www.kentcountymi.gov/250/Drop-Box-Polling-Locations",
   "generated":"2026-09-08",
   "licence":"Public record of Kent County, redistributed as published.",
+  "archived":"https://web.archive.org/web/20260908173139/https://www.kentcountymi.gov/250/Drop-Box-Polling-Locations",
+  "archived_timestamp":"20260908173139",
   "how_to_update":"Run refresh_early_voting.py after each election is settled. MCL 168.662 fixes early voting sites 60 days out, so before that the page may still describe the previous election.",
   "read_this_as":"A CROSS-CHECK, not a source of record. The page is prose written for people: no election id, no ISO dates, no schema. The election, the window and its year are all inferred here, and the value is in disagreeing with the clerks and with Google Civic, not in being believed over them.",
   "staleness":"Not decided here. The window is written down and the page applies the same windowState() it applies to every other early voting date, so a window that has closed reads as closed."
@@ -332,6 +334,9 @@
   "dates_mentioned":[
    "October 31"
   ],
-  "source_url":"https://www.grandrapidsmi.gov/departments/clerks-office/elections/early-voting/"
+  "source_url":"https://www.grandrapidsmi.gov/departments/clerks-office/elections/early-voting/",
+  "archived":"https://web.archive.org/web/20260716155407/https://www.grandrapidsmi.gov/departments/clerks-office/elections/early-voting/",
+  "archived_timestamp":"20260716155407",
+  "archive_note":"This capture is 54 days old and predates the read that made this file. The Wayback Machine declined a new one, so the snapshot may show an earlier version of the page."
  }
 }
