@@ -30,6 +30,8 @@ import argparse
 import json
 import pathlib
 import re
+import subprocess
+import sys
 import time
 from collections import defaultdict
 
@@ -85,6 +87,16 @@ TYPE_WORDS = {"AVE", "ST", "DR", "RD", "BLVD", "CT", "PL", "LN", "TER",
               "PKWY", "CIR", "HWY", "SQ", "TRL", "EXPY", "WAY", "RUN"}
 # "East Main Street" is "E MAIN ST" in the parcel layer.
 LEADING = {"EAST": "E", "WEST": "W", "NORTH": "N", "SOUTH": "S"}
+# Names the county's own polling place list gets wrong, against the parcel
+# layer and the road centrelines, which agree with each other. Keyed on the
+# core so the suffix and quadrant still do their work. Kept explicit and
+# short: a fuzzy match would quietly "fix" streets that are merely similar,
+# and the whole point of this file is that it does not guess.
+MISSPELLINGS = {
+    # Wyoming's own fire station, on Gezon Parkway. Every parcel and every
+    # road segment in the county says GEZON; nothing says GENZON.
+    "GENZON": "GEZON",
+}
 # "88 Eighth Street" is "88 8TH ST".
 ORDINALS = {"FIRST": "1ST", "SECOND": "2ND", "THIRD": "3RD", "FOURTH": "4TH",
             "FIFTH": "5TH", "SIXTH": "6TH", "SEVENTH": "7TH", "EIGHTH": "8TH",
@@ -114,6 +126,15 @@ def street_core(street):
     The type word comes off because the two sources disagree about it; the
     quadrant stays on because they never disagree about that and it is what
     separates 1201 Madison SE from 1201 Madison NE.
+
+    Note that the LEADING directional in "E Main St NE" is not the quadrant
+    and never comes off: "East Main Street" is the street's name, in Lowell's
+    own grid, while the trailing NE is the county-wide overlay saying Lowell
+    is northeast of Fulton and Division. Two different facts that look alike.
+
+    Spaces inside the name are dropped from the key, because the sources
+    disagree there too: Wyoming's clerk writes "DeHoop Avenue SW" and the
+    parcel layer writes "DE HOOP AVE SW".
     """
     words = street.split()
     quadrant = words.pop() if words and words[-1] in QUADRANT else None
@@ -121,7 +142,8 @@ def street_core(street):
         words.pop()
     if words and words[0] in LEADING:
         words[0] = LEADING[words[0]]
-    return " ".join(words), quadrant
+    words = [MISSPELLINGS.get(w, w) for w in words]
+    return "".join(words), quadrant
 
 
 def split_address(text):
@@ -149,6 +171,10 @@ def split_address(text):
         if not match:
             continue
         street = norm_street(match.group(2))
+        # Walker writes "1470 3 Mile Road NW-Upper Level": which door, glued
+        # to the street with a hyphen and no space. It is a note about the
+        # building, not part of the address.
+        street = re.sub(r"\s*-\s*(UPPER|LOWER|MAIN)\s+LEVEL\b.*$", "", street).strip()
         if not street or street.split()[0] in INTERIOR:
             continue
         return int(match.group(1)), street
@@ -287,6 +313,42 @@ def geocode(index, text):
     return None
 
 
+CENTRELINE = pathlib.Path(__file__).resolve().parent / "centreline_geocode.mjs"
+
+
+def centreline(pending):
+    """Place what the parcel layer could not, from the street centrelines.
+
+    Second choice, deliberately. A parcel centroid is the building; a
+    centreline point is a spot on the road outside it, interpolated between
+    the nearest house numbers the road file carries. For a polling place that
+    difference is a few dozen metres and the marker still lands on the right
+    block, which is worth having -- most of what is missing here is a church,
+    a township hall or a fire station, and a tax-parcel file does not carry
+    those at all.
+
+    Runs site/router.js, the file the browser loads, rather than a second
+    implementation of the same interpolation. Two implementations would drift,
+    and the symptom of the drift would be a marker in the wrong place.
+    """
+    if not pending:
+        return {}
+    if not CENTRELINE.exists():
+        print(f"  (no {CENTRELINE.name}; skipping the centreline pass)")
+        return {}
+    try:
+        done = subprocess.run(["node", str(CENTRELINE)],
+                              input=json.dumps(pending), capture_output=True,
+                              text=True, timeout=300, check=True)
+    except FileNotFoundError:
+        print("  (node not on PATH; skipping the centreline pass)")
+        return {}
+    except subprocess.CalledProcessError as error:
+        print(f"  (centreline pass failed: {error.stderr.strip()[:200]})")
+        return {}
+    return json.loads(done.stdout or "{}")
+
+
 def load_bboxes():
     """MCD code -> (south, west, north, east), from the precinct index."""
     index = json.loads(PRECINCTS.read_text())
@@ -301,9 +363,24 @@ def inside(bbox, lat, lng):
             and west - BBOX_MARGIN_DEG <= lng <= east + BBOX_MARGIN_DEG)
 
 
-def stamp(record, address_text, index, stats, misses, label, bbox=None):
-    """Add lat/lng to one record. Returns True when it landed."""
+def stamp(record, address_text, index, stats, misses, label, bbox=None,
+          pending=None, key=None, mcd=None):
+    """Add lat/lng to one record. Returns True when it landed.
+
+    A record the parcels cannot place is queued for the centreline pass, by
+    the key its caller gave it, so the second pass can fill it in place.
+    """
     found = geocode(index, address_text)
+    # Not placed by a parcel, but parseable: hand it to the centreline pass
+    # and let THAT decide whether it is a miss. Counting it here as well would
+    # count it twice, once in each pass.
+    if not found and pending is not None:
+        parsed = split_address(address_text)
+        if parsed:
+            pending.append({"mcd": mcd, "key": key,
+                            "number": parsed[0], "street": parsed[1],
+                            "_record": record, "_bbox": bbox, "_label": label})
+            return False
     if found and not inside(bbox, found[0], found[1]):
         stats["outside"] += 1
         misses.append((label, f"{address_text} [matched outside the jurisdiction]"))
@@ -331,12 +408,13 @@ def main():
 
     index = build_index(load_parcels(args.parcels))
     bboxes = load_bboxes()
+    pending = []
     # Grand Rapids keeps its own polling places, hand-transcribed WITH
     # coordinates in polling.json, and that file is better than anything
     # derivable here. The county's scrape of the same 59 precincts is the
     # cross-check, not the source, so it is not geocoded.
     skip_mcd = {"34000"}
-    stats, misses, pending = defaultdict(int), [], []
+    stats, misses, documents = defaultdict(int), [], []
 
     for path in sorted(POLLING_DIR.glob("*.json")):
         document = json.loads(path.read_text())
@@ -344,33 +422,61 @@ def main():
         if document["mcd"] in skip_mcd:
             continue
         bbox = bboxes.get(document["mcd"])
+        mcd = document["mcd"]
         for code, place in (document.get("precincts") or {}).items():
             stamp(place, place.get("address"), index, stats, misses,
-                  f"{where} polling {place.get('name', code)}", bbox)
+                  f"{where} polling {place.get('name', code)}", bbox,
+                  pending, f"p:{mcd}:{code}", mcd)
         # The county's drop box rows put the ADDRESS in `name` and the
         # location note in `address` -- the opposite of the city clerk's file.
         # Read as written rather than renaming the fields here: the scrape is
         # the record of what the page said.
-        for box in (document.get("drop_boxes") or []):
+        for slot, box in enumerate(document.get("drop_boxes") or []):
             stamp(box, box.get("name"), index, stats, misses,
-                  f"{where} drop box {box.get('name')}", bbox)
-        pending.append((path, document))
+                  f"{where} drop box {box.get('name')}", bbox,
+                  pending, f"b:{mcd}:{slot}", mcd)
+        documents.append((path, document))
 
     early = json.loads(EARLY_VOTING.read_text())
     for mcd, site in early["sites"].items():
         placed = []
-        for location in site["locations"]:
+        for slot, location in enumerate(site["locations"]):
             record = {"text": location}
             stamp(record, location, index, stats, misses,
-                  f"{site['jurisdiction']} early voting", bboxes.get(mcd))
+                  f"{site['jurisdiction']} early voting", bboxes.get(mcd),
+                  pending, f"e:{mcd}:{slot}", mcd)
             placed.append(record)
         site["located"] = placed
-    pending.append((EARLY_VOTING, early))
+    documents.append((EARLY_VOTING, early))
+
+    # Second pass, over everything the parcels could not place.
+    print(f"\ntrying {len(pending)} more from the street centrelines")
+    found = centreline([{k: v for k, v in item.items() if not k.startswith("_")}
+                        for item in pending])
+    for item in pending:
+        hit = found.get(item["key"])
+        if not hit:
+            stats["miss"] += 1
+            misses.append((item["_label"], f"{item['number']} {item['street']}"))
+            continue
+        if not inside(item["_bbox"], hit["lat"], hit["lng"]):
+            stats["outside"] += 1
+            misses.append((item["_label"],
+                           f"{item['number']} {item['street']} "
+                           "[centreline match outside the jurisdiction]"))
+            continue
+        record = item["_record"]
+        record["lat"], record["lng"] = hit["lat"], hit["lng"]
+        record["geocode"] = ("centreline" if hit.get("exact")
+                             else "centreline interpolated")
+        stats["hit"] += 1
+        stats[record["geocode"]] += 1
 
     total = stats["hit"] + stats["miss"] + stats["outside"]
     print(f"\n{stats['hit']}/{total} located "
           f"({100 * stats['hit'] / total:.1f}%)")
-    for how in ("exact", "street type ignored", "quadrant inferred"):
+    for how in ("exact", "street type ignored", "quadrant inferred",
+                "centreline", "centreline interpolated"):
         if stats[how]:
             print(f"  {how:<24}{stats[how]}")
     if stats["outside"]:
@@ -383,9 +489,9 @@ def main():
     if args.dry_run:
         print("\n--dry-run: nothing written")
         return
-    for path, document in pending:
+    for path, document in documents:
         path.write_text(json.dumps(document, separators=(",", ":")) + "\n")
-    print(f"\nwrote {len(pending)} files")
+    print(f"\nwrote {len(documents)} files")
 
 
 if __name__ == "__main__":
