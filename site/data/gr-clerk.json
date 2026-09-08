@@ -7,9 +7,8 @@
   "licence":"Public record of the City of Grand Rapids.",
   "how_to_update":"Run refresh_gr_clerk.py AND READ WHAT IT WROTE. This is a prose page maintained by hand and it carries copy errors: under the November heading it currently names the August election in a registration deadline. The script checks the shape, not the sense.",
   "why_not_derived":"Michigan's minimum early voting window is nine days ending the Sunday before an election. Grand Rapids opens earlier than that, so the window is read from this page and never computed from the statute.",
-  "archived":"https://web.archive.org/web/20260616094519/https://www.grandrapidsmi.gov/departments/clerks-office/elections/current-election-information/",
-  "archived_timestamp":"20260616094519",
-  "archive_note":"This capture is 84 days old and predates the read that made this file. The Wayback Machine declined a new one, so the snapshot may show an earlier version of the page."
+  "archived":"https://web.archive.org/web/20260908173614/https://www.grandrapidsmi.gov/departments/clerks-office/elections/current-election-information/",
+  "archived_timestamp":"20260908173614"
  },
  "election":"2026-11-03",
  "early_voting":{
