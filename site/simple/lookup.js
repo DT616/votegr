@@ -222,6 +222,11 @@
     return parts;
   }
 
+  // Today IS the day: early voting has closed, a drop box is a race against
+  // the poll close, and the polling place is simply the answer. The map page
+  // reorders for the same reason.
+  const isElectionDay = () => !!election && Elections.todayISO() === election.date;
+
   function render(found, resolvedAddress) {
     typedAddress = resolvedAddress;   // Directions links start from here
     const { precinct, edgeMetres, rivals, inferred } = found;
@@ -233,13 +238,18 @@
         el("span", "wp-label", "Ward:"), el("span", "wp-value", String(wards[precinct])),
         el("span", "wp-label", "Precinct:"), el("span", "wp-value", String(precinct))),
       // Same order as the map page: the drop box is usable first and for
-      // longest, early voting comes next, and election day is the deadline.
-      // Two pages answering one question should not disagree about the shape
-      // of the answer -- a reader who checks both should recognise the second
-      // one.
-      ...dropBoxes(),
-      ...earlyVoting(uncertain),
-      ...pollingPlace(precinct, polling[String(precinct)]),
+      // longest, early voting comes next, and election day is the deadline --
+      // except on election day itself, when the deadline is now and the polls
+      // lead. Two pages answering one question should not disagree about the
+      // shape of the answer -- a reader who checks both should recognise the
+      // second one.
+      ...(isElectionDay()
+        ? [...pollingPlace(precinct, polling[String(precinct)]),
+           ...dropBoxes(),
+           ...earlyVoting(uncertain)]
+        : [...dropBoxes(),
+           ...earlyVoting(uncertain),
+           ...pollingPlace(precinct, polling[String(precinct)])]),
 
       // Said plainly rather than buried: an address that straddles a line, or
       // that we only inferred from its neighbours, is a guess and should be
@@ -282,12 +292,14 @@
   function renderList() {
     optionList.textContent = "";
     suggestions.forEach((suggestion, i) => {
-      // A street outside the city names where it is, because that is the
-      // whole answer for it and the reader should see it before choosing.
-      const option = suggestion.outside
-        ? el("li", null, suggestion.text,
-             el("span", "opt-where", ` in ${placeList(suggestion.outside)}`))
-        : el("li", null, suggestion.text);
+      // Every row names its jurisdiction, not only the ones from outside: a
+      // list where some rows are labelled and some are bare leaves the reader
+      // to work out that bare means answerable. "city" is load-bearing --
+      // Grand Rapids Township is a real, different place next door. Same rule
+      // as the map page's type-ahead.
+      const option = el("li", null, suggestion.text,
+        el("span", suggestion.outside ? "opt-where opt-outside" : "opt-where",
+           ` in ${suggestion.outside ? placeList(suggestion.outside) : GR_CITY}`));
       option.id = `opt-${i}`;
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", i === active ? "true" : "false");
@@ -336,6 +348,8 @@
         street, number, outside: neighbours[street] || [],
       }));
   };
+
+  const GR_CITY = "Grand Rapids city";
 
   const placeList = (where) =>
     where.length === 1 ? where[0]
@@ -575,7 +589,9 @@
         // Hours per row ONLY where they differ from the usual 24/7. Eleven
         // identical lines said nothing; the one different line is the whole
         // point -- the City Hall box is weekdays 8 to 5.
-        entrance_note: [box.note, /^24\/7$/.test(box.hours || "") ? null : box.hours]
+        entrance_note: [box.note,
+                        /^24\/7$/.test(box.hours || "") || !box.hours
+                          ? null : `Open hours: ${box.hours}`]
           .filter(Boolean).join(" \u00b7 "),
       }, "ev-site"));
     }

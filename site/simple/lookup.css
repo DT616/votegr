@@ -228,6 +228,9 @@ a.dir-btn svg { width: 1.15rem; height: 1.15rem; fill: currentColor; }
 
 /* Where an out-of-city street actually is, said in the option itself. */
 .opt-where { color: var(--dim); font-size: .9em; }
+/* Outside the city is the one case where the label changes the answer, so it
+   is the one that is not grey. */
+.opt-outside { color: var(--warn); }
 
 /* The out-of-city answer reads like the other advisories, because that is
    what it is: an honest limit, not an error. */
