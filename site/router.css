@@ -468,10 +468,22 @@ body {
    either, and the one the directions are actually for carries an accent ring
    so the answer to "which address is this route for" is on the address
    itself rather than only in the control below the map. */
-.vi-dest { cursor: pointer; }
-.vi-dest:hover { background: var(--tint-hover); }
+.vi-dest { cursor: pointer; transition: background .12s, box-shadow .12s; }
+/* A background a shade lighter is not enough of a signal on its own: on a
+   card that is already tinted, most people never noticed the cards were
+   clickable at all. Hover draws a thin accent ring and lights the place name,
+   so "this is a control" is unmistakable -- and it is thinner than the 2px
+   ring on .is-dest, so hovering one card while another is selected still
+   reads as two different states rather than two selections. */
+.vi-dest:hover {
+  background: var(--tint-hover);
+  box-shadow: inset 0 0 0 1.5px var(--accent),
+              inset 0 1px 0 var(--bevel-hi), inset 0 -1px 0 var(--bevel-lo);
+}
+.vi-dest:hover .pp-name { color: var(--accent); }
 .vi-dest:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.vi-dest.is-dest {
+.vi-dest.is-dest,
+.vi-dest.is-dest:hover {
   box-shadow: inset 0 0 0 2px var(--accent),
               inset 0 1px 0 var(--bevel-hi), inset 0 -1px 0 var(--bevel-lo);
 }
@@ -479,7 +491,12 @@ body {
    the cell, so it reads differently from the solid inset ring that marks
    where the directions currently go -- a cell is often both at once. Picking
    the nearest again clears it, which is how you get back. */
-.vi-where.is-custom { outline: 2px dashed var(--accent); outline-offset: 3px; }
+.vi-where.is-custom { outline: 2px dashed var(--warn); outline-offset: 3px; }
+/* And the label says so in the same colour as the ring, because "Custom
+   location selected" is the one label on the card that reports a choice the
+   reader made rather than a fact about the election. Dim grey said it as
+   quietly as the labels it is replacing. */
+.vi-where.is-custom .vi-lbl { color: var(--warn); }
 
 /* Inside a selected cell the place block must not paint over the ring's
    inner edge on hover. */
@@ -563,11 +580,15 @@ body {
 /* The button that opens the full list. Quiet: the row already answers the
    question, and this is for the reader who wants the other ten. */
 .box-open {
-  margin-top: 12px; font: inherit; font-size: .87rem; color: var(--dim);
-  background: none; border: 1px solid var(--line); border-radius: 999px;
+  margin-top: 12px; font: inherit; font-size: .87rem; color: var(--fg);
+  background: none; border: 1px solid var(--dim); border-radius: 999px;
   padding: 5px 12px; cursor: pointer;
 }
-.box-open:hover { color: var(--fg); border-color: var(--dim); }
+/* Legible at rest and coloured under the pointer, rather than fading up out
+   of the background when the mouse happens to pass over it. A control that
+   only looks like one on hover is invisible to anyone not already hunting
+   for it -- and to everyone on a touchscreen, where there is no hover at all. */
+.box-open:hover { color: var(--accent); border-color: var(--accent); }
 .box-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* The list inside the panel. Each row routes to that box: the nearest one
@@ -579,10 +600,14 @@ body {
   font-size: .92rem; line-height: 1.45;
 }
 .box-list li + li { margin-top: 2px; }
-.box-list li[data-box] { cursor: pointer; }
-.box-list li[data-box]:hover { background: var(--raise); }
-.box-list li[data-box]:hover .bx-name { color: var(--accent); }
-.box-list li[data-box]:focus-visible {
+/* [data-pick], which is what placeListHtml actually writes -- these were
+   keyed on a [data-box] that no row has ever carried, so neither list has
+   had a hover state. Both lists use this: drop boxes and early voting sites
+   are the same widget with different contents. */
+.box-list li[data-pick] { cursor: pointer; transition: background .12s; }
+.box-list li[data-pick]:hover { background: var(--raise); }
+.box-list li[data-pick]:hover .bx-name { color: var(--accent); }
+.box-list li[data-pick]:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 1px;
 }
 .bx-name { font-weight: 650; display: flex; justify-content: space-between;
@@ -593,8 +618,10 @@ body {
 .bx-dist { font-weight: 400; font-size: .82rem; color: var(--dim);
            white-space: nowrap; }
 .bx-addr, .bx-where { color: var(--dim); font-size: .87rem; }
-/* Hours only appear on a box whose hours are not the usual 24/7, so when one
-   shows up it is the exception and should read as one. */
+/* Every box says when it can be used. The ordinary case is plain; the one
+   that is not 24/7 is amber, so the exception reads as one against a column
+   of white. */
+.bx-hours { color: var(--fg); font-size: .87rem; }
 .bx-hours-odd { color: var(--warn); font-size: .87rem; font-weight: 600; }
 /* The one currently being routed to, so the list says where you are as well
    as where you could go. */
@@ -706,6 +733,12 @@ body {
   .block { padding: 14px 0; }
 }
 
+/* Origin and destination are the same place. Sized like a route summary so
+   the panel does not visibly collapse when this case fires. */
+.here { padding: 16px 0 4px; }
+.here-h { font-size: 1.18rem; font-weight: 700; letter-spacing: -.015em; }
+.here-b { margin-top: 6px; color: var(--dim); line-height: 1.55; }
+
 /* ---- address type-ahead ---- */
 .field { position: relative; }
 .ac {
@@ -715,22 +748,41 @@ body {
 }
 .ac[hidden] { display: none; }
 .ac-item {
-  display: flex; align-items: baseline; gap: 9px; width: 100%;
+  display: flex; align-items: baseline; width: 100%;
   padding: 10px 13px; background: none; border: 0; cursor: pointer;
   font: inherit; text-align: left; color: var(--fg);
   border-bottom: 1px solid var(--line);
 }
 .ac-item:last-child { border-bottom: 0; }
 .ac-item:hover, .ac-item.active { background: var(--raise); }
-.ac-item .num { font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Centred against the row rather than sitting on the text baseline the rest
+   of the row shares: a glyph has no baseline worth aligning to. It takes the
+   accent under the cursor so the row lights up as one object. */
+.ac-item .ac-pin {
+  flex: 0 0 auto; align-self: center; display: flex; color: var(--dim);
+  margin-right: 9px;
+}
+.ac-item:hover .ac-pin, .ac-item.active .ac-pin { color: var(--accent); }
+/* Spacing per pair rather than one flex gap: "602 Alexander St SE" is a
+   single address and wants a word space between its halves, while the pin
+   and the trailing note are separate things and want room. */
+.ac-item .num {
+  font-weight: 700; font-variant-numeric: tabular-nums; margin-right: .3em;
+}
 .ac-item .st { flex: 1; }
+.ac-item .why { margin-left: 9px; }
 /* Off the shared label role on purpose: this is a hint inside a suggestion
    list, not a heading over a value, and the looser .04em keeps it quiet
    under the address it annotates. */
-.ac-item .why {
+.ac-item .why, .ac-item .ac-where {
   font-size: .76rem; color: var(--dim); letter-spacing: .04em;
   text-transform: uppercase; white-space: nowrap;
 }
+/* The jurisdiction sits furthest right, after any "did you mean", because it
+   is the one note every row carries and a column reads faster than a note
+   that moves. */
+.ac-item .ac-where { margin-left: 9px; }
+.ac-item.is-outside .ac-where { color: var(--warn); }
 .ac-head {
   padding: 8px 13px; font-size: .76rem; letter-spacing: .08em;
   text-transform: uppercase; color: var(--dim); background: var(--raise);
@@ -1077,7 +1129,27 @@ ol.steps .scam {
 
 .src-list { margin: 0 0 14px; padding-left: 20px; }
 .src-list li { font-size: .9rem; line-height: 1.55; margin-bottom: 7px; color: var(--fg); }
-.src-list a { color: var(--accent); }
+
+/* Source links, in the About panel and under every place list.
+   Left to the browser these came out default blue and, once followed, default
+   purple -- two colours neither of which is legible on a dark panel, and one
+   of which changes meaning ("we used this" vs "you clicked this"). Where a
+   source came from is not affected by whether the reader has been there, so
+   both states read the same: body text with a quiet underline, accent under
+   the pointer. */
+.src-list a, .bx-prov a,
+.src-list a:visited, .bx-prov a:visited {
+  color: var(--fg); text-decoration: underline;
+  text-decoration-color: var(--dim); text-underline-offset: 2px;
+}
+.src-list a:hover, .bx-prov a:hover,
+.src-list a:focus-visible, .bx-prov a:focus-visible {
+  color: var(--accent); text-decoration-color: var(--accent);
+}
+/* The provenance line itself: a footnote under the list, not part of it. */
+.bx-prov {
+  margin: 10px 0 0; font-size: .82rem; line-height: 1.6; color: var(--dim);
+}
 
 /* ---- destination popup ---- */
 .destpop .dt {

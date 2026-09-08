@@ -64,10 +64,12 @@
       </div>
       <button type="button" class="pin-btn" id="pinBtn" aria-pressed="false"
               title="Route from a spot on the map instead">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 21s-7-5.1-7-11a7 7 0 0 1 14 0c0 5.9-7 11-7 11z"/>
-          <circle cx="12" cy="10" r="2.6"/>
+        <!-- The same pin the type-ahead puts on every suggestion (PIN_SVG in
+             autocomplete.js). Filled, because a 2px outline at this size reads
+             as a circle rather than a pin. -->
+        <svg class="pin-glyph" viewBox="0 0 24 24" fill="currentColor"
+             fill-rule="evenodd" aria-hidden="true">
+          <path d="M12 2c-3.87 0-7 3.13-7 7 0 5.25 6.3 12.3 6.57 12.6a.58.58 0 0 0 .86 0C12.7 21.3 19 14.25 19 9c0-3.87-3.13-7-7-7zM12 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/>
         </svg>
       </button>
       <button type="button" class="pin-btn reset-btn" id="resetBtn" hidden
