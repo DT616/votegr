@@ -838,6 +838,10 @@
       renderElectionBanner();
       startCountdown();
       graph.assignCameras(cameras);
+      // The street index and the snap grid are built lazily; build them
+      // now, while the page is still saying "loading", rather than on the
+      // first address someone types.
+      graph.warm();
       drawCameras();
       input.disabled = false;
       // Autofocus on a phone pops the keyboard over the map before the person

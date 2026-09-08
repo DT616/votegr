@@ -337,7 +337,10 @@ def centreline(pending):
         print(f"  (no {CENTRELINE.name}; skipping the centreline pass)")
         return {}
     try:
-        done = subprocess.run(["node", str(CENTRELINE)],
+        # cwd matters: the helper resolves site/router.js and the chunks
+        # from the working directory, so it has to run from the repo root
+        # whichever directory this script was started in.
+        done = subprocess.run(["node", str(CENTRELINE)], cwd=str(ROOT),
                               input=json.dumps(pending), capture_output=True,
                               text=True, timeout=300, check=True)
     except FileNotFoundError:
