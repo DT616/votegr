@@ -19,6 +19,12 @@
   var pinArmed = false;
   var ac = null;            // the suggestion list, from autocomplete.js
   var clerk = null;         // gr-clerk.json: early voting sites and drop boxes
+  // Which place, within a kind, the reader picked from its list. The nearest
+  // is only the default: someone drops a ballot on the way to somewhere else,
+  // and the box outside the library they were visiting beats the one four
+  // streets closer to home. Reset whenever a new address is looked up, since
+  // "the third nearest" means something different from a different doorstep.
+  var chosen = { dropbox: 0, early: 0 };
   var routes = null, selected = 'avoid';
   var originArrow = null;   // the blue you-are-here arrow; steps advance it
   var GR = [42.9634, -85.6681];
@@ -272,60 +278,90 @@
   // know and cost a line of width on a phone. Stripped when drawing only.
   // The stored value keeps its ZIP: /simple builds "..., Grand Rapids, MI
   // 49504" from it to hand OpenStreetMap something it can geocode.
-  // Eleven addresses do not belong under the one the row is about, and inline
-  // they buried it. They open in a panel instead, where the list can be read
-  // as a list and a choice made deliberately.
+  // The full list of somewhere-to-go, for either kind, in a panel rather than
+  // inline. Eleven addresses do not belong under the one address the row is
+  // about, and inline they buried it.
   //
-  // It also has to live OUTSIDE the drop box cell. Nested inside it, a click
-  // on a row bubbled to the cell's own handler, which re-routed to the
-  // nearest box a heartbeat after routing to the chosen one -- so picking a
-  // box appeared to redraw the map and change nothing.
-  function wireBoxList(r) {
-    var btn = $('boxListBtn'), wrap = $('boxModal'), body = $('boxModalBody');
-    if (!btn || !wrap || !body) return;
-    var box = destinations(r).filter(function (o) { return o.kind === 'dropbox'; })[0];
-    if (!box) return;
+  // It also has to live OUTSIDE the row. Nested inside it, a click on an entry
+  // bubbled to the cell's own handler, which re-routed to the nearest place a
+  // heartbeat after routing to the chosen one -- so picking one appeared to
+  // redraw the map and change nothing.
+  //
+  // Picking sets the choice for that kind, which the card then shows and the
+  // router then drives to. The two used to disagree: the map went to the
+  // library you picked while the card still named the nearest.
+  var LIST_TITLES = {
+    dropbox: 'Ballot drop boxes in Grand Rapids',
+    early: 'Early voting sites in Grand Rapids',
+  };
 
+  function wirePlaceLists(r) {
+    var wrap = $('placeModal'), body = $('placeModalBody'), title = $('placeTitle');
+    if (!wrap || !body) return;
+    var opts = destinations(r);
+
+    function close() { wrap.hidden = true; }
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !wrap.hidden) close();
+    });
+
+    ['dropbox', 'early'].forEach(function (kind) {
+      var btn = $(kind === 'dropbox' ? 'boxListBtn' : 'evListBtn');
+      var opt = opts.filter(function (o) { return o.kind === kind; })[0];
+      if (!btn || !opt) return;
+      btn.onclick = function () {
+        title.textContent = LIST_TITLES[kind];
+        body.innerHTML = placeListHtml(kind, opt);
+        wrap.hidden = false;
+        var x = wrap.querySelector('.modal-x');
+        if (x) x.focus();
+      };
+    });
+
+    wrap.onclick = function (e) {
+      if (e.target.closest('[data-close]')) { close(); return; }
+      var li = e.target.closest('li[data-pick]');
+      if (!li || !current) return;
+      chosen[li.dataset.kind] = Number(li.dataset.pick);
+      close();
+      // Redraw the card with the chosen place, then drive to it.
+      show(current, li.dataset.kind);
+    };
+    body.onkeydown = function (e) {
+      var li = e.target.closest && e.target.closest('li[data-pick]');
+      if (li && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); li.click(); }
+    };
+  }
+
+  function placeListHtml(kind, opt) {
     var html = '<ul class="box-list">';
-    box.all.forEach(function (b, i) {
-      html += '<li data-box="' + i + '" role="button" tabindex="0"' +
-        ' title="Get directions here">' +
+    opt.all.forEach(function (b, i) {
+      html += '<li data-pick="' + i + '" data-kind="' + kind + '"' +
+        ' role="button" tabindex="0" title="Get directions here"' +
+        (i === chosen[kind] ? ' class="is-chosen"' : '') + '>' +
         '<span class="bx-name">' + esc(boxLabel(b)) + '</span>' +
         '<span class="bx-addr">' + esc(addressForDisplay(b.address)) + '</span>' +
-        (b.note ? '<span class="bx-where">Location: ' +
-                  esc(sentenceCase(b.note)) + '</span>' : '') +
+        (b.entrance_note || b.note
+          ? '<span class="bx-where">Location: ' +
+            esc(sentenceCase(b.entrance_note || b.note)) + '</span>' : '') +
         (b.hours ? '<span class="bx-where">Open ' + esc(b.hours) + '</span>' : '') +
         '</li>';
     });
     // The City Hall boxes are real and cannot be driven to as an address, so
     // they are listed and plainly not offered as a destination.
-    ((clerk && clerk.unrouted) || []).forEach(function (b) {
-      html += '<li class="bx-noroute"><span class="bx-name">' +
-        esc(boxLabel(b)) + '</span><span class="bx-where">' +
-        esc(sentenceCase(b.note || '')) + '</span>' +
-        '<span class="bx-addr">Inside the building, so there is no address ' +
-        'to route to.</span></li>';
-    });
-    body.innerHTML = html + '</ul>';
-
-    function close() { wrap.hidden = true; }
-    btn.onclick = function () {
-      wrap.hidden = false;
-      var x = wrap.querySelector('.modal-x');
-      if (x) x.focus();
-    };
-    wrap.onclick = function (e) {
-      if (e.target.closest('[data-close]')) { close(); return; }
-      var li = e.target.closest('li[data-box]');
-      if (li && current) { close(); routeTo(current, 'dropbox', Number(li.dataset.box)); }
-    };
-    body.onkeydown = function (e) {
-      var li = e.target.closest && e.target.closest('li[data-box]');
-      if (li && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); li.click(); }
-    };
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && !wrap.hidden) close();
-    });
+    if (kind === 'dropbox') {
+      ((clerk && clerk.unrouted) || []).forEach(function (b) {
+        html += '<li class="bx-noroute"><span class="bx-name">' +
+          esc(boxLabel(b)) + '</span><span class="bx-where">' +
+          esc(sentenceCase(b.note || '')) + '</span>' +
+          '<span class="bx-addr">Inside the building, so there is no address ' +
+          'to route to.</span></li>';
+      });
+    }
+    // Everything here is inside the city, because everything this tool can
+    // answer is. A Wyoming voter has drop boxes too; we do not have them.
+    return html + '</ul><p class="bx-hours">Grand Rapids locations only. ' +
+      'This tool covers the city.</p>';
   }
 
   // The right-hand cell of every row: what it is called, when it applies, and
@@ -881,6 +917,7 @@
       return;
     }
     input.value = item.number + ' ' + item.street;
+    resetChoices();
     var r = P.lookup(input.value);
     if (r.error) {
       showError('Could not resolve ' + esc(input.value) + '.');
@@ -1019,6 +1056,7 @@
         'belong to another clerk.');
       return;
     }
+    resetChoices();
     var pr = precinctAt(lat, lng);
     if (!pr) {
       showError('Could not place that spot in a precinct. Try dropping the ' +
@@ -1041,7 +1079,7 @@
     routeLayer.clearLayers(); pinLayer.clearLayers();
   }
 
-  function show(r) {
+  function show(r, focusKind) {
     current = r;
     $('col').classList.add('has-result');
     revealMap();
@@ -1087,9 +1125,8 @@
         (box.place.note
           ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') +
         (box.place.hours ? '<br>Open ' + esc(box.place.hours) : '') + '</div>' +
-        '<button type="button" class="box-open" id="boxListBtn">All ' +
-        (box.all.length + ((clerk && clerk.unrouted.length) || 0)) +
-        ' drop boxes in the city</button>';
+        '<button type="button" class="box-open" id="boxListBtn">' +
+        'Show all my drop box locations</button>';
       html += '</div>';
 
       html += whenCell('dropbox', absenteeState(), '');
@@ -1117,7 +1154,9 @@
             '</div>' +
             (ev.all.length > 1
               ? '<div class="pp-note">Any Grand Rapids voter may use any of the ' +
-                ev.all.length + ' sites, whatever precinct they are in.</div>'
+                ev.all.length + ' sites, whatever precinct they are in.</div>' +
+                '<button type="button" class="box-open" id="evListBtn">' +
+                'Show all my early voting sites</button>'
               : '')
           : '<div class="pp-addr">No site published yet.</div>') +
         '</div>';
@@ -1173,7 +1212,7 @@
     // Only when there is something to choose between. With a single
     // destination there is nothing to toggle, and the polling place keeps its
     // older job of framing itself on the map.
-    wireBoxList(r);
+    wirePlaceLists(r);
 
     var destCells = $('precinctInfo').querySelectorAll('[data-kind]');
     var multi = destinations(r).length > 1;
@@ -1252,7 +1291,7 @@
     adv.push('Obey all traffic signs and laws.');
     $('advisory').innerHTML = '<div class="advisory">' + adv.join(' ') + '</div>';
 
-    routeTo(r);
+    routeTo(r, focusKind);
     // After routeTo, because the blocks it fills are hidden until then and a
     // hidden element has no offset to scroll to.
     scrollToResult('resultBlock');
@@ -1568,6 +1607,8 @@
   // an absentee ballot. The last is the one with the strongest case for it --
   // dropping a ballot off is a discretionary errand, at a time of your
   // choosing, and there is no reason a record of it should exist.
+  function resetChoices() { chosen = { dropbox: 0, early: 0 }; }
+
   function destinations(r) {
     var out = [];
     var origin = r.pin ? { lat: r.lat, lng: r.lng }
@@ -1579,7 +1620,8 @@
     var evState = Elections.windowState(evWindow());
     var ranked = nearest(origin, sites);
     if (ranked && evState !== 'closed') {
-      out.push({ kind: 'early', label: 'Early voting', place: ranked[0],
+      out.push({ kind: 'early', label: 'Early voting',
+                 place: ranked[chosen.early] || ranked[0],
                  all: ranked, state: evState });
     }
 
@@ -1589,7 +1631,8 @@
 
     var boxes = nearest(origin, clerk && clerk.boxes);
     if (boxes) {
-      out.push({ kind: 'dropbox', label: 'Drop box', place: boxes[0],
+      out.push({ kind: 'dropbox', label: 'Drop box',
+                 place: boxes[chosen.dropbox] || boxes[0],
                  all: boxes });
     }
 
@@ -1620,7 +1663,7 @@
     // A kind can hold several places -- eleven drop boxes, four early voting
     // sites -- and the nearest is only the default. `which` names one of them.
     if (pick && which != null && pick.all && pick.all[which]) {
-      pick = Object.assign({}, pick, { place: pick.all[which], chosen: which });
+      pick = Object.assign({}, pick, { place: pick.all[which] });
     }
     destChoice = pick;
     markDestination();

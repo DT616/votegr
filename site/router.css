@@ -573,6 +573,11 @@ body {
 }
 .bx-name { font-weight: 650; }
 .bx-addr, .bx-where { color: var(--dim); font-size: .87rem; }
+/* The one currently being routed to, so the list says where you are as well
+   as where you could go. */
+.box-list li.is-chosen { background: var(--tint); }
+.box-list li.is-chosen .bx-name { color: var(--accent); }
+
 /* Not a destination, and it should not look like one. */
 .box-list li.bx-noroute { opacity: .72; cursor: default; }
 
