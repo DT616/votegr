@@ -272,6 +272,18 @@
   // know and cost a line of width on a phone. Stripped when drawing only.
   // The stored value keeps its ZIP: /simple builds "..., Grand Rapids, MI
   // 49504" from it to hand OpenStreetMap something it can geocode.
+  // "bike rack" -> "Bike rack", and "Across from Calder Plaza" left alone.
+  // Only the first letter moves: the rest may hold names the clerk cased on
+  // purpose ("Monroe and Calder Plaza levels").
+  function sentenceCase(s) {
+    s = String(s || '').trim();
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+  }
+
+  function boxLabel(box) {
+    return displayCase(box.name || box.address || 'Drop box');
+  }
+
   function addressForDisplay(a) {
     return displayCase(String(a || '').replace(/,\s*\d{5}(-\d{4})?\s*$/, ''));
   }
@@ -899,31 +911,39 @@
       '<div class="vi-num">' + esc(r.precinct) + '</div></div></div>';
 
     // --- early voting row -------------------------------------------------
-    // The site is named only while the window is genuinely open. ev can still
-    // come back empty then, because destinations() also wants sites with
-    // coordinates and an origin to measure from: with the window open and our
-    // site list short, the honest thing is to say so and name nothing rather
-    // than blame the calendar for a gap of our own. destinations() already
-    // ranks by distance from this origin, so the nearest is read back from it
-    // rather than sorted a second time here.
+    // One row, spanning both content columns: when it runs, then where to go,
+    // then the hours. Split across two panels the site read as an aside about
+    // somewhere else, when it is the same fact as the dates beside it -- a
+    // voter deciding to vote early needs both halves or neither.
+    //
+    // ev can still come back empty with a window published, because
+    // destinations() also wants sites with coordinates and an origin to
+    // measure from: the honest thing then is to give the dates and name
+    // nothing, rather than blame the calendar for a gap of our own.
+    // destinations() already ranks by distance from this origin, so the
+    // nearest is read back from it rather than sorted a second time here.
     var evState = earlyVotingForBlock();
     if (evState) {
       var ev = evState.site
         ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
         : null;
-      // .vi-ev-site names this cell: both where-cells hold a .pp-name and
-      // nothing else told them apart.
-      if (ev) {
-        html += '<div class="vi-where vi-ev-site" data-kind="early">' +
-          '<div class="vi-lbl">Early Voting Site Nearest to You:</div>' +
-          '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
-          '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
-          '</div>';
-      }
-      html += '<div class="vi-when' + (ev ? '' : ' vi-full') + '">' +
+      html += '<div class="vi-when vi-full vi-ev"' +
+        (ev ? ' data-kind="early"' : '') + '>' +
         '<div class="vi-lbl live">' + esc(evState.label) + '</div>' +
         '<div class="vi-val">' + esc(evState.status) + '</div>' +
-        (ev ? evHoursHtml(activeEl) : '') +
+        (ev
+          ? '<div class="vi-ev-site">' +
+            '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
+            '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) +
+            (ev.place.entrance_note
+              ? '<br>Location: ' + esc(sentenceCase(ev.place.entrance_note)) : '') +
+            '</div>' +
+            (ev.all.length > 1
+              ? '<div class="pp-note">Any Grand Rapids voter may use any of the ' +
+                ev.all.length + ' sites, whatever precinct they are in.</div>'
+              : '') +
+            '</div>' + evHoursHtml(activeEl)
+          : '') +
         '</div>';
     }
 
@@ -937,16 +957,38 @@
     if (box) {
       html += '<div class="vi-where vi-dropbox" data-kind="dropbox">' +
         '<div class="vi-lbl">Ballot drop box nearest to you:</div>' +
-        '<div class="pp-name">' + esc(displayCase(box.place.name || 'Drop box')) + '</div>' +
+        '<div class="pp-name">' + esc(boxLabel(box.place)) + '</div>' +
         '<div class="pp-addr">' + esc(addressForDisplay(box.place.address)) +
-        (box.place.note ? '<br>' + esc(box.place.note) : '') + '</div>' +
-        (box.all.length > 1
-          ? '<div class="pp-note">' + box.all.length + ' boxes in the city' +
-            (clerk && clerk.unrouted.length
-              ? ', plus ' + clerk.unrouted.length + ' inside City Hall' : '') +
-            ', open ' + esc(box.place.hours || '24/7') + '.</div>'
-          : '') +
+        (box.place.note
+          ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') + '</div>' +
         '</div>';
+      // Every box, not a count of them. The nearest is only nearest to the
+      // address typed: someone drops a ballot on the way to somewhere else,
+      // and the one by the library they were visiting anyway beats the one
+      // four streets closer to home. So each is routable in its own right.
+      html += '<details class="box-list"><summary>' +
+        'All ' + (box.all.length + ((clerk && clerk.unrouted.length) || 0)) +
+        ' drop boxes in the city</summary><ul>';
+      box.all.forEach(function (b, i) {
+        html += '<li data-box="' + i + '" role="button" tabindex="0"' +
+          ' title="Get directions here">' +
+          '<span class="bx-name">' + esc(boxLabel(b)) + '</span>' +
+          '<span class="bx-addr">' + esc(addressForDisplay(b.address)) + '</span>' +
+          (b.note ? '<span class="bx-where">Location: ' +
+                    esc(sentenceCase(b.note)) + '</span>' : '') +
+          '</li>';
+      });
+      // The City Hall boxes are real and cannot be driven to as an address,
+      // so they are listed and plainly not offered as a destination.
+      ((clerk && clerk.unrouted) || []).forEach(function (b) {
+        html += '<li class="bx-noroute"><span class="bx-name">' +
+          esc(boxLabel(b)) + '</span><span class="bx-where">' +
+          esc(sentenceCase(b.note || '')) + '</span>' +
+          '<span class="bx-addr">Inside the building, so there is no ' +
+          'address to route to.</span></li>';
+      });
+      html += '</ul><p class="bx-hours">Open ' +
+        esc(box.place.hours || '24/7') + '.</p></details>';
     }
 
     // --- election day row -------------------------------------------------
@@ -1000,6 +1042,15 @@
     // Only when there is something to choose between. With a single
     // destination there is nothing to toggle, and the polling place keeps its
     // older job of framing itself on the map.
+    Array.prototype.forEach.call(
+      $('precinctInfo').querySelectorAll('li[data-box]'), function (li) {
+        var which = Number(li.dataset.box);
+        li.onclick = function () { if (current) routeTo(current, 'dropbox', which); };
+        li.onkeydown = function (e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); li.click(); }
+        };
+      });
+
     var destCells = $('precinctInfo').querySelectorAll('[data-kind]');
     var multi = destinations(r).length > 1;
     Array.prototype.forEach.call(destCells, function (cell) {
@@ -1208,9 +1259,18 @@
         return { label: 'Early voting closed',
                  status: 'Ended ' + Elections.dayMonth(to), site: false };
       case 'before':
+        // Name the site before the window opens, but only when the CLERK has
+        // published it for this election. The old rule withheld it until the
+        // window was open, which made sense when the calendar carried sites
+        // with no dates and a site named early might not have been settled.
+        // With gr-clerk.json checked against the election it names, an
+        // upcoming site is a published, dated fact, and a voter planning
+        // around it is better served knowing where than being told to come
+        // back in October.
         return { label: 'Early voting upcoming',
                  status: Elections.dayMonth(window.early_voting_from) +
-                         ' to ' + Elections.dayMonth(to), site: false };
+                         ' to ' + Elections.dayMonth(to),
+                 site: clerkForThisElection() };
       default:
         return { label: 'Early voting open',
                  status: 'Through ' + Elections.dayMonth(to), site: true };
@@ -1422,7 +1482,7 @@
 
   // ---- routing + drawing ----------------------------------------------
 
-  function routeTo(r, forcedKind) {
+  function routeTo(r, forcedKind, which) {
     var opts = destinations(r);
     routeLayer.clearLayers(); pinLayer.clearLayers();
 
@@ -1433,6 +1493,11 @@
     var pick = null;
     if (forcedKind) pick = opts.filter(function (o) { return o.kind === forcedKind; })[0];
     if (!pick) pick = opts[0];
+    // A kind can hold several places -- eleven drop boxes, four early voting
+    // sites -- and the nearest is only the default. `which` names one of them.
+    if (pick && which != null && pick.all && pick.all[which]) {
+      pick = Object.assign({}, pick, { place: pick.all[which], chosen: which });
+    }
     destChoice = pick;
     markDestination();
 
