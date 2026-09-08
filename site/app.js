@@ -272,12 +272,68 @@
   // know and cost a line of width on a phone. Stripped when drawing only.
   // The stored value keeps its ZIP: /simple builds "..., Grand Rapids, MI
   // 49504" from it to hand OpenStreetMap something it can geocode.
+  // Eleven addresses do not belong under the one the row is about, and inline
+  // they buried it. They open in a panel instead, where the list can be read
+  // as a list and a choice made deliberately.
+  //
+  // It also has to live OUTSIDE the drop box cell. Nested inside it, a click
+  // on a row bubbled to the cell's own handler, which re-routed to the
+  // nearest box a heartbeat after routing to the chosen one -- so picking a
+  // box appeared to redraw the map and change nothing.
+  function wireBoxList(r) {
+    var btn = $('boxListBtn'), wrap = $('boxModal'), body = $('boxModalBody');
+    if (!btn || !wrap || !body) return;
+    var box = destinations(r).filter(function (o) { return o.kind === 'dropbox'; })[0];
+    if (!box) return;
+
+    var html = '<ul class="box-list">';
+    box.all.forEach(function (b, i) {
+      html += '<li data-box="' + i + '" role="button" tabindex="0"' +
+        ' title="Get directions here">' +
+        '<span class="bx-name">' + esc(boxLabel(b)) + '</span>' +
+        '<span class="bx-addr">' + esc(addressForDisplay(b.address)) + '</span>' +
+        (b.note ? '<span class="bx-where">Location: ' +
+                  esc(sentenceCase(b.note)) + '</span>' : '') +
+        (b.hours ? '<span class="bx-where">Open ' + esc(b.hours) + '</span>' : '') +
+        '</li>';
+    });
+    // The City Hall boxes are real and cannot be driven to as an address, so
+    // they are listed and plainly not offered as a destination.
+    ((clerk && clerk.unrouted) || []).forEach(function (b) {
+      html += '<li class="bx-noroute"><span class="bx-name">' +
+        esc(boxLabel(b)) + '</span><span class="bx-where">' +
+        esc(sentenceCase(b.note || '')) + '</span>' +
+        '<span class="bx-addr">Inside the building, so there is no address ' +
+        'to route to.</span></li>';
+    });
+    body.innerHTML = html + '</ul>';
+
+    function close() { wrap.hidden = true; }
+    btn.onclick = function () {
+      wrap.hidden = false;
+      var x = wrap.querySelector('.modal-x');
+      if (x) x.focus();
+    };
+    wrap.onclick = function (e) {
+      if (e.target.closest('[data-close]')) { close(); return; }
+      var li = e.target.closest('li[data-box]');
+      if (li && current) { close(); routeTo(current, 'dropbox', Number(li.dataset.box)); }
+    };
+    body.onkeydown = function (e) {
+      var li = e.target.closest && e.target.closest('li[data-box]');
+      if (li && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); li.click(); }
+    };
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !wrap.hidden) close();
+    });
+  }
+
   // The right-hand cell of every row: what it is called, when it applies, and
   // -- when that window has not opened or has closed -- a line saying so. One
   // shape for all three rows, so a reader compares them down the column
   // instead of learning a new layout per row.
-  function whenCell(state, extra) {
-    return '<div class="vi-when">' +
+  function whenCell(kind, state, extra) {
+    return '<div class="vi-when vi-when-' + kind + '">' +
       '<div class="vi-lbl' + (state.live ? ' live' : '') + '">' +
       esc(state.label) + '</div>' +
       '<div class="vi-val">' + esc(state.status) + '</div>' +
@@ -303,15 +359,15 @@
     var range = Elections.dayMonth(from) + ' to ' + Elections.dayMonth(activeEl.date);
     var today = Elections.todayISO();
     if (today < from) {
-      return { label: 'Drop boxes, not yet', status: range,
+      return { label: 'Absentee voting upcoming', status: range, live: true,
                note: 'Absentee ballots are mailed from ' +
                      Elections.monthDay(from) + '. Until then there is nothing '
                      + 'to drop off.' };
     }
     if (today > activeEl.date) {
-      return { label: 'Drop boxes closed', status: range };
+      return { label: 'Absentee voting closed', status: range };
     }
-    return { label: 'Accepting ballots', status: range, live: true,
+    return { label: 'Absentee voting open', status: range, live: true,
              note: 'A returned ballot has to be in the clerk\'s hands by the '
                    + 'time the polls close on election day.' };
   }
@@ -974,35 +1030,14 @@
         '<div class="pp-name">' + esc(boxLabel(box.place)) + '</div>' +
         '<div class="pp-addr">' + esc(addressForDisplay(box.place.address)) +
         (box.place.note
-          ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') + '</div>';
-      // Every box, not a count of them. The nearest is only nearest to the
-      // address typed: someone drops a ballot on the way to somewhere else,
-      // and the one by the library they were visiting anyway beats the one
-      // four streets closer to home. So each is routable in its own right.
-      html += '<details class="box-list"><summary>' +
-        'All ' + (box.all.length + ((clerk && clerk.unrouted.length) || 0)) +
-        ' drop boxes in the city</summary><ul>';
-      box.all.forEach(function (b, i) {
-        html += '<li data-box="' + i + '" role="button" tabindex="0"' +
-          ' title="Get directions here">' +
-          '<span class="bx-name">' + esc(boxLabel(b)) + '</span>' +
-          '<span class="bx-addr">' + esc(addressForDisplay(b.address)) + '</span>' +
-          (b.note ? '<span class="bx-where">Location: ' +
-                    esc(sentenceCase(b.note)) + '</span>' : '') +
-          '</li>';
-      });
-      // The City Hall boxes are real and cannot be driven to as an address,
-      // so they are listed and plainly not offered as a destination.
-      ((clerk && clerk.unrouted) || []).forEach(function (b) {
-        html += '<li class="bx-noroute"><span class="bx-name">' +
-          esc(boxLabel(b)) + '</span><span class="bx-where">' +
-          esc(sentenceCase(b.note || '')) + '</span>' +
-          '<span class="bx-addr">Inside the building, so there is no ' +
-          'address to route to.</span></li>';
-      });
-      html += '</ul></details></div>';
+          ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') +
+        (box.place.hours ? '<br>Open ' + esc(box.place.hours) : '') + '</div>' +
+        '<button type="button" class="box-open" id="boxListBtn">All ' +
+        (box.all.length + ((clerk && clerk.unrouted.length) || 0)) +
+        ' drop boxes in the city</button>';
+      html += '</div>';
 
-      html += whenCell(absenteeState(), 'Open ' + esc(box.place.hours || '24/7') + '.');
+      html += whenCell('dropbox', absenteeState(), '');
     }
 
     // --- early voting -----------------------------------------------------
@@ -1016,7 +1051,7 @@
       var ev = evState.site
         ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
         : null;
-      html += '<div class="vi-where' + (ev ? '' : ' vi-full') + '"' +
+      html += '<div class="vi-where vi-ev-site' + (ev ? '' : ' vi-full') + '"' +
         (ev ? ' data-kind="early"' : '') + '>' +
         '<div class="vi-lbl">Early voting site nearest to you</div>' +
         (ev
@@ -1031,7 +1066,8 @@
               : '')
           : '<div class="pp-addr">No site published yet.</div>') +
         '</div>';
-      html += whenCell({ label: evState.label, status: evState.status },
+      html += whenCell('early', { label: evState.label, status: evState.status,
+                                  live: true },
                        ev ? evHoursHtml(activeEl) : '');
     }
 
@@ -1063,7 +1099,7 @@
     html += '</div>';
 
     if (activeEl) {
-      html += whenCell(
+      html += whenCell('polling',
         { label: 'Election day', status: Elections.withWeekday(activeEl.date) },
         electionDayHours && electionDayHours.open && electionDayHours.close
           ? '<div class="vi-hours"><span class="vi-hours-lbl">Hours:</span> ' +
@@ -1082,14 +1118,7 @@
     // Only when there is something to choose between. With a single
     // destination there is nothing to toggle, and the polling place keeps its
     // older job of framing itself on the map.
-    Array.prototype.forEach.call(
-      $('precinctInfo').querySelectorAll('li[data-box]'), function (li) {
-        var which = Number(li.dataset.box);
-        li.onclick = function () { if (current) routeTo(current, 'dropbox', which); };
-        li.onkeydown = function (e) {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); li.click(); }
-        };
-      });
+    wireBoxList(r);
 
     var destCells = $('precinctInfo').querySelectorAll('[data-kind]');
     var multi = destinations(r).length > 1;
