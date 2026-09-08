@@ -1248,9 +1248,18 @@
     // people and not for anyone who has moved, which is exactly who cannot
     // afford to find out on election day. The notes below it are the
     // exceptions, and they stay conditional.
-    var adv = ['Note: Your voting location is based on the address where you ' +
-      'registered to vote, not what you enter here. If you are not sure the ' +
-      'entered address is the same, double-check with the ' +
+    //
+    // This is the page's only disclaimer. A second one used to sit in a box
+    // under the tool, shown on exactly the same condition as this note and
+    // saying the same thing about registration and who to ask, so a reader
+    // with an answer read the caveat twice. The box is gone; the two claims
+    // that were only ever made there, what the tool is not and the reminder
+    // that a route is not permission to ignore a sign, lead and close this
+    // note instead.
+    var adv = ['<strong>Not an official government tool.</strong> Your voting ' +
+      'location is based on the address where you registered to vote, not ' +
+      'what you enter here. If you are not sure the entered address is the ' +
+      'same, double-check with the ' +
       '<a href="https://www.grandrapidsmi.gov/departments/clerks-office/" ' +
       'target="_blank" rel="noopener">Grand Rapids City Clerk</a> or the ' +
       '<a href="https://mvic.sos.state.mi.us/" target="_blank" ' +
@@ -1263,6 +1272,9 @@
     if (r.edgeMetres !== Infinity && r.edgeMetres < 30) adv.push('This address is close ' +
       'to a precinct boundary, so the answer is less certain.');
     if (r.ambiguousStreet) adv.push('Read as ' + esc(r.street) + '. Other streets also match what you typed.');
+    // Last, because it is about the drive rather than the answer, and the
+    // drive is what the reader goes to next.
+    adv.push('Obey all traffic signs and laws.');
     $('advisory').innerHTML = '<div class="advisory">' + adv.join(' ') + '</div>';
 
     routeTo(r);

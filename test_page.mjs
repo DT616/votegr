@@ -147,8 +147,10 @@ for (const w of WIDTHS) {
   }
 
   // --- the disclaimer is gated on there being something to disclaim ---
+  // It lives inside the answer now rather than in a box under the tool, so
+  // "hidden" is the empty #advisory inside a hidden #resultBlock.
   const before = await page.evaluate(() => {
-    const d = document.querySelector('.page-disclaimer');
+    const d = document.getElementById('advisory');
     const cs = getComputedStyle(d);
     return { flagged: document.getElementById('col').classList.contains('has-result'),
              shown: d.getBoundingClientRect().height > 0 && cs.display !== 'none' && parseFloat(cs.opacity) > 0 };
@@ -230,7 +232,7 @@ for (const w of WIDTHS) {
   await page.locator('#ac .ac-item').first().click();
   await page.waitForTimeout(2500);
   const result = await page.evaluate(() => {
-    const d = document.querySelector('.page-disclaimer');
+    const d = document.getElementById('advisory');
     const cs = getComputedStyle(d);
     const map = document.getElementById('map');
     return {
@@ -240,8 +242,11 @@ for (const w of WIDTHS) {
       mapShown: !document.getElementById('mapBlock').hidden,
       mapDrawn: map.querySelectorAll('canvas, svg').length > 0 && map.getBoundingClientRect().height > 50,
       shown: d.getBoundingClientRect().height > 0 && cs.display !== 'none' && parseFloat(cs.opacity) > 0,
-      paragraphs: d.querySelectorAll('p').length,
+      blocks: d.querySelectorAll('.advisory').length,
       text: d.innerText.replace(/\s+/g, ' ').trim(),
+      // Counted over the whole page, not the note: the duplicate this
+      // replaces was a separate element further down the column.
+      flagsOnPage: (document.body.innerText.match(/Not an official government tool/g) || []).length,
       links: Array.from(d.querySelectorAll('a')).map(a => a.href),
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       footOverflow: document.getElementById('siteFooter').scrollWidth - document.getElementById('siteFooter').clientWidth,
@@ -255,8 +260,13 @@ for (const w of WIDTHS) {
   // The answer carries its own Election day row; the column belongs to it.
   ok('the countdown stands down for the answer', result.countdownGone);
   ok('the disclaimer appears with the result', result.shown);
-  ok('the disclaimer is one paragraph', result.paragraphs === 1);
+  // One notice, not two. The page used to carry a second copy in a box under
+  // the tool, gated on the same condition and making the same claims.
+  ok('the disclaimer is stated once', result.blocks === 1 && result.flagsOnPage === 1);
   ok('the disclaimer leads with what it is not', /^Not an official government tool\./.test(result.text));
+  // The route is not permission to ignore a sign, and that line has nowhere
+  // else to live now.
+  ok('the disclaimer still says to obey traffic signs', /Obey all traffic signs and laws\./.test(result.text));
   // Both official sources stay reachable no matter how the copy is reworded.
   ok('the Voter Information Center is linked', result.links.some(h => h.includes('mvic.sos.state.mi.us')));
   ok('the City Clerk is linked', result.links.some(h => h.includes('grandrapidsmi.gov')));

@@ -381,14 +381,6 @@ body {
   letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
 }
 
-/* Shown with the answer it hedges, not before and not in the basement. Until
-   an address is queried there are no claims on screen to disclaim. */
-/* The one line that has to survive skim-reading: this is not the government's
-   tool. Sits above the longer disclaimer rather than inside it. */
-.page-disclaimer .disclaimer-flag { color: var(--fg); }
-.page-disclaimer { display: none; }
-#col.has-result .page-disclaimer { display: block; margin: 4px 0 0; }
-
 /* ---- address input ---- */
 .field { position: relative; }
 .field input {
@@ -547,13 +539,15 @@ body {
   font-size: .87rem; margin-top: 12px; padding-top: 12px;
   border-top: 1px solid var(--line); color: var(--dim); line-height: 1.5;
 }
+/* The page's one disclaimer, shown with the answer it hedges rather than
+   standing under the tool as a second copy of itself. */
 .advisory {
   font-size: .87rem; color: var(--warn); line-height: 1.5; margin-top: 12px;
   padding-left: 12px; border-left: 2px solid var(--warn);
 }
 /* The block is warn-coloured, so a default blue anchor inside it would read
-   as a different voice. Same treatment the page disclaimer gets: take the
-   surrounding colour, keep the underline that says it is a link. */
+   as a different voice: take the surrounding colour, keep the underline that
+   says it is a link. */
 .advisory a { color: inherit; }
 .err { font-size: .93rem; color: var(--warn); line-height: 1.55; }
 
@@ -785,20 +779,6 @@ body {
   font-size: .88rem; color: var(--dim); line-height: 1.5;
   margin-bottom: 10px;
 }
-
-/* The caveat that matters most, on the page rather than behind a dialog. */
-.page-disclaimer {
-  margin: 22px 0 0;
-  padding: 12px 14px;
-  background: var(--raise);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--warn);
-  border-radius: 8px;
-  font-size: .85rem; line-height: 1.55; color: var(--fg);
-}
-.page-disclaimer a { color: inherit; }
-.page-disclaimer p { margin: 0; }
-.page-disclaimer p + p { margin-top: 10px; }
 
 /* ---- destination segmented control ---- */
 .seg { display: flex; gap: 0; margin-bottom: 12px; border: 1.5px solid var(--line);
