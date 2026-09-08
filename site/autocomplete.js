@@ -1,0 +1,148 @@
+// The suggestion list under the address box.
+//
+// Nothing resolves while you type. The list offers addresses that really
+// exist in the index, and the answer appears only when one is chosen, so a
+// number the index does not carry reads as "did you mean" rather than as an
+// error thrown at you mid-keystroke.
+//
+// This module owns the widget -- the list element, its markup, the keyboard,
+// and when it opens and closes. It does not know what an address means: the
+// page supplies `suggest` to search, `onChoose` for what picking one does,
+// and `onMiss` for what to say when nothing matches. So the list can be read
+// without the router, and the lookup can be read without the list.
+(function (root) {
+  'use strict';
+
+  // The small grey word beside a suggestion that is not an exact hit, saying
+  // why it is being offered. Keyed by the `kind` precinct.js assigns.
+  var SUGGESTION_WHY = {
+    inferred: 'estimated', quadrant: 'did you mean',
+    near: 'nearest on this street', street: 'pick a number'
+  };
+
+  var LIMIT = 8;
+  var DEBOUNCE_MS = 120;
+  // Long enough for a click on an item to land before the blur closes the
+  // list under the pointer.
+  var BLUR_MS = 150;
+
+  // Its own escape, so this module has no load-order dependency on the page
+  // that uses it -- the same trade cameras.js and routepanel.js make.
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : s;
+    return d.innerHTML;
+  }
+
+  // Read at call time rather than captured, so script order cannot matter.
+  function cased(s) {
+    return typeof root.displayCase === 'function' ? root.displayCase(s) : s;
+  }
+
+  function attach(opts) {
+    var input = opts.input;
+    var items = [], index = -1, timer = null, box = null;
+
+    // Built on first use rather than required in the HTML, so the markup
+    // carries the input and this file carries everything the input grew.
+    function element() {
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'ac';
+        box.className = 'ac';
+        box.hidden = true;
+        box.setAttribute('role', 'listbox');
+        input.parentNode.appendChild(box);
+      }
+      return box;
+    }
+
+    function close() { element().hidden = true; index = -1; }
+
+    function itemHtml(it, i) {
+      var why = SUGGESTION_WHY[it.kind] || '';
+      return '<button type="button" class="ac-item" role="option" data-i="' + i + '">' +
+        (it.number != null ? '<span class="num">' + it.number + '</span>' : '') +
+        '<span class="st">' + esc(cased(it.street)) + '</span>' +
+        (why ? '<span class="why">' + why + '</span>' : '') + '</button>';
+    }
+
+    function refresh() {
+      var text = input.value.trim();
+      if (text.length < 2) { close(); return; }
+      items = opts.suggest(text, LIMIT) || [];
+      if (!items.length) { close(); return; }
+
+      var el = element();
+      // With no house number typed yet, every row is a street, so the list
+      // says what it is asking for rather than looking like a failed match.
+      var head = opts.hasNumber(text) ? '' : '<div class="ac-head">Choose a street</div>';
+      el.innerHTML = head + items.map(itemHtml).join('');
+      Array.prototype.forEach.call(el.querySelectorAll('.ac-item'), function (button) {
+        // mousedown, not click: the input's blur would otherwise close the
+        // list before the click could land on it.
+        button.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          opts.onChoose(items[Number(button.dataset.i)]);
+        });
+      });
+      el.hidden = false;
+      index = -1;
+    }
+
+    function highlight(n) {
+      var els = element().querySelectorAll('.ac-item');
+      if (!els.length) return;
+      if (index >= 0 && els[index]) els[index].classList.remove('active');
+      index = (n + els.length) % els.length;
+      els[index].classList.add('active');
+      els[index].scrollIntoView({ block: 'nearest' });
+    }
+
+    // Enter with nothing highlighted still has to do something useful: take
+    // the best suggestion when it is a full address, complete the street when
+    // it is only a street, and otherwise hand the text to the page to explain.
+    function enter() {
+      if (!element().hidden && index >= 0) { opts.onChoose(items[index]); return; }
+      var text = input.value.trim();
+      var best = opts.suggest(text, 1) || [];
+      if (best.length && best[0].number != null) { opts.onChoose(best[0]); return; }
+      if (best.length) { input.value = best[0].street + ' '; refresh(); return; }
+      opts.onMiss(text);
+    }
+
+    function onKey(e) {
+      var open = !element().hidden;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!open) refresh();
+        highlight(index + 1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (open) highlight(index - 1);
+      } else if (e.key === 'Escape') {
+        close();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        enter();
+      }
+    }
+
+    input.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, DEBOUNCE_MS);
+    });
+    input.addEventListener('keydown', onKey);
+    input.addEventListener('blur', function () { setTimeout(close, BLUR_MS); });
+    document.addEventListener('click', function (e) {
+      if (!input.parentNode.contains(e.target)) close();
+    });
+
+    return { refresh: refresh, close: close };
+  }
+
+  var Autocomplete = { attach: attach, SUGGESTION_WHY: SUGGESTION_WHY };
+
+  root.Autocomplete = Autocomplete;
+  if (typeof module !== 'undefined' && module.exports) module.exports = Autocomplete;
+})(typeof self !== 'undefined' ? self : this);

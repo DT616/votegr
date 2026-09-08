@@ -354,46 +354,21 @@
   // Shows the first date that has not passed and hides the rest, so a stale
   // entry is harmless while a missing one simply shows nothing.
 
-  const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  // The clerk publishes early voting hours as a weekday pattern rather than as
-  // dated rows, so hours are matched by weekday. Indexes line up with DAYS.
-  const DAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const MONTHS = ["January", "February", "March", "April", "May", "June",
-                  "July", "August", "September", "October", "November", "December"];
-
-  const todayISO = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}` +
-           `-${String(now.getDate()).padStart(2, "0")}`;
-  };
-
-  // "2026-07-29" -> "July 29, 2026". Falls back to whatever it was handed, since
-  // this also formats a date read out of a data file rather than written here.
-  const prettyMonthDay = (iso) => {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
-    return match ? `${MONTHS[Number(match[2]) - 1]} ${Number(match[3])}, ${match[1]}` : iso;
-  };
-
-  // With the weekday, for the dates a voter has to act on.
-  const prettyDate = (iso) => {
-    const [y, m, d] = iso.split("-").map(Number);
-    return `${DAYS[new Date(y, m - 1, d).getDay()]}, ${prettyMonthDay(iso)}`;
-  };
-
-  const nextElection = (elections) => {
-    const today = todayISO();
-    return (elections || []).find((e) => e.date >= today) || null;
-  };
+  // The calendar itself -- today, the next election, the state of the early
+  // voting window, the date formats -- comes from ../elections.js, which the
+  // map page reads too. Both pages once carried their own copy, and this page
+  // went on offering an early voting site for a day after the other had
+  // stopped. Only the wording below is this page's own.
 
   function showNextElection(next) {
     const banner = $("election");
     if (!banner || !next) return;
 
-    banner.append("Next election: ", el("strong", null, `${next.name}, ${prettyDate(next.date)}`));
+    banner.append("Next election: ", el("strong", null, `${next.name}, ${Elections.withWeekday(next.date)}`));
 
-    const today = todayISO();
+    const state = Elections.windowState(next);
     const { early_voting_from: from, early_voting_to: to } = next;
-    if (from && to) {
+    if (state !== "none") {
       // The count, not the addresses. Addresses appear once an address has been
       // looked up, not to everyone who loads the page.
       const count = (next.early_voting_sites || []).length;
@@ -405,9 +380,9 @@
       // off the closed sentence: those doors are shut, and counting them would
       // be offering somewhere to go.
       banner.append(el("span", "ev",
-        today > to ? `Early voting ended ${prettyDate(to)}.`
-        : today >= from ? `Early voting is open now, through ${prettyDate(to)}${where}.`
-        : `Early voting runs from ${prettyDate(from)} through ${prettyDate(to)}${where}.`));
+        state === "closed" ? `Early voting ended ${Elections.withWeekday(to)}.`
+        : state === "open" ? `Early voting is open now, through ${Elections.withWeekday(to)}${where}.`
+        : `Early voting runs from ${Elections.withWeekday(from)} through ${Elections.withWeekday(to)}${where}.`));
     }
     banner.hidden = false;
   }
@@ -420,11 +395,11 @@
     if (!election) return [];
     const { early_voting_from: from, early_voting_to: to,
             early_voting_sites: sites, early_voting_hours: hours } = election;
-    if (!from || !to || !(sites || []).length) return [];
+    if (!(sites || []).length) return [];
 
-    const today = todayISO();
-    if (today > to) return [];
-    const open = today >= from;
+    const state = Elections.windowState(election);
+    if (state === "none" || state === "closed") return [];
+    const open = state === "open";
 
     const parts = [];
 
@@ -438,9 +413,9 @@
 
     // The date carries the weight here, so it is the part set in bold.
     parts.push(open
-      ? el("div", "lead-2", "Vote early, through ", el("strong", "when", prettyDate(to)))
-      : el("div", "lead-2", "Vote early, ", el("strong", "when", prettyDate(from)),
-           " through ", el("strong", "when", prettyDate(to))));
+      ? el("div", "lead-2", "Vote early, through ", el("strong", "when", Elections.withWeekday(to)))
+      : el("div", "lead-2", "Vote early, ", el("strong", "when", Elections.withWeekday(from)),
+           " through ", el("strong", "when", Elections.withWeekday(to))));
     parts.push(el("div", "ev-note",
       "Any Grand Rapids voter may use any of these, whatever precinct they are in."));
 
@@ -451,7 +426,7 @@
     // Hours last, as aligned rows with today's picked out: where to go is
     // the answer, when it is open is the detail that follows it.
     if ((hours || []).length) {
-      const todayAbbr = open ? DAY_ABBR[new Date().getDay()] : null;
+      const todayAbbr = open ? Elections.todayAbbr() : null;
       const table = el("div", "ev-hours");
       for (const rule of hours) {
         const isToday = todayAbbr !== null && (rule.days || []).includes(todayAbbr);
@@ -488,7 +463,7 @@
       streetNames = Object.keys(streets);
       wards = addresses.wards;
       polling = places.precincts;
-      election = nextElection(calendar.elections);
+      election = Elections.next(calendar.elections);
       showNextElection(election);
 
       input.disabled = false;

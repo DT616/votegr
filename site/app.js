@@ -17,10 +17,10 @@
   var cityRings = null, ownBase = null;      // cityRings: [lat, lng] pairs
   var neighbors = null, precincts = null;
   var pinArmed = false;
+  var ac = null;            // the suggestion list, from autocomplete.js
   var routes = null, selected = 'avoid';
   var originArrow = null;   // the blue you-are-here arrow; steps advance it
   var GR = [42.9634, -85.6681];
-  var METERS_PER_MILE = 1609.34;
 
   // There is deliberately no tile layer. Tiles would be fetched from a third
   // party on every pan, which is the one thing that stopped this page being
@@ -33,8 +33,6 @@
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
-  function fmtMi(m) { return (m / METERS_PER_MILE).toFixed(1) + ' mi'; }
-  function fmtMin(s) { return Math.max(1, Math.round(s / 60)) + ' min'; }
   function getVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000';
   }
@@ -480,19 +478,15 @@
     status.addTo(map);
   }
 
+  // The suggestion list is autocomplete.js. It owns the widget; this page
+  // says what searching, choosing and missing mean.
   function initInput() {
-    var input = $('addr');
-    var timer;
-    input.addEventListener('input', function () {
-      clearTimeout(timer); timer = setTimeout(refreshSuggestions, 120);
-    });
-    input.addEventListener('keydown', onInputKey);
-    input.addEventListener('blur', function () {
-      // let a click on an item land before the list closes
-      setTimeout(closeAC, 150);
-    });
-    document.addEventListener('click', function (e) {
-      if (!input.parentNode.contains(e.target)) closeAC();
+    ac = Autocomplete.attach({
+      input: $('addr'),
+      suggest: function (text, limit) { return P.suggest(text, limit); },
+      hasNumber: function (text) { return P.parseTyped(text).number != null; },
+      onChoose: choose,
+      onMiss: function (text) { showError(missExplanation(text)); }
     });
   }
 
@@ -540,7 +534,7 @@
       // object beside the list rather than a field repeated on every election.
       electionDayHours = (calendar && calendar.election_day_hours) || null;
       electionList = (calendar && calendar.elections) || [];
-      activeEl = nextElection(electionList);
+      activeEl = Elections.next(electionList);
       renderElectionBanner();
       startCountdown();
       graph.assignCameras(cameras);
@@ -637,170 +631,23 @@
 
   // ---- cameras ---------------------------------------------------------
 
-  var FIELD_LABELS = {
-    manufacturer: 'Made by', model: 'Model', brand: 'Brand',
-    'camera:type': 'Camera type', 'camera:mount': 'Mounted on',
-    operator: 'Operated by', 'operator:type': 'Operator type',
-    surveillance: 'Watches', 'surveillance:zone': 'Zone',
-    electricity: 'Power', height: 'Height', level: 'Level', support: 'Support',
-    note: 'Note', description: 'Description', ref: 'Reference',
-    'survey:date': 'Surveyed', check_date: 'Last checked', start_date: 'Installed'
-  };
-  var FIELD_ORDER = ['manufacturer', 'model', 'brand', 'operator', 'operator:type',
-    'camera:type', 'camera:mount', 'support', 'surveillance', 'surveillance:zone',
-    'electricity', 'height', 'level', 'start_date', 'survey:date', 'check_date',
-    'ref', 'note', 'description'];
-
-  function ago(iso) {
-    var then = new Date(iso + 'T00:00:00Z').getTime();
-    if (isNaN(then)) return '';
-    var days = Math.floor((Date.now() - then) / 86400000);
-    if (days < 0) return '';
-    if (days === 0) return ' · today';
-    if (days === 1) return ' · yesterday';
-    if (days < 31) return ' · ' + days + ' days ago';
-    var months = Math.round(days / 30.44);
-    if (months < 24) return ' · ' + months + ' month' + (months > 1 ? 's' : '') + ' ago';
-    return ' · ' + (days / 365.25).toFixed(1) + ' years ago';
-  }
-
-  function compass(deg) {
-    var pts = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
-               'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-    return pts[Math.round((deg % 360) / 22.5) % 16];
-  }
-
-  // The bearing a camera faces, from OSM's direction tag, or null when it has
-  // none. Read by the popup and by the marker's view cone alike.
-  function cameraBearing(c) {
-    var f = c.f || {};
-    var raw = f.direction != null ? f.direction : f['camera:direction'];
-    return (raw != null && raw !== '' && !isNaN(parseFloat(raw))) ? parseFloat(raw) : null;
-  }
-
-  function cameraPopup(c) {
-    var f = c.f || {};
-    var rows = '';
-    // Direction first: what a camera points at is the thing that matters most
-    // for whether you drive past it.
-    var d = cameraBearing(c);
-    if (d != null) {
-      rows += '<div class="cf"><span class="ck">Faces</span>' +
-        '<span class="cv">' + compass(d) + ' · ' + Math.round(d) + '°</span></div>';
-    }
-    FIELD_ORDER.forEach(function (k) {
-      if (f[k] == null || f[k] === '') return;
-      var val = String(f[k]).replace(/;/g, ', ');
-      rows += '<div class="cf"><span class="ck">' + esc(FIELD_LABELS[k] || k) +
-        '</span><span class="cv">' + esc(val) + '</span></div>';
-    });
-    // Version 1 means the object has never been edited, so its timestamp is
-    // genuinely when the camera was first mapped. Past v1 all we honestly know
-    // is when someone last touched it, and saying otherwise would overstate it.
-    var seen = c.t ? String(c.t).slice(0, 10) : null;
-    if (seen) {
-      var firstMapped = c.v === 1;
-      rows += '<div class="cf"><span class="ck">' +
-        (firstMapped ? 'First mapped' : 'Last edited') + '</span>' +
-        '<span class="cv">' + seen + '<span class="cago">' + ago(seen) + '</span></span></div>';
-    }
-    if (!rows) rows = '<div class="cf"><span class="cv">No details recorded in OpenStreetMap.</span></div>';
-    var foot = '<div class="cfoot">OpenStreetMap ' + esc(c.id) +
-      (c.v ? ' · version ' + c.v : '') + '</div>';
-    return '<div class="campop"><div class="ctitle">License plate camera</div>' + rows + foot + '</div>';
-  }
-
-  // Cameras are drawn as a view cone pointing the way the camera faces, the
-  // convention DeFlock and the OSM surveillance renderers use. The bearing is
-  // in OSM's `direction` tag, present on every camera in this data, and it is
-  // the thing that decides whether driving a street actually passes a reader.
+  // How a camera draws and what its popup says lives in cameras.js. What is
+  // left here is what needs the map: the wrapper that makes a Leaflet marker
+  // out of the drawing, and the legend key that paints the same figure.
   function cameraIcon(c, flagged) {
-    var deg = cameraBearing(c);
-    var S = 58, C = S / 2;
-    var fill = flagged ? '#ff2d2d' : '#ff4d4d';
-    var cone = '';
-    if (deg != null) {
-      // Cone drawn pointing north from center, then rotated to the bearing.
-      cone = '<g transform="rotate(' + deg.toFixed(1) + ' ' + C + ' ' + C + ')">' +
-        '<path d="M' + C + ',' + C + ' L' + (C - 11) + ',' + (C - 24) +
-        ' A26,26 0 0,1 ' + (C + 11) + ',' + (C - 24) + ' Z" ' +
-        'fill="' + fill + '" fill-opacity="' + (flagged ? '.42' : '.26') + '" ' +
-        'stroke="' + fill + '" stroke-opacity="' + (flagged ? '.85' : '.5') + '" stroke-width="1.5"/></g>';
-    }
-    var ring = flagged
-      ? '<circle cx="' + C + '" cy="' + C + '" r="15" fill="none" stroke="' + fill +
-        '" stroke-width="2.5" opacity=".9" class="cam-pulse"/>'
-      : '';
-    // A robot officer: pale metal head under a police peaked cap, and two
-    // red glowing eyes. The eyes carry the state colour, which is the honest
-    // mapping: the glow IS the plate reader, and it burns brighter when this
-    // camera sits on your route. Cap and head are fixed colours so the only
-    // thing that changes with state is the part that watches. Upright at
-    // every bearing; the cone alone says which way it looks.
-    var body = cameraBodySvg(fill, C);
-    var html = '<svg width="' + S + '" height="' + S + '" viewBox="0 0 ' + S + ' ' + S + '">' +
-      cone + ring + body + '</svg>';
-    // The hover title. RoboCop is what he is.
-    return L.divIcon({ className: 'cam-icon', html:
-      '<span title="RoboCop" style="display:block;width:100%;height:100%">' + html + '</span>',
-                       iconSize: [S, S], iconAnchor: [C, C] });
+    var art = Cameras.markerSvg(c, flagged, getVar('--pin-ring'));
+    return L.divIcon({ className: 'cam-icon', html: art.html,
+                       iconSize: [art.size, art.size],
+                       iconAnchor: [art.centre, art.centre] });
   }
 
-  // The robot itself, with no direction cone and no route pulse. Split out so
-  // the map marker and the legend key are literally the same drawing: the key
-  // used to be a separate CSS approximation built from radial-gradients, and
-  // it had drifted into something that plainly did not match the map.
-  function cameraBodySvg(fill, C) {
-    var ring2 = getVar('--pin-ring');
-    // Cap in a real police blue rather than near-black navy; face in a
-    // light skin tone (the RoboCop read: human face, machine everything
-    // else). The ear bolts stay pale metal so the hardware still shows.
-    var dark = '#0e1116', cap = '#2a52c8', skin = '#f0c8a2';
-    var body =
-      '<g stroke-linejoin="round" transform="translate(' + C + ',' + C +
-        ') scale(1.15) translate(-' + C + ',-' + C + ')">' +
-      // ear bolts first, so the head overlaps their inner edge
-      '<rect x="' + (C - 10.6) + '" y="' + (C - 1) + '" width="3" height="4.6" rx="1" ' +
-        'fill="' + ring2 + '" stroke="' + dark + '" stroke-width="1.2"/>' +
-      '<rect x="' + (C + 7.6) + '" y="' + (C - 1) + '" width="3" height="4.6" rx="1" ' +
-        'fill="' + ring2 + '" stroke="' + dark + '" stroke-width="1.2"/>' +
-      // head: squarer block; the small radius is the robot tell
-      '<rect x="' + (C - 8.5) + '" y="' + (C - 4) + '" width="17" height="13.5" rx="2.2" ' +
-        'fill="' + skin + '" stroke="' + dark + '" stroke-width="1.6"/>' +
-      // faceplate seam under the eyes
-      '<path d="M' + (C - 8.5) + ',' + (C + 3.6) + ' H' + (C + 8.5) + '" ' +
-        'stroke="' + dark + '" stroke-width=".9" opacity=".45"/>' +
-      // mouth grille: three teeth, not lips
-      '<rect x="' + (C - 4.2) + '" y="' + (C + 5.2) + '" width="2.2" height="1.8" rx=".5" fill="' + dark + '" opacity=".8"/>' +
-      '<rect x="' + (C - 1.1) + '" y="' + (C + 5.2) + '" width="2.2" height="1.8" rx=".5" fill="' + dark + '" opacity=".8"/>' +
-      '<rect x="' + (C + 2) + '" y="' + (C + 5.2) + '" width="2.2" height="1.8" rx=".5" fill="' + dark + '" opacity=".8"/>' +
-      // eye glow, then the eyes themselves
-      '<circle cx="' + (C - 3.8) + '" cy="' + (C + 1.2) + '" r="4.4" fill="' + fill + '" opacity=".3"/>' +
-      '<circle cx="' + (C + 3.8) + '" cy="' + (C + 1.2) + '" r="4.4" fill="' + fill + '" opacity=".3"/>' +
-      '<circle cx="' + (C - 3.8) + '" cy="' + (C + 1.2) + '" r="2.1" fill="' + fill + '" stroke="' + dark + '" stroke-width=".8"/>' +
-      '<circle cx="' + (C + 3.8) + '" cy="' + (C + 1.2) + '" r="2.1" fill="' + fill + '" stroke="' + dark + '" stroke-width=".8"/>' +
-      // peaked cap: crown, then the brim across the brow
-      '<path d="M' + (C - 8.5) + ',' + (C - 4.5) + ' Q' + (C - 8) + ',' + (C - 11) + ' ' + C + ',' + (C - 11) +
-        ' Q' + (C + 8) + ',' + (C - 11) + ' ' + (C + 8.5) + ',' + (C - 4.5) + ' Z" ' +
-        'fill="' + cap + '" stroke="' + dark + '" stroke-width="1.4"/>' +
-      '<rect x="' + (C - 10) + '" y="' + (C - 5.4) + '" width="20" height="2.6" rx="1.3" ' +
-        'fill="' + cap + '" stroke="' + dark + '" stroke-width="1.2"/>' +
-      // badge on the crown
-      '<circle cx="' + C + '" cy="' + (C - 7.8) + '" r="1.3" fill="#f0ad2d"/>' +
-      '</g>';
-    return body;
-  }
-
-  // Draw that same robot into the legend key. Cropped to the figure rather
-  // than the marker's 58px box, which is mostly empty space reserved for the
-  // direction cone the key does not show.
   function paintLegendCamera() {
     var el = document.querySelector('.map-legend .dotk');
     if (!el) return;
-    el.innerHTML = '<svg viewBox="16 15 26 26" width="18" height="18" ' +
-      'style="display:block">' + cameraBodySvg('#ff4d4d', 29) + '</svg>';
+    el.innerHTML = Cameras.legendSvg(getVar('--pin-ring'));
     el.setAttribute('title', 'RoboCop');
   }
+
 
   // Where to DRAW a camera. OSM maps the pole, which stands beside the road;
   // at street zoom that sideways offset grows to tens of pixels and the dot
@@ -869,7 +716,7 @@
         zIndexOffset: flag[c.id] ? 600 : 400,
         keyboard: false
       });
-      bindDetail(mk, function () { return cameraPopup(c); }, 300);
+      bindDetail(mk, function () { return Cameras.popupHtml(c); }, 300);
       mk.addTo(camLayer);
     });
     syncLabelObstacles();
@@ -882,7 +729,7 @@
     hideMap();
     routeLayer.clearLayers(); pinLayer.clearLayers();
     current = null;
-    $('addr').value = ''; closeAC();
+    $('addr').value = ''; ac.close();
     $('resultBlock').hidden = true; $('routeBlock').hidden = true;
     $('routeBlock').classList.remove('map-only');
     routes = null;   // out of scope: reset also takes the cameras off the map
@@ -897,94 +744,18 @@
     $('addr').focus();
   }
 
-  // ---- type-ahead ------------------------------------------------------
-  //
-  // Nothing resolves while you type. The list offers addresses that really
-  // exist in the index and the answer appears when one is chosen, so a number
-  // the index does not carry reads as "did you mean" rather than as an error
-  // thrown at you mid-keystroke.
-
-  var acItems = [], acIndex = -1;
-
-  // The small grey word beside a suggestion that is not an exact hit, saying
-  // why it is being offered. Keyed by the `kind` precinct.js assigns.
-  var SUGGESTION_WHY = {
-    inferred: 'estimated', quadrant: 'did you mean',
-    near: 'nearest on this street', street: 'pick a number'
-  };
-
-  function acBox() {
-    var box = $('ac');
-    if (!box) {
-      box = document.createElement('div');
-      box.id = 'ac'; box.className = 'ac'; box.hidden = true;
-      box.setAttribute('role', 'listbox');
-      $('addr').parentNode.appendChild(box);
-    }
-    return box;
-  }
-
-  function closeAC() { acBox().hidden = true; acIndex = -1; }
-
-  function refreshSuggestions() {
-    var text = $('addr').value.trim();
-    if (text.length < 2) { closeAC(); return; }
-    acItems = P.suggest(text, 8);
-    if (!acItems.length) { closeAC(); return; }
-    var box = acBox();
-    var hasNumber = P.parseTyped(text).number != null;
-    var html = acItems.map(function (it, i) {
-      var why = SUGGESTION_WHY[it.kind] || '';
-      return '<button type="button" class="ac-item" role="option" data-i="' + i + '">' +
-        (it.number != null ? '<span class="num">' + it.number + '</span>' : '') +
-        '<span class="st">' + esc(displayCase(it.street)) + '</span>' +
-        (why ? '<span class="why">' + why + '</span>' : '') + '</button>';
-    }).join('');
-    box.innerHTML = (hasNumber ? '' : '<div class="ac-head">Choose a street</div>') + html;
-    Array.prototype.forEach.call(box.querySelectorAll('.ac-item'), function (el) {
-      el.addEventListener('mousedown', function (e) {
-        e.preventDefault();
-        choose(acItems[Number(el.dataset.i)]);
-      });
-    });
-    box.hidden = false; acIndex = -1;
-  }
-
-  function highlight(n) {
-    var els = acBox().querySelectorAll('.ac-item');
-    if (!els.length) return;
-    if (acIndex >= 0 && els[acIndex]) els[acIndex].classList.remove('active');
-    acIndex = (n + els.length) % els.length;
-    els[acIndex].classList.add('active');
-    els[acIndex].scrollIntoView({ block: 'nearest' });
-  }
-
-  function onInputKey(e) {
-    var open = !acBox().hidden;
-    if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) refreshSuggestions(); highlight(acIndex + 1); return; }
-    if (e.key === 'ArrowUp') { e.preventDefault(); if (open) highlight(acIndex - 1); return; }
-    if (e.key === 'Escape') { closeAC(); return; }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (open && acIndex >= 0) { choose(acItems[acIndex]); return; }
-      // Enter with no pick: take the best suggestion if there is one.
-      var items = P.suggest($('addr').value.trim(), 1);
-      if (items.length && items[0].number != null) { choose(items[0]); return; }
-      if (items.length) { $('addr').value = items[0].street + ' '; refreshSuggestions(); return; }
-      showError(missExplanation($('addr').value.trim()));
-    }
-  }
+  // ---- address entry ---------------------------------------------------
 
   function choose(item) {
     if (!item) return;
-    closeAC();
+    ac.close();
     var input = $('addr');
     if (item.number == null) {
       // a street was picked: keep any number already typed and reopen
       var num = (input.value.match(/^(\d+)/) || [])[1] || '';
       input.value = (num ? num + ' ' : '') + displayCase(item.street) + (num ? '' : ' ');
       input.focus();
-      refreshSuggestions();
+      ac.refresh();
       return;
     }
     input.value = item.number + ' ' + item.street;
@@ -1032,6 +803,8 @@
       'and those are not covered here.';
   }
 
+  // ---- dropped pin -----------------------------------------------------
+
   // A dropped pin has no house number, so the address index cannot answer
   // it; the precinct POLYGONS can. Point-in-polygon over the same state
   // boundary file vote-gr uses, entirely on this device like everything else.
@@ -1070,7 +843,7 @@
   function pinLookup(lat, lng) {
     if (!graph || !P) return;
     if (!insideCity(lat, lng)) {
-      $('addr').value = ''; closeAC();
+      $('addr').value = ''; ac.close();
       showError('That spot is outside the City of Grand Rapids, and this ' +
         'tool covers the city only. Precincts and polling places out there ' +
         'belong to another clerk.');
@@ -1083,11 +856,13 @@
       return;
     }
     var place = P.pollingPlace(pr.precinct);
-    $('addr').value = ''; closeAC();
+    $('addr').value = ''; ac.close();
     setHint('Routing from your dropped pin. Type an address to switch back.');
     show({ pin: true, lat: lat, lng: lng,
            precinct: pr.precinct, ward: pr.ward, place: place });
   }
+
+  // ---- the answer ------------------------------------------------------
 
   function showError(msg) {
     $('resultBlock').hidden = false; $('routeBlock').hidden = true;
@@ -1181,11 +956,11 @@
     if (activeEl) {
       html += '<div class="vi-when">' +
         '<div class="vi-lbl">Election day</div>' +
-        '<div class="vi-val">' + esc(prettyDateLong(activeEl.date)) + '</div>' +
+        '<div class="vi-val">' + esc(Elections.withWeekday(activeEl.date)) + '</div>' +
         (electionDayHours && electionDayHours.open && electionDayHours.close
           ? '<div class="vi-hours"><span class="vi-hours-lbl">Hours:</span> ' +
-            esc(shortTime(electionDayHours.open)) + ' to ' +
-            esc(shortTime(electionDayHours.close)) + '</div>'
+            esc(Elections.shortTime(electionDayHours.open)) + ' to ' +
+            esc(Elections.shortTime(electionDayHours.close)) + '</div>'
           : '') +
         '</div>';
     }
@@ -1291,41 +1066,11 @@
   // precinct's polling place, which is the only place you may vote on
   // election day.
 
-  function todayStr() {
-    var d = new Date();
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
-      '-' + String(d.getDate()).padStart(2, '0');
-  }
-
-  function nextElection(list) {
-    var t = todayStr();
-    var future = (list || []).filter(function (e) { return e.date >= t; });
-    future.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
-    return future[0] || null;
-  }
-
-  function evSites(e) { return (e && e.early_voting_sites) || []; }
-
-  function evOpen(e) {
-    if (!e || !e.early_voting_from || !e.early_voting_to) return false;
-    var t = todayStr();
-    return t >= e.early_voting_from && t <= e.early_voting_to && evSites(e).length > 0;
-  }
-
-  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
-                'August', 'September', 'October', 'November', 'December'];
-
-  // "2026-11-03" -> "November 3, 2026"
-  function prettyDate(iso) {
-    if (!iso) return '';
-    var p = iso.split('-');
-    return MONTHS[Number(p[1]) - 1] + ' ' + Number(p[2]) + ', ' + p[0];
-  }
-
-  // The clerk publishes early voting hours as a weekday pattern rather than
-  // as dated rows, so a rule is matched by weekday. Indexes line up with the
-  // abbreviations the data file uses.
-  var DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  // The calendar arithmetic -- today, the next election, the state of the
+  // early voting window, and the date and time formats -- lives in
+  // elections.js, which /simple reads too so the two pages cannot disagree
+  // about what day it is. What stays here is only the wording, which the two
+  // surfaces deliberately do differently.
 
   // Days left, times right, with today's row picked out: where to go is the
   // answer, when it is open is the detail that follows it. Same shape the
@@ -1333,7 +1078,7 @@
   function evHoursHtml(e) {
     var rules = (e && e.early_voting_hours) || [];
     if (!rules.length) return '';
-    var today = DAY_ABBR[new Date().getDay()];
+    var today = Elections.todayAbbr();
     var out = '<div class="vi-hours-lbl ev-hours-lbl">Hours:</div>' +
               '<div class="ev-hours">';
     for (var i = 0; i < rules.length; i++) {
@@ -1341,45 +1086,16 @@
       var mark = days.indexOf(today) !== -1 ? ' class="is-today"' : '';
       out += '<span' + mark + '>' + esc(days.join(', ')) +
              (mark ? ' (today)' : '') + '</span>' +
-             '<span' + mark + '>' + esc(shortTime(rules[i].open)) + ' to ' +
-             esc(shortTime(rules[i].close)) + '</span>';
+             '<span' + mark + '>' + esc(Elections.shortTime(rules[i].open)) + ' to ' +
+             esc(Elections.shortTime(rules[i].close)) + '</span>';
     }
     return out + '</div>';
   }
 
-  var WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
-                  'Friday', 'Saturday'];
-
-  // "2026-11-03" -> "Tuesday, November 3, 2026". The weekday leads because it
-  // is what people plan around; a bare date sends the reader to a calendar.
-  // Built from local Y/M/D parts, never new Date(iso): that parses as UTC
-  // midnight and lands on the previous day for anyone west of Greenwich,
-  // which would print the wrong weekday for an election.
-  //
-  // Deliberately NOT prettyDate(). The footer bar renders its dates in a
-  // compact uppercase strip where a weekday would not fit at 320px, so the
-  // two surfaces keep two formats on purpose. /simple already leads with the
-  // weekday (its own prettyMonthDay caller), so this brings the main page
-  // into line with it rather than inventing a third convention.
-  function prettyDateLong(iso) {
-    if (!iso) return '';
-    var p = iso.split('-');
-    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
-    return WEEKDAYS[d.getDay()] + ', ' + prettyDate(iso);
-  }
-
-  // "2026-11-03" -> "Tuesday, November 3", no year. Used inside the early
-  // voting window, where the election date sits directly below carrying the
-  // same year and repeating it twice in four lines adds nothing.
-  function prettyDayMonth(iso) {
-    return prettyDateLong(iso).replace(/, \d{4}$/, '');
-  }
-
-  // "7:00 AM" -> "7 AM". Only on the hour: the clerk publishes half hours
-  // for early voting and those keep their minutes.
-  function shortTime(t) {
-    return String(t || '').replace(/:00(?=\s*[AP]M\b)/i, '');
-  }
+  // Two date formats, on purpose. The footer bar renders its dates in a
+  // compact uppercase strip where a weekday would not fit at 320px, so it
+  // takes Elections.monthDay; everywhere a voter has to act on a date, the
+  // weekday leads and Elections.withWeekday is the one to call.
 
   // Two lines in the header: election day, then early voting under it.
   //
@@ -1388,28 +1104,30 @@
   // thing that had not been scheduled yet. As a labelled line in the chrome it
   // is available at a glance and in the way of nothing.
   //
-  // Written as the calendar rather than as a set of conditions, because the
-  // conditions had a hole in them: every state that was not before the window
-  // or inside it fell through to 'Start date TBD', including the day or two
-  // after early voting closes and election day itself. Those are the days the
-  // most people read this line, and it was telling them the start date had
-  // not been decided when in fact the window had already been and gone.
+  // One line per state of Elections.windowState, so the hole this used to
+  // have cannot come back: every state that was not before the window or
+  // inside it once fell through to 'Start date TBD', including the days after
+  // early voting closes and election day itself. Those are the days most
+  // people read this line, and it was telling them the start date had not
+  // been decided when the window had already been and gone.
   //
   // 'Start date TBD' now means only what it says: the clerk has published
   // nothing. A half-published window counts as nothing, since a start with no
-  // end is not a window a voter can act on.
+  // end is not a window a voter can act on -- that is windowState's 'none'.
+  //
+  // 'open' is deliberately the dates alone rather than Elections.isOpen(),
+  // which also wants a site list: with a window published and no sites the
+  // window is still open and it is our data that is short, and saying nothing
+  // about the dates would blame the calendar for a gap of our own.
   function earlyVotingStatus() {
-    var from = activeEl.early_voting_from, to = activeEl.early_voting_to;
-    if (!from || !to) return 'Start date TBD';
-
-    var t = todayStr();
-    if (t > to) return 'Ended ' + prettyDate(to);
-    if (t < from) return prettyDate(from) + ' to ' + prettyDate(to);
-    // Inside the window. Deliberately the dates alone and not evOpen(), which
-    // also wants a site list: with a window published and no sites, the window
-    // is still open and it is our data that is short. Saying nothing about the
-    // dates would be blaming the calendar for a gap of our own.
-    return 'Open through ' + prettyDate(to);
+    var to = activeEl.early_voting_to;
+    switch (Elections.windowState(activeEl)) {
+      case 'none':   return 'Start date TBD';
+      case 'closed': return 'Ended ' + Elections.monthDay(to);
+      case 'before': return Elections.monthDay(activeEl.early_voting_from) +
+                            ' to ' + Elections.monthDay(to);
+      default:       return 'Open through ' + Elections.monthDay(to);
+    }
   }
 
   // What the BLOCK says about early voting, which is deliberately not what
@@ -1419,30 +1137,32 @@
   // state word rather than saying it twice, and the two callers stay
   // independent instead of one wording being wrong for the other surface.
   //
-  // Four states. The one that matters most is the third: after the window
-  // closes but before election day, a reader who saw a site listed last week
-  // has to be told it is no longer an option, or they drive to a locked door.
-  // activeEl is always the NEXT election, so if it exists at all then
-  // election day has not passed, and t > to means exactly "closed, with the
-  // election still ahead".
+  // The state that matters most is 'closed': after the window ends but before
+  // election day, a reader who saw a site listed last week has to be told it
+  // is no longer an option, or they drive to a locked door. activeEl is
+  // always the NEXT election, so if it exists at all then election day has
+  // not passed, and 'closed' means exactly "over, with the election ahead".
+  //
+  // 'none' returns null rather than a row: a half-published window is not a
+  // window a voter can act on, so the block says nothing rather than describe
+  // a date range that does not exist yet.
   function earlyVotingForBlock() {
     if (!activeEl) return null;
-    var from = activeEl.early_voting_from, to = activeEl.early_voting_to;
-    // A half-published window is not a window a voter can act on, so say
-    // nothing rather than describe a date range that does not exist yet.
-    if (!from || !to) return null;
-    var t = todayStr();
-    if (t > to) {
-      return { label: 'Early voting closed',
-               status: 'Ended ' + prettyDayMonth(to), site: false };
+    var to = activeEl.early_voting_to;
+    switch (Elections.windowState(activeEl)) {
+      case 'none':
+        return null;
+      case 'closed':
+        return { label: 'Early voting closed',
+                 status: 'Ended ' + Elections.dayMonth(to), site: false };
+      case 'before':
+        return { label: 'Early voting upcoming',
+                 status: Elections.dayMonth(activeEl.early_voting_from) +
+                         ' to ' + Elections.dayMonth(to), site: false };
+      default:
+        return { label: 'Early voting open',
+                 status: 'Through ' + Elections.dayMonth(to), site: true };
     }
-    if (t < from) {
-      return { label: 'Early voting upcoming',
-               status: prettyDayMonth(from) + ' to ' + prettyDayMonth(to),
-               site: false };
-    }
-    return { label: 'Early voting open',
-             status: 'Through ' + prettyDayMonth(to), site: true };
   }
 
   // ---- election day countdown -----------------------------------------
@@ -1465,15 +1185,6 @@
   // tick at all, so the hour is kept rather than rounded away.
   var cdTimer = null;
 
-  // Local midnight starting the given date. Built from parts for the same
-  // reason prettyDateLong is: new Date(iso) parses as UTC and lands on the
-  // evening before for anyone west of Greenwich.
-  function dayStart(iso) {
-    var p = String(iso || '').split('-');
-    if (p.length !== 3) return null;
-    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
-  }
-
   function startCountdown() {
     if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
     renderCountdown();
@@ -1488,7 +1199,7 @@
   // one figure a reader came for.
   function noteLine() {
     return '<span class="cd-for">' + esc(activeEl.name) + ':</span> ' +
-      '<span class="cd-when">' + esc(prettyDateLong(activeEl.date)) + '</span>';
+      '<span class="cd-when">' + esc(Elections.withWeekday(activeEl.date)) + '</span>';
   }
 
   function renderCountdown() {
@@ -1499,8 +1210,8 @@
     // The day can roll over under a page left open. Re-asking the calendar is
     // cheaper than being wrong about which election is next, and the footer is
     // redrawn with it so the two readings of the calendar cannot disagree.
-    if (activeEl && activeEl.date < todayStr()) {
-      activeEl = nextElection(electionList);
+    if (activeEl && activeEl.date < Elections.todayISO()) {
+      activeEl = Elections.next(electionList);
       renderElectionBanner();
     }
 
@@ -1510,7 +1221,7 @@
       return;
     }
 
-    var target = dayStart(activeEl.date);
+    var target = Elections.dayStart(activeEl.date);
     if (!target) { box.hidden = true; return; }
     var left = target.getTime() - Date.now();
 
@@ -1524,7 +1235,7 @@
       clock.innerHTML = '<span class="cd-today">Today</span>';
       if (note) note.innerHTML = noteLine();
       if (said) said.textContent = 'The ' + activeEl.name + ' is today, ' +
-        prettyDateLong(activeEl.date) + '.';
+        Elections.withWeekday(activeEl.date) + '.';
       box.hidden = false;
       return;
     }
@@ -1549,7 +1260,7 @@
 
     if (note) note.innerHTML = noteLine();
     if (said) said.textContent = days + (days === 1 ? ' day' : ' days') +
-      ' until the ' + activeEl.name + ' on ' + prettyDateLong(activeEl.date) + '.';
+      ' until the ' + activeEl.name + ' on ' + Elections.withWeekday(activeEl.date) + '.';
     box.hidden = false;
   }
 
@@ -1569,7 +1280,7 @@
     };
     barInfo.innerHTML =
       cell('elec-name', activeEl.name) +
-      cell('elec-date', prettyDate(activeEl.date)) +
+      cell('elec-date', Elections.monthDay(activeEl.date)) +
       cell('elec-name', 'Early voting') +
       cell('elec-date', earlyVotingStatus());
     if (bar) bar.hidden = false;
@@ -1578,10 +1289,10 @@
   // Which destinations are available for this voter right now.
   function destinations(r) {
     var out = [];
-    if (evOpen(activeEl)) {
+    if (Elections.isOpen(activeEl)) {
       var origin = r.pin ? { lat: r.lat, lng: r.lng }
                          : graph.geocode(r.number, r.street);
-      var sites = evSites(activeEl).filter(function (s) { return s.lat && s.lng; });
+      var sites = Elections.sites(activeEl).filter(function (s) { return s.lat && s.lng; });
       if (origin && sites.length) {
         sites = sites.slice().sort(function (a, b) {
           return ALPRRouter.haversine(origin.lat, origin.lng, a.lat, a.lng) -
@@ -1667,14 +1378,14 @@
     // same road. Showing it twice implies a choice that does not exist, so the
     // two collapse into one.
     var fastExp = Object.keys(fast.camsOnRoute).length;
-    var identical = sameRoute(fast, avoid, fastExp, avoid.cameraCount);
+    var identical = RoutePanel.sameRoute(fast, avoid, fastExp, avoid.cameraCount);
 
     // A route through cameras earns its place on the page by being faster.
     // When it is not (by the same threshold the cost line uses), offering it
     // would present surveillance exposure as one half of a trade that has no
     // other half, so it collapses into the single-route display.
     var fastDropped = false;
-    if (!identical && fastExp > avoid.cameraCount && noRealSaving(fast, avoid)) {
+    if (!identical && fastExp > avoid.cameraCount && RoutePanel.noRealSaving(fast, avoid)) {
       identical = true;
       fastDropped = true;
     }
@@ -1814,17 +1525,8 @@
   function renderDestPicker() {
     var el = $('destPick');
     if (!el) return;
-    if (!routes || routes.opts.length < 2) {
-      // One destination needs no announcement: the answer block above has
-      // already named it.
-      el.innerHTML = '';
-      return;
-    }
-    el.innerHTML = '<div class="seg">' + routes.opts.map(function (o) {
-      return '<button type="button" data-kind="' + o.kind + '"' +
-        (destChoice && o.kind === destChoice.kind ? ' class="on"' : '') + '>' +
-        esc(o.label) + '</button>';
-    }).join('') + '</div>';
+    el.innerHTML = routes
+      ? RoutePanel.destPickerHtml(routes.opts, destChoice && destChoice.kind) : '';
     Array.prototype.forEach.call(el.querySelectorAll('button'), function (b) {
       b.onclick = function () { if (current) routeTo(current, b.dataset.kind); };
     });
@@ -1840,37 +1542,6 @@
     // anchor; the bottom clears Leaflet's attribution strip.
     return { paddingTopLeft: [pad, Math.max(pad, 36)],
              paddingBottomRight: [pad, pad + 26] };
-  }
-
-  // "Would taking the cameras actually get you there faster?" Both routes come
-  // out of the same search over the same graph, so this is a direct comparison
-  // of their seconds and meters. The threshold is the same one the verdict
-  // line has always used for "costs you nothing": a saving the display cannot
-  // even show (under 0.05 mi and half a minute) is not a saving.
-  //
-  // ONE predicate for both decisions that depend on it: whether the fastest
-  // route is offered at all, and how its cost is described when it is.
-  function noRealSaving(fast, avoid) {
-    var dMi = (avoid.meters - fast.meters) / METERS_PER_MILE;
-    var dMin = (avoid.seconds - fast.seconds) / 60;
-    return dMi <= .05 && dMin <= .5;
-  }
-
-  // Two results are the same journey if they use the same roads, or if they
-  // are indistinguishable on every figure the page reports.
-  //
-  // The exposure counts must be passed in. The fastest route is computed with
-  // the camera data switched off, so its own cameraCount is always 0 and
-  // comparing it against the avoiding route's 0 would call two genuinely
-  // different routes identical whenever their distance and time happened to
-  // match, hiding a real choice from the reader.
-  function sameRoute(a, b, aExp, bExp) {
-    if (!a || !b) return false;
-    if (a.edges.length === b.edges.length &&
-        a.edges.every(function (e, i) { return e === b.edges[i]; })) return true;
-    return aExp === bExp &&
-           Math.round(a.seconds) === Math.round(b.seconds) &&
-           Math.round(a.meters) === Math.round(b.meters);
   }
 
   function camsOn(edges) {
@@ -2014,128 +1685,17 @@
     return m;
   }
 
-  function camWord(n) {
-    return n === 0 ? '<span class="cam-zero">no cameras</span>'
-      : '<span class="cam-big">' + n + ' camera' + (n > 1 ? 's' : '') + '</span>';
-  }
-
   function renderRouteCards() {
-    var fast = routes.fast, avoid = routes.avoid;
-    var dMi = (avoid.meters - fast.meters) / METERS_PER_MILE;
-    var dMin = (avoid.seconds - fast.seconds) / 60;
-    var saved = routes.avoidExp < routes.fastExp ? routes.fastExp - routes.avoidExp : 0;
-
-    if (routes.identical) {
-      var clean = routes.avoidExp === 0;
-      var note = routes.fastDropped
-        ? '<div class="verdict">Going through the cameras would not get you ' +
-          'there any faster, so only this route is offered.</div>'
-        : clean ? ''
-        : '<div class="verdict">This is also the way that passes ' +
-          'the fewest cameras.</div>';
-      $('routes').innerHTML =
-        '<div class="one-route"><b>' + fmtMi(avoid.meters) + '</b> · <b>' +
-        fmtMin(avoid.seconds) + '</b>' +
-        (clean ? '' : ' · ' + camWord(routes.avoidExp)) + '</div>' + note;
-      return;
-    }
-
-    // One control, two options, each showing what it costs. Two full-width
-    // cards said the same thing in twice the height.
-    function opt(key, r, exp) {
-      var plural = function (n) { return n > 1 ? 's' : ''; };
-
-      // Each option is named by what it does with the cameras, so the two read
-      // as a choice rather than as two labels with counts bolted on. Naming it
-      // twice ("Avoiding" above "avoiding 1 camera") was the redundancy this
-      // replaces.
-      //
-      // The avoiding route reports how many it DODGES, measured against the
-      // fastest route; the fastest reports how many it DRIVES PAST. Where no
-      // camera-free route exists the search falls back to fewest exposures, so
-      // that route can still pass some: it says "passing" plainly rather than
-      // claiming an avoidance it did not achieve.
-      var label;
-      if (key === 'avoid') {
-        label = exp > 0 ? 'Passing ' + exp + ' camera' + plural(exp)
-          : saved > 0 ? 'Avoiding ' + saved + ' camera' + plural(saved)
-          : 'No cameras';
-      } else {
-        label = exp === 0 ? 'No cameras'
-          : 'Traversing ' + exp + ' camera' + plural(exp);
-      }
-
-      return '<button type="button" class="' + key +
-        (selected === key ? ' on' : '') + '" data-key="' + key + '">' +
-        '<span class="rt-top"><span class="sw ' + key + '"></span>' +
-        label + '</span>' +
-        '<span class="rt-sub">' + fmtMi(r.meters) + ' \u00b7 ' + fmtMin(r.seconds) + '</span>' +
-        '</button>';
-    }
-    var html = '<div class="route-toggle">' +
-      opt('avoid', avoid, routes.avoidExp) +
-      opt('fast', fast, routes.fastExp) + '</div>';
-
-    // The cost line is the avoiding route's price tag, so it sits directly
-    // under the two buttons and only while that route is the selection.
-    // With Fastest selected it would be arguing with the reader's choice.
-    if (saved > 0 && selected === 'avoid') {
-      var cost;
-      if (noRealSaving(fast, avoid)) cost = 'costs you nothing';
-      else {
-        var parts = [];
-        if (dMi > .05) parts.push(dMi.toFixed(1) + ' mi');
-        if (dMin > .5) parts.push(Math.round(dMin) + ' min');
-        cost = 'costs an extra ' + parts.join(' and ');
-      }
-      html += '<div class="verdict">Going around them ' + cost + '.</div>';
-    }
-    $('routes').innerHTML = html;
+    $('routes').innerHTML = RoutePanel.cardsHtml(routes, selected);
     Array.prototype.forEach.call($('routes').querySelectorAll('button[data-key]'), function (b) {
       b.onclick = function () { selected = b.dataset.key; renderAll(false); };
     });
   }
 
-  // A glyph per manoeuvre, read off the instruction text. Faster to scan
-  // than a numbered list, and it survives being read at arm's length.
-  function turnGlyph(text) {
-    if (/^Head/i.test(text)) return '\u2191';
-    if (/sharp right/i.test(text)) return '\u21b1';
-    if (/sharp left/i.test(text)) return '\u21b0';
-    if (/turn right/i.test(text)) return '\u2192';
-    if (/turn left/i.test(text)) return '\u2190';
-    if (/bear right/i.test(text)) return '\u2197';
-    if (/bear left/i.test(text)) return '\u2196';
-    if (/u-turn/i.test(text)) return '\u21ba';
-    return '\u2191';
-  }
-
-  // Case only the street inside the instruction, never the instruction.
-  // router.js builds the text as 'Turn left onto ' + leg.name and hands the
-  // bare name back as st.street, so the name appears verbatim and a single
-  // replace is exact rather than a guess at where it starts.
-  function stepText(st) {
-    if (!st.street) return st.text;
-    var cased = displayCase(st.street);
-    return cased === st.street ? st.text : st.text.replace(st.street, cased);
-  }
-
   function renderSteps() {
     var r = routes[selected];
     var steps = r.steps || graph.steps(r);
-    var html = '<ol class="steps">' + steps.map(function (st, i) {
-      var dist = st.meters ? '<span class="sd">' +
-        (st.meters < 160 ? Math.round(st.meters * 3.28084) + ' ft' : fmtMi(st.meters)) +
-        '</span>' : '';
-      var cam = st.cameras.length
-        ? '<span class="scam">' + st.cameras.length + ' camera' +
-          (st.cameras.length > 1 ? 's' : '') + '</span>' : '';
-      return '<li data-i="' + i + '"' + (st.arrive ? ' class="arrive"' : '') +
-        ' title="Show this part of the route on the map">' +
-        (st.arrive ? '' : '<span class="glyph">' + turnGlyph(st.text) + '</span>') +
-        '<span class="stext">' + esc(stepText(st)) + '</span>' + dist + cam + '</li>';
-    }).join('') + '</ol>';
-    $('steps').innerHTML = html;
+    $('steps').innerHTML = RoutePanel.stepsHtml(steps);
 
     // A step is also a viewport: clicking it frames that stretch of the
     // route. maxZoom keeps a 40-foot leg from being blown up to rooftop
@@ -2178,9 +1738,7 @@
     (routes.avoid.steps || []).forEach(function (st) {
       if (st.cameras && st.cameras.length) names[st.street || 'an unnamed road'] = 1;
     });
-    $('unavoid').innerHTML = '<div class="unavoid">There is no way to reach this ' +
-      'destination without passing ' + exp + ' known camera' + (exp > 1 ? 's' : '') +
-      ', on ' + esc(Object.keys(names).join(', ')) + '. This route passes the fewest it can.</div>';
+    $('unavoid').innerHTML = RoutePanel.unavoidableHtml(exp, Object.keys(names));
   }
 
   // ---- camera source ---------------------------------------------------
