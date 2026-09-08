@@ -496,11 +496,13 @@
     }
 
     // The date carries the weight here, so it is the part set in bold.
+    // The heading says what this is; the dates say when, underneath it. Run
+    // together on one line -- "Vote early, Tuesday, October 20, 2026 through
+    // Sunday, November 1, 2026" -- the label was lost inside its own subject.
+    parts.push(el("div", "lead-2 sec-head", "Vote early"));
     parts.push(open
-      ? el("div", "lead-2 sec-head", "Vote early, through ",
-           el("strong", "when", Elections.withWeekday(to)))
-      : el("div", "lead-2 sec-head", "Vote early, ",
-           el("strong", "when", Elections.withWeekday(from)),
+      ? el("div", "sec-sub", "Through ", el("strong", "when", Elections.withWeekday(to)))
+      : el("div", "sec-sub", el("strong", "when", Elections.withWeekday(from)),
            " through ", el("strong", "when", Elections.withWeekday(to))));
     parts.push(el("div", "ev-note",
       "Any Grand Rapids voter may use any of these, whatever precinct they are in."));
@@ -542,11 +544,17 @@
     start.setDate(start.getDate() - 40);
     const from = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}` +
                  `-${String(start.getDate()).padStart(2, "0")}`;
+    parts.push(el("div", "sec-sub",
+      Elections.todayISO() < from
+        ? el("span", null, el("strong", "when", Elections.monthDay(from)),
+             " through ", el("strong", "when", Elections.monthDay(election.date)))
+        : el("span", null, "Through ",
+             el("strong", "when", Elections.monthDay(election.date)))));
     parts.push(el("div", "ev-note",
       Elections.todayISO() < from
-        ? `Ballots are mailed from ${Elections.monthDay(from)}. Boxes accept ` +
-          `them from then until the polls close on ${Elections.monthDay(election.date)}.`
-        : `Return it by the time the polls close on ${Elections.monthDay(election.date)}.`));
+        ? `Ballots are mailed from ${Elections.monthDay(from)}, and boxes ` +
+          "accept them until the polls close on election day."
+        : "Return it by the time the polls close on election day."));
 
     for (const box of boxes) {
       parts.push(locationRow({
