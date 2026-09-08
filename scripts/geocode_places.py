@@ -452,12 +452,17 @@ def main():
             stamp(place, place.get("address"), index, stats, misses,
                   f"{where} polling {place.get('name', code)}", bbox,
                   pending, f"p:{mcd}:{code}", mcd)
-        # The county's drop box rows put the ADDRESS in `name` and the
-        # location note in `address` -- the opposite of the city clerk's file.
-        # Read as written rather than renaming the fields here: the scrape is
-        # the record of what the page said.
+        # The county page does not format the two fields the same way twice.
+        # Grand Rapids rows carry the ADDRESS in `name` and a note in
+        # `address` ("300 Ottawa Ave NW" / "Across from Calder Plaza"); every
+        # other jurisdiction is the other way round ("Kentwood City Hall" /
+        # "4900 Breton Avenue SE"). So take whichever field parses as an
+        # address rather than trusting either name. Reading only `name` said
+        # thirteen boxes had no address at all when all thirteen do.
         for slot, box in enumerate(document.get("drop_boxes") or []):
-            stamp(box, box.get("name"), index, stats, misses,
+            written = next((v for v in (box.get("address"), box.get("name"))
+                            if split_address(v)), box.get("name"))
+            stamp(box, written, index, stats, misses,
                   f"{where} drop box {box.get('name')}", bbox,
                   pending, f"b:{mcd}:{slot}", mcd)
         documents.append((path, document))
