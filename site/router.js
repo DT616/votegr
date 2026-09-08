@@ -45,13 +45,126 @@
 
   // ---- Graph wrapper ---------------------------------------------------
 
+  // Accepts three shapes, and turns all of them into the same one:
+  //
+  //   new Graph(wholeCityDocument)      nodes/edges as dense ARRAYS
+  //   new Graph(chunkDocument)          nodes/edges as MAPS of global id
+  //   new Graph([chunkA, chunkB, ...])  several chunks, merged
+  //
+  // The chunks exist because the county graph is 39,209 segments and a phone
+  // should parse one jurisdiction, not all thirty. They keep the county-wide
+  // node and edge ids that build_graph.py assigned once, and store maps
+  // rather than arrays, so that merging two of them is a union and nothing
+  // has to be renumbered. Adjacent chunks overlap in a 150m ring, so a merged
+  // pair really is one connected graph and a route can cross the border.
+  //
+  // Those global ids are the wire format, not the working format. Everything
+  // below -- the adjacency lists, splitAt's temporary nodes, the A* itself --
+  // indexes into dense arrays, and rewriting it to walk sparse maps would be
+  // slower and touch every method. So the ids are compacted ONCE, here, and
+  // the rest of the file never learns that chunks exist.
   function Graph(data) {
-    this.nodes = data.nodes;          // [ [lat,lng], ... ]
-    this.edges = data.edges;          // [ {a,b,d,l,t,n,r,z,p}, ... ]
-    this.meta = data.meta || {};
+    var merged = normalise(data);
+    this.nodes = merged.nodes;        // [ [lat,lng], ... ]
+    this.edges = merged.edges;        // [ {a,b,d,l,t,n,r,z,p}, ... ]
+    this.meta = merged.meta;
+    // Global id -> local index, kept because a caller holding an id from the
+    // wire (a chunk's own bbox query, a saved route) has no other way back.
+    this.nodeId = merged.nodeId;
+    this.edgeId = merged.edgeId;
     this._buildAdjacency();
-    this._indexRestrictions(data.restrictions || []);
+    this._indexRestrictions(merged.restrictions);
     this._maxSpeed = 31.3;            // ~70mph m/s, for the heuristic
+  }
+
+  function isChunk(doc) {
+    return !!doc && doc.nodes && !Array.isArray(doc.nodes);
+  }
+
+  // One or more documents -> dense arrays, plus the id maps.
+  function normalise(data) {
+    var docs = Array.isArray(data) ? data : [data];
+    if (!docs.length) throw new Error('Graph: nothing to build from');
+    if (!isChunk(docs[0])) {
+      if (docs.length > 1) {
+        throw new Error('Graph: only chunks can be merged');
+      }
+      return { nodes: docs[0].nodes, edges: docs[0].edges,
+               meta: docs[0].meta || {},
+               restrictions: docs[0].restrictions || [],
+               nodeId: null, edgeId: null };
+    }
+
+    var nodes = [], edges = [], nodeId = {}, edgeId = {};
+    var restrictions = [], metas = [], build = null;
+
+    for (var d = 0; d < docs.length; d++) {
+      var doc = docs[d], meta = doc.meta || {};
+      // Ids are positions in ONE build. Chunks from different builds share
+      // numbers that mean different roads, and merging them would splice
+      // unrelated streets together silently -- a route down a road that does
+      // not exist. Refuse rather than produce that.
+      if (build === null) build = meta.build || null;
+      else if ((meta.build || null) !== build) {
+        throw new Error('Graph: chunk ' + (meta.mcd || '?') + ' is from build ' +
+                        meta.build + ', expected ' + build);
+      }
+      metas.push(meta);
+
+      var id;
+      for (id in doc.nodes) {
+        if (!Object.prototype.hasOwnProperty.call(doc.nodes, id)) continue;
+        // The ring makes border nodes appear in both chunks. Same id, same
+        // point: the second sighting is the same node, not another one.
+        if (nodeId[id] === undefined) {
+          nodeId[id] = nodes.length;
+          nodes.push(doc.nodes[id]);
+        }
+      }
+      for (id in doc.edges) {
+        if (!Object.prototype.hasOwnProperty.call(doc.edges, id)) continue;
+        if (edgeId[id] !== undefined) continue;     // shared border segment
+        var e = doc.edges[id];
+        var a = nodeId[e.a], b = nodeId[e.b];
+        // An edge whose endpoint was filtered out of the chunk cannot be
+        // wired to anything. Dropping it is what the chunk builder already
+        // does with a restriction that has a leg outside the ring.
+        if (a === undefined || b === undefined) continue;
+        edgeId[id] = edges.length;
+        edges.push(shallowWithEnds(e, a, b));
+      }
+    }
+
+    // Restrictions come last: every leg has to be resolvable, and the second
+    // chunk may be what supplies the edge the first one's restriction names.
+    for (d = 0; d < docs.length; d++) {
+      var list = docs[d].restrictions || [];
+      for (var i = 0; i < list.length; i++) {
+        var r = list[i];
+        var f = edgeId[r.f], v = nodeId[r.v], t = edgeId[r.t];
+        if (f === undefined || v === undefined || t === undefined) continue;
+        restrictions.push({ f: f, v: v, t: t, no: r.no });
+      }
+    }
+
+    return { nodes: nodes, edges: edges, restrictions: restrictions,
+             nodeId: nodeId, edgeId: edgeId,
+             meta: { build: build, chunks: metas,
+                     mcds: metas.map(function (m) { return m.mcd; }),
+                     nodes: nodes.length, edges: edges.length } };
+  }
+
+  // A copy of the edge with LOCAL endpoints. Copied rather than mutated so a
+  // chunk document can be handed to Graph twice -- once alone, once merged
+  // with a neighbour -- without the first call corrupting it for the second.
+  function shallowWithEnds(e, a, b) {
+    var out = {};
+    for (var k in e) {
+      if (Object.prototype.hasOwnProperty.call(e, k)) out[k] = e[k];
+    }
+    out.a = a;
+    out.b = b;
+    return out;
   }
 
   // Turn restrictions, keyed "<fromEdge>|<viaNode>" so a lookup during search
