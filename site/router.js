@@ -64,16 +64,87 @@
   // slower and touch every method. So the ids are compacted ONCE, here, and
   // the rest of the file never learns that chunks exist.
   function Graph(data) {
-    var merged = normalise(data);
-    this.meta = merged.meta;
-    // Global id -> local index, kept because a caller holding an id from the
-    // wire (a chunk's own bbox query, a saved route) has no other way back.
-    this.nodeId = merged.nodeId;
-    this.edgeId = merged.edgeId;
-    this._pack(merged.nodes, merged.edges);
-    this._buildAdjacency();
-    this._indexRestrictions(merged.restrictions);
     this._maxSpeed = 31.3;            // ~70mph m/s, for the heuristic
+    var docs = Array.isArray(data) ? data : [data];
+    if (!docs.length) throw new Error('Graph: nothing to build from');
+
+    if (isChunk(docs[0])) {
+      // Chunks go through the streaming path even when they all arrive at
+      // once, so there is one packing implementation rather than two.
+      this._beginPack(totalsOf(docs));
+      for (var i = 0; i < docs.length; i++) this.addChunk(docs[i]);
+      this.finish();
+      return;
+    }
+
+    if (docs.length > 1) throw new Error('Graph: only chunks can be merged');
+    var doc = docs[0];
+    this.meta = doc.meta || {};
+    this.nodeId = null;
+    this.edgeId = null;
+    this._pack(doc.nodes, doc.edges);
+    this._buildAdjacency();
+    this._indexRestrictions(doc.restrictions || []);
+  }
+
+  // ---- streaming construction ------------------------------------------
+  //
+  // Building the county by handing Graph all thirty parsed chunks works, and
+  // costs 102 MiB at the moment it happens: 68 MiB of parsed JSON with the
+  // packed arrays growing beside it. The steady state afterwards is 13 MiB.
+  // That transient is what decides whether the page survives on an older
+  // phone, and it is entirely avoidable -- nothing needs two chunks alive at
+  // the same time.
+  //
+  // So: read site/data/graph/index.json first, which says how many nodes,
+  // edges and polyline points each chunk holds. Allocate once from the sum.
+  // Then feed chunks through one at a time, dropping each parsed document
+  // before fetching the next. Peak stays near the steady state.
+  //
+  //   var g = ALPRRouter.Graph.streaming(index);
+  //   for (each mcd) g.addChunk(await getJson(url));   // one alive at a time
+  //   g.finish();
+  //
+  // The sum overcounts by about 14%, because the 150m ring puts border nodes
+  // and edges in two chunks and the index cannot know which. Over-allocating
+  // by that much is the right trade: it is under 2 MiB, and the alternative
+  // is either a counting pass that reads everything twice or growable arrays
+  // that copy.
+  Graph.streaming = function (index) {
+    var g = Object.create(Graph.prototype);
+    g._maxSpeed = 31.3;
+    g._beginPack(totalsOf(index));
+    return g;
+  };
+
+  // Totals from either the index file or a list of chunk documents; both
+  // carry the same three numbers per chunk.
+  function totalsOf(source) {
+    var list = source && source.chunks ? source.chunks
+             : (Array.isArray(source) ? source : [source]);
+    var t = { nodes: 0, edges: 0, points: 0, build: null };
+    for (var i = 0; i < list.length; i++) {
+      var m = list[i].meta || list[i];
+      t.nodes += m.nodes || 0;
+      t.edges += m.edges || 0;
+      // A chunk written before meta.points existed: fall back to counting
+      // its own geometry rather than under-allocating and overflowing.
+      t.points += (m.points != null) ? m.points : countPoints(list[i]);
+      if (t.build === null) t.build = m.build || (source && source.build) || null;
+    }
+    if (source && source.build) t.build = source.build;
+    return t;
+  }
+
+  function countPoints(doc) {
+    var n = 0;
+    if (!doc || !doc.edges) return 0;
+    for (var k in doc.edges) {
+      if (Object.prototype.hasOwnProperty.call(doc.edges, k)) {
+        n += doc.edges[k].p.length;
+      }
+    }
+    return n;
   }
 
   // ---- storage ---------------------------------------------------------
@@ -96,33 +167,159 @@
   // anything like that, so nothing is lost by leaving floating point behind.
   var MICRO = 1e6;
 
-  Graph.prototype._pack = function (nodes, edges) {
-    var i, j;
-    var nodeCount = nodes.length, edgeCount = edges.length, points = 0;
-    for (i = 0; i < edgeCount; i++) points += edges[i].p.length;
-
-    this._nodeCount = nodeCount;
-    this._edgeCount = edgeCount;
-    this._nodeXY = new Int32Array(nodeCount * 2);
-    this._eA = new Int32Array(edgeCount);
-    this._eB = new Int32Array(edgeCount);
-    this._eLen = new Float32Array(edgeCount);
-    this._eSec = new Float32Array(edgeCount);
-    this._eDir = new Uint8Array(edgeCount);
-    this._eCls = new Uint8Array(edgeCount);
-    this._eName = new Array(edgeCount);
+  // Allocate for a known upper bound. Nothing is filled yet: _nodeCount and
+  // _edgeCount are what has actually arrived, and they only ever grow to the
+  // sizes reserved here.
+  Graph.prototype._beginPack = function (totals) {
+    var nodes = totals.nodes, edges = totals.edges, points = totals.points;
+    this._nodeCount = 0;
+    this._edgeCount = 0;
+    this._pointAt = 0;
+    this._nodeXY = new Int32Array(nodes * 2);
+    this._eA = new Int32Array(edges);
+    this._eB = new Int32Array(edges);
+    this._eLen = new Float32Array(edges);
+    this._eSec = new Float32Array(edges);
+    this._eDir = new Uint8Array(edges);
+    this._eCls = new Uint8Array(edges);
+    this._eName = new Array(edges);
     // House-number ranges, four per edge: left from/to, right from/to.
     // -1 means "no range on that side", which is not the same as zero.
-    this._eRange = new Int32Array(edgeCount * 4);
-    this._pOff = new Uint32Array(edgeCount + 1);
+    this._eRange = new Int32Array(edges * 4);
+    this._pOff = new Uint32Array(edges + 1);
     this._pXY = new Int32Array(points * 2);
+    // Global id -> local index, kept because a caller holding an id from the
+    // wire (a chunk's own bbox query, a saved route) has no other way back,
+    // and because the ring means the same id arrives in two chunks.
+    this.nodeId = {};
+    this.edgeId = {};
+    this._pendingRestrictions = [];
+    this._chunkMetas = [];
+    this._build = totals.build || null;
+    this.meta = { build: this._build, chunks: this._chunkMetas,
+                  mcds: [], nodes: 0, edges: 0 };
+    // splitAt inserts a temporary node and two temporary half-edges for the
+    // duration of one lookup. Typed arrays do not grow, and reallocating the
+    // county's worth of them per lookup would be absurd, so the handful of
+    // temporaries live in plain objects past the end of the packed region.
+    // Every accessor checks here first. There are never more than three.
+    this._extraNodes = [];
+    this._extraEdges = [];
+  };
 
-    for (i = 0; i < nodeCount; i++) {
+  // Fold one chunk into the packed arrays and forget it. The caller is
+  // expected to drop its reference to `doc` immediately after: that is the
+  // whole point of doing this one at a time.
+  Graph.prototype.addChunk = function (doc) {
+    if (!isChunk(doc)) throw new Error('Graph.addChunk: not a chunk document');
+    var meta = doc.meta || {}, id, j;
+
+    // Ids are positions in ONE build. Chunks from different builds share
+    // numbers that mean different roads, and merging them would splice
+    // unrelated streets together with no visible error -- a route down a road
+    // that does not exist. Refuse rather than produce that.
+    if (this._build === null) this._build = meta.build || null;
+    else if ((meta.build || null) !== this._build) {
+      throw new Error('Graph: chunk ' + (meta.mcd || '?') + ' is from build ' +
+                      meta.build + ', expected ' + this._build);
+    }
+    this._chunkMetas.push(meta);
+    if (meta.mcd) this.meta.mcds.push(meta.mcd);
+
+    for (id in doc.nodes) {
+      if (!Object.prototype.hasOwnProperty.call(doc.nodes, id)) continue;
+      // The ring makes border nodes appear in two chunks. Same id, same
+      // point: the second sighting is the same node, not another one.
+      if (this.nodeId[id] !== undefined) continue;
+      var at = this._nodeCount++;
+      if (at * 2 + 1 >= this._nodeXY.length) {
+        throw new Error('Graph: more nodes than the index reserved');
+      }
+      this.nodeId[id] = at;
+      this._nodeXY[at * 2] = Math.round(doc.nodes[id][0] * MICRO);
+      this._nodeXY[at * 2 + 1] = Math.round(doc.nodes[id][1] * MICRO);
+    }
+
+    for (id in doc.edges) {
+      if (!Object.prototype.hasOwnProperty.call(doc.edges, id)) continue;
+      if (this.edgeId[id] !== undefined) continue;    // shared border segment
+      var e = doc.edges[id];
+      var a = this.nodeId[e.a], b = this.nodeId[e.b];
+      // An edge whose endpoint was filtered out of the chunk cannot be wired
+      // to anything. Dropping it is what the chunk builder already does with
+      // a restriction that has a leg outside the ring.
+      if (a === undefined || b === undefined) continue;
+      var ei = this._edgeCount++;
+      if (ei >= this._eA.length) {
+        throw new Error('Graph: more edges than the index reserved');
+      }
+      this.edgeId[id] = ei;
+      this._eA[ei] = a; this._eB[ei] = b;
+      this._eLen[ei] = e.l; this._eSec[ei] = e.t;
+      this._eDir[ei] = e.d; this._eCls[ei] = e.c || 5;
+      this._eName[ei] = e.n || '';
+      var r = e.r || [];
+      for (j = 0; j < 4; j++) {
+        this._eRange[ei * 4 + j] = (r[j] == null) ? -1 : r[j];
+      }
+      this._pOff[ei] = this._pointAt;
+      for (j = 0; j < e.p.length; j++) {
+        if (this._pointAt * 2 + 1 >= this._pXY.length) {
+          throw new Error('Graph: more polyline points than the index reserved');
+        }
+        this._pXY[this._pointAt * 2] = Math.round(e.p[j][0] * MICRO);
+        this._pXY[this._pointAt * 2 + 1] = Math.round(e.p[j][1] * MICRO);
+        this._pointAt++;
+      }
+    }
+
+    // Held rather than resolved: a restriction in this chunk can name an
+    // edge that only arrives in the next one.
+    var list = doc.restrictions || [];
+    for (j = 0; j < list.length; j++) this._pendingRestrictions.push(list[j]);
+    return this;
+  };
+
+  // Everything that needs the whole graph: the last offset, the restrictions
+  // whose legs are now all resolvable, and the adjacency.
+  Graph.prototype.finish = function () {
+    this._pOff[this._edgeCount] = this._pointAt;
+    this.meta.nodes = this._nodeCount;
+    this.meta.edges = this._edgeCount;
+
+    var resolved = [];
+    for (var i = 0; i < this._pendingRestrictions.length; i++) {
+      var r = this._pendingRestrictions[i];
+      var f = this.edgeId[r.f], v = this.nodeId[r.v], t = this.edgeId[r.t];
+      if (f === undefined || v === undefined || t === undefined) continue;
+      resolved.push({ f: f, v: v, t: t, no: r.no });
+    }
+    this._pendingRestrictions = null;
+
+    this._buildAdjacency();
+    this._indexRestrictions(resolved);
+    return this;
+  };
+
+  // The whole-city document, whose nodes and edges are dense arrays with no
+  // global ids to reconcile. Kept because graph.json still ships in that
+  // shape and the tests build small graphs by hand.
+  Graph.prototype._pack = function (nodes, edges) {
+    var i, j, points = 0;
+    for (i = 0; i < edges.length; i++) points += edges[i].p.length;
+    this._beginPack({ nodes: nodes.length, edges: edges.length,
+                      points: points, build: null });
+    // Positions ARE the ids here, so there is nothing to reconcile and no
+    // id map to keep. Filled directly rather than through addChunk, which
+    // would build two objects with a key per node and edge to say i -> i.
+    this.nodeId = null;
+    this.edgeId = null;
+    for (i = 0; i < nodes.length; i++) {
       this._nodeXY[i * 2] = Math.round(nodes[i][0] * MICRO);
       this._nodeXY[i * 2 + 1] = Math.round(nodes[i][1] * MICRO);
     }
-    var at = 0;
-    for (i = 0; i < edgeCount; i++) {
+    this._nodeCount = nodes.length;
+    for (i = 0; i < edges.length; i++) {
       var e = edges[i];
       this._eA[i] = e.a; this._eB[i] = e.b;
       this._eLen[i] = e.l; this._eSec[i] = e.t;
@@ -132,22 +329,16 @@
       for (j = 0; j < 4; j++) {
         this._eRange[i * 4 + j] = (r[j] == null) ? -1 : r[j];
       }
-      this._pOff[i] = at;
+      this._pOff[i] = this._pointAt;
       for (j = 0; j < e.p.length; j++) {
-        this._pXY[at * 2] = Math.round(e.p[j][0] * MICRO);
-        this._pXY[at * 2 + 1] = Math.round(e.p[j][1] * MICRO);
-        at++;
+        this._pXY[this._pointAt * 2] = Math.round(e.p[j][0] * MICRO);
+        this._pXY[this._pointAt * 2 + 1] = Math.round(e.p[j][1] * MICRO);
+        this._pointAt++;
       }
     }
-    this._pOff[edgeCount] = at;
-
-    // splitAt inserts a temporary node and two temporary half-edges for the
-    // duration of one lookup. Typed arrays do not grow, and reallocating the
-    // county's worth of them per lookup would be absurd, so the handful of
-    // temporaries live in plain objects past the end of the packed region.
-    // Every accessor checks here first. There are never more than three.
-    this._extraNodes = [];
-    this._extraEdges = [];
+    this._edgeCount = edges.length;
+    this._pOff[this._edgeCount] = this._pointAt;
+    this._pendingRestrictions = null;
   };
 
   // ---- accessors -------------------------------------------------------
@@ -233,95 +424,6 @@
     return !!doc && doc.nodes && !Array.isArray(doc.nodes);
   }
 
-  // One or more documents -> dense arrays, plus the id maps.
-  function normalise(data) {
-    var docs = Array.isArray(data) ? data : [data];
-    if (!docs.length) throw new Error('Graph: nothing to build from');
-    if (!isChunk(docs[0])) {
-      if (docs.length > 1) {
-        throw new Error('Graph: only chunks can be merged');
-      }
-      return { nodes: docs[0].nodes, edges: docs[0].edges,
-               meta: docs[0].meta || {},
-               restrictions: docs[0].restrictions || [],
-               nodeId: null, edgeId: null };
-    }
-
-    var nodes = [], edges = [], nodeId = {}, edgeId = {};
-    var restrictions = [], metas = [], build = null;
-
-    for (var d = 0; d < docs.length; d++) {
-      var doc = docs[d], meta = doc.meta || {};
-      // Ids are positions in ONE build. Chunks from different builds share
-      // numbers that mean different roads, and merging them would splice
-      // unrelated streets together silently -- a route down a road that does
-      // not exist. Refuse rather than produce that.
-      if (build === null) build = meta.build || null;
-      else if ((meta.build || null) !== build) {
-        throw new Error('Graph: chunk ' + (meta.mcd || '?') + ' is from build ' +
-                        meta.build + ', expected ' + build);
-      }
-      metas.push(meta);
-
-      var id;
-      for (id in doc.nodes) {
-        if (!Object.prototype.hasOwnProperty.call(doc.nodes, id)) continue;
-        // The ring makes border nodes appear in both chunks. Same id, same
-        // point: the second sighting is the same node, not another one.
-        if (nodeId[id] === undefined) {
-          nodeId[id] = nodes.length;
-          nodes.push(doc.nodes[id]);
-        }
-      }
-      for (id in doc.edges) {
-        if (!Object.prototype.hasOwnProperty.call(doc.edges, id)) continue;
-        if (edgeId[id] !== undefined) continue;     // shared border segment
-        var e = doc.edges[id];
-        var a = nodeId[e.a], b = nodeId[e.b];
-        // An edge whose endpoint was filtered out of the chunk cannot be
-        // wired to anything. Dropping it is what the chunk builder already
-        // does with a restriction that has a leg outside the ring.
-        if (a === undefined || b === undefined) continue;
-        edgeId[id] = edges.length;
-        edges.push(shallowWithEnds(e, a, b));
-      }
-    }
-
-    // Restrictions come last: every leg has to be resolvable, and the second
-    // chunk may be what supplies the edge the first one's restriction names.
-    for (d = 0; d < docs.length; d++) {
-      var list = docs[d].restrictions || [];
-      for (var i = 0; i < list.length; i++) {
-        var r = list[i];
-        var f = edgeId[r.f], v = nodeId[r.v], t = edgeId[r.t];
-        if (f === undefined || v === undefined || t === undefined) continue;
-        restrictions.push({ f: f, v: v, t: t, no: r.no });
-      }
-    }
-
-    return { nodes: nodes, edges: edges, restrictions: restrictions,
-             nodeId: nodeId, edgeId: edgeId,
-             meta: { build: build, chunks: metas,
-                     mcds: metas.map(function (m) { return m.mcd; }),
-                     nodes: nodes.length, edges: edges.length } };
-  }
-
-  // A copy of the edge with LOCAL endpoints. Copied rather than mutated so a
-  // chunk document can be handed to Graph twice -- once alone, once merged
-  // with a neighbour -- without the first call corrupting it for the second.
-  function shallowWithEnds(e, a, b) {
-    var out = {};
-    for (var k in e) {
-      if (Object.prototype.hasOwnProperty.call(e, k)) out[k] = e[k];
-    }
-    out.a = a;
-    out.b = b;
-    return out;
-  }
-
-  // Turn restrictions, keyed "<fromEdge>|<viaNode>" so a lookup during search
-  // is a single map hit. `no` lists turns that are forbidden; `only` lists the
-  // single turn that is permitted, which forbids every other exit.
   Graph.prototype._indexRestrictions = function (list) {
     var idx = {};
     for (var i = 0; i < list.length; i++) {
