@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Attach OpenStreetMap turn restrictions to the city-centerline graph.
 
-Run AFTER build_graph.py: it reads site/data/graph.json and writes the
+Run AFTER build_graph.py: it reads build/graph.json and writes the
 restrictions back into it. Keeping them inside that one file is deliberate --
 a restriction refers to edges by index, so if it lived in a separate file a
 graph rebuild would silently invalidate it.
@@ -27,7 +27,7 @@ from provenance import provenance
 # Paths are anchored to the repository root, one level up from this
 # file, since these scripts live in scripts/ and write into site/data.
 ROOT = Path(__file__).resolve().parent.parent
-GRAPH = ROOT / "site" / "data" / "graph.json"
+GRAPH = ROOT / "build" / "graph.json"
 OSM = ROOT / "build" / "osm_roads.json"
 VIA = ROOT / "build" / "osm_via_nodes.json"
 
