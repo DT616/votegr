@@ -347,7 +347,7 @@
         (b.entrance_note || b.note
           ? '<span class="bx-where">Location: ' +
             esc(sentenceCase(b.entrance_note || b.note)) + '</span>' : '') +
-        (b.hours ? '<span class="bx-where">' + esc(boxHours(b)) + '</span>' : '') +
+
         '</li>';
     });
     // The City Hall boxes are real and cannot be driven to as an address, so
@@ -427,14 +427,14 @@
       return { label: 'Absentee voting upcoming', status: range, live: true,
                note: 'Absentee ballots are mailed from ' +
                      Elections.monthDay(from) + '. Boxes accept them from then '
-                     + 'until the polls close on election day.' };
+                     + 'until the polls close on election day. ' + boxAccess() };
     }
     if (today > activeEl.date) {
       return { label: 'Absentee voting closed', status: range };
     }
     return { label: 'Absentee voting open', status: range, live: true,
              note: 'A returned ballot has to be in the clerk\'s hands by the '
-                   + 'time the polls close on election day.' };
+                   + 'time the polls close on election day. ' + boxAccess() };
   }
 
   // "bike rack" -> "Bike rack", and "Across from Calder Plaza" left alone.
@@ -457,10 +457,19 @@
 
   function customClass(kind) { return chosen[kind] ? ' is-custom' : ''; }
 
-  function boxHours(box) {
-    if (!box || !box.hours) return '';
-    return /^24\/7$/.test(box.hours) ? 'Accessible 24/7'
-         : 'Accessible during ' + box.hours;
+  // True of every street box, so it is said once about all of them under the
+  // dates rather than eleven times down a column. The video monitoring is not
+  // our claim: MCL 168.761d requires the clerk to monitor each box. Worth
+  // saying either way -- someone routing around plate readers is entitled to
+  // know the destination is watched.
+  function boxAccess() {
+    var inside = (clerk && clerk.unrouted.length) || 0;
+    return 'Drop boxes are accessible 24/7 and monitored by video ' +
+      'surveillance, which Michigan law requires.' +
+      // The blanket claim is not true of the ones inside a building, and a
+      // sentence wrong about two of eleven is worth one more clause.
+      (inside ? ' The ' + (inside === 1 ? 'one' : inside) + ' inside City Hall ' +
+                (inside === 1 ? 'follows' : 'follow') + ' building hours.' : '');
   }
 
   function boxLabel(box) {
@@ -1177,7 +1186,7 @@
         '<div class="pp-addr">' + esc(addressForDisplay(box.place.address)) +
         (box.place.note
           ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') +
-        (box.place.hours ? '<br>' + esc(boxHours(box.place)) : '') + '</div>' +
+        '</div>' +
         '<button type="button" class="box-open" id="boxListBtn">' +
         'Show all my drop box locations</button>';
       html += '</div>';
