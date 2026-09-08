@@ -1339,7 +1339,8 @@
       'checked against the precinct boundary.');
     if (r.edgeMetres !== Infinity && r.edgeMetres < 30) adv.push('This address is close ' +
       'to a precinct boundary, so the answer is less certain.');
-    if (r.ambiguousStreet) adv.push('Read as ' + esc(r.street) + '. Other streets also match what you typed.');
+    if (r.ambiguousStreet) adv.push('Read as ' + esc(displayCase(r.street)) +
+      '. Other streets also match what you typed.');
     // Last, because it is about the drive rather than the answer, and the
     // drive is what the reader goes to next.
     adv.push('Obey all traffic signs and laws.');

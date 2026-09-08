@@ -185,8 +185,8 @@
   function locationRow(place, extraClass) {
     const row = el("div", extraClass ? `loc ${extraClass}` : "loc",
       el("div", "loc-text",
-        el("div", "place", place.name),
-        el("div", "addr", place.address),
+        el("div", "place", cased(place.name)),
+        el("div", "addr", cased(place.address)),
         place.entrance_note ? el("div", "note", place.entrance_note) : null));
     if (place.address || (place.lat != null && place.lng != null)) {
       row.append(mapLink(place));
@@ -220,7 +220,7 @@
     // True when any of the three uncertainty advisories below will fire.
     const uncertain = Boolean(rivals || inferred || edgeMetres <= NEAR_M);
     const body = el("div", "card-body",
-      el("div", "lead", "Address: ", el("span", "addr-quote", resolvedAddress)),
+      el("div", "lead", "Address: ", el("span", "addr-quote", cased(resolvedAddress))),
       el("div", "ward",
         el("span", "wp-label", "Ward:"), el("span", "wp-value", String(wards[precinct])),
         el("span", "wp-label", "Precinct:"), el("span", "wp-value", String(precinct))),
@@ -335,7 +335,7 @@
     const where = placeList(picked.outside);
     clearResult();
     resultBox.append(el("div", "card", el("div", "card-body",
-      el("div", "lead", "Address: ", el("span", "addr-quote", picked.text)),
+      el("div", "lead", "Address: ", el("span", "addr-quote", cased(picked.text))),
       advisory("outside",
         `This address is in ${where}, not the City of Grand Rapids, so this ` +
         "page cannot say where you vote. A Grand Rapids mailing address does " +
