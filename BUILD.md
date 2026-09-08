@@ -188,6 +188,49 @@ The precinct layer is statewide, so `refresh_precincts.py` filters it
 server-side with `CountyFIPS='081' AND MCDFIPS='34000'` and receives 59
 features rather than every precinct in Michigan.
 
+## Archiving the pages we scrape
+
+Every page this project reads is rewritten each election, so a `source_url` in
+a data file points at what the page says today and cannot be checked against
+what it said when we read it. Each scraped file therefore carries a Wayback
+capture in its provenance: `archived`, `archived_timestamp`, and an
+`archive_note` when the capture is older than the read.
+
+**Without keys this is mostly citation, not capture.** Save Page Now's JSON
+API answers `401 You need to be logged in to use Save Page Now`, so anonymous
+runs fall back to the legacy endpoint, which takes a capture when it feels
+like it. Measured on 2026-09-08: the county index was captured; the city
+clerk's page was refused and the newest existing capture was 84 days old; of
+the thirty jurisdiction pages, 27 had a capture to cite with a median age of
+306 days and three had none at all. A year-old capture of a polling place page
+is a capture of the wrong election -- it proves the page existed, not that it
+said what we wrote down.
+
+**With keys it becomes reliable.** Sign in at archive.org, generate an S3 key
+pair at <https://archive.org/account/s3.php>, and export them:
+
+```bash
+export ARCHIVE_S3_KEY=...
+export ARCHIVE_S3_SECRET=...
+```
+
+`scripts/archive.py` picks them up from the environment on its own; nothing
+else changes and no script needs an argument. The keys are never read from a
+file in this repository and never written into one -- the only thing that
+reaches a data file is the resulting snapshot URL. In CI they belong in a
+repository secret, like the Civic key.
+
+With keys present the bulk path changes too: the thirty jurisdiction pages
+stop citing and start capturing, because SPN2's own `if_not_archived_within`
+does the deduplicating server-side, so a run where nothing has changed costs
+thirty cheap no-ops rather than thirty submissions.
+
+Archiving never fails a build. It is provenance, not data: a refusal, a
+timeout or a missing key leaves a note in the file and the refresh carries on.
+
+archive.today is deliberately not used. It fronts everything with a bot
+challenge, so a script cannot submit to it honestly.
+
 ## The per-election step, which is not automatic
 
 Streets, parcels and precinct polygons change on a yearly cadence and their

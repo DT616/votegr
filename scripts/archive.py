@@ -22,16 +22,86 @@ archive.today is deliberately not used: it fronts everything with a bot
 challenge, so a script cannot submit to it honestly.
 """
 import json
+import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 AVAILABILITY = "https://archive.org/wayback/available"
-SAVE = "https://web.archive.org/save/"
+SAVE = "https://web.archive.org/save/"          # legacy, anonymous, rate limited
+SAVE_API = "https://web.archive.org/save"       # SPN2, requires a key
+STATUS = "https://web.archive.org/save/status/"
 UA = {"User-Agent": "vote-gr/1.0 (+https://github.com/DT616/votegr)"}
 MAX_AGE_DAYS = 7
 TIMEOUT_LOOKUP = 45
 TIMEOUT_SAVE = 120
+POLL_SECONDS = 5
+POLL_TRIES = 12
+
+
+def credentials():
+    """The archive.org S3 keys, from the environment, or None.
+
+    Save Page Now's JSON API answers 401 without them -- "You need to be
+    logged in to use Save Page Now" -- so unauthenticated runs fall back to
+    the legacy endpoint, which takes a capture when it feels like it and
+    silently declines the rest of the time. With keys, capture becomes
+    something this project can rely on rather than hope for.
+
+    Generate them while signed in at https://archive.org/account/s3.php and
+    export ARCHIVE_S3_KEY and ARCHIVE_S3_SECRET. They are never read from a
+    file in this repository and never written into one: the only thing that
+    reaches a data file is the resulting snapshot URL.
+    """
+    key = os.environ.get("ARCHIVE_S3_KEY")
+    secret = os.environ.get("ARCHIVE_S3_SECRET")
+    return (key, secret) if key and secret else None
+
+
+def _save_authenticated(url, keys):
+    """SPN2: submit, then poll until the capture finishes. Returns a Wayback
+    timestamp or None.
+
+    `if_not_archived_within` lets the archive do the deduplicating, which is
+    both cheaper and more correct than deciding here -- it knows about
+    captures made by anyone, not just ours.
+    """
+    body = urllib.parse.urlencode({
+        "url": url,
+        "if_not_archived_within": f"{MAX_AGE_DAYS}d",
+        "skip_first_archive": "1",
+    }).encode()
+    request = urllib.request.Request(SAVE_API, data=body, headers={
+        **UA,
+        "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": f"LOW {keys[0]}:{keys[1]}",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT_SAVE) as response:
+            job = json.load(response)
+    except Exception:
+        return None
+    job_id = job.get("job_id")
+    if not job_id:
+        return None
+
+    for _ in range(POLL_TRIES):
+        time.sleep(POLL_SECONDS)
+        try:
+            poll = urllib.request.Request(STATUS + job_id, headers={
+                **UA, "Accept": "application/json",
+                "Authorization": f"LOW {keys[0]}:{keys[1]}"})
+            with urllib.request.urlopen(poll, timeout=TIMEOUT_LOOKUP) as response:
+                state = json.load(response)
+        except Exception:
+            return None
+        if state.get("status") == "success":
+            return state.get("timestamp")
+        if state.get("status") == "error":
+            return None
+    return None
 
 
 def _get(url, timeout, headers=None):
@@ -87,6 +157,16 @@ def snapshot(url, today=None, force=False):
 
     before = have["timestamp"] if (have := existing(url)) else None
 
+    keys = credentials()
+    if keys:
+        stamp = _save_authenticated(url, keys)
+        if stamp:
+            return {"url": f"https://web.archive.org/web/{stamp}/{url}",
+                    "timestamp": stamp, "captured": stamp != before}
+        # Fall through: a failed SPN2 call still leaves whatever exists.
+        fresh = existing(url)
+        return {**fresh, "captured": fresh.get("timestamp") != before} if fresh else None
+
     try:
         _get(SAVE + url, TIMEOUT_SAVE)
     except urllib.error.HTTPError as err:
@@ -119,6 +199,11 @@ def cite(url):
     the one-page sources.
     """
     from datetime import date
+    # With keys, bulk stops being a reason to hold back: SPN2's own
+    # if_not_archived_within does the deduplicating server-side, so thirty
+    # pages cost thirty cheap no-ops on a run where nothing has changed.
+    if credentials():
+        return snapshot_or_note(url)
     have = existing(url)
     if not have:
         return {"archived": None,
