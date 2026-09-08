@@ -18,6 +18,7 @@
   var neighbors = null, precincts = null;
   var pinArmed = false;
   var ac = null;            // the suggestion list, from autocomplete.js
+  var clerk = null;         // gr-clerk.json: early voting sites and drop boxes
   var routes = null, selected = 'avoid';
   var originArrow = null;   // the blue you-are-here arrow; steps advance it
   var GR = [42.9634, -85.6681];
@@ -504,11 +505,12 @@
     Promise.all([
       loadJson('graph'), loadJson('cameras'), loadJson('addresses'), loadJson('polling'),
       loadJson('boundary', true), loadJson('elections', true), loadJson('landcover', true),
-      loadJson('neighbors', true), loadJson('precincts', true)
+      loadJson('neighbors', true), loadJson('precincts', true),
+      loadJson('gr-clerk', true)
     ]).then(function (res) {
       var graphData = res[0], cameraData = res[1], addresses = res[2], polling = res[3];
       var boundary = res[4], calendar = res[5], landcover = res[6];
-      var neighborData = res[7], precinctData = res[8];
+      var neighborData = res[7], precinctData = res[8], clerkData = res[9];
 
       graph = new ALPRRouter.Graph(graphData);
       cachedCameras = cameraData.cameras;
@@ -535,6 +537,7 @@
       electionDayHours = (calendar && calendar.election_day_hours) || null;
       electionList = (calendar && calendar.elections) || [];
       activeEl = Elections.next(electionList);
+      clerk = placeCoords(clerkData);
       renderElectionBanner();
       startCountdown();
       graph.assignCameras(cameras);
@@ -924,6 +927,28 @@
         '</div>';
     }
 
+    // --- absentee drop box ------------------------------------------------
+    // The nearest box to this address, as its own destination. An absentee
+    // ballot is the one trip here you make entirely at a time of your own
+    // choosing, which makes it the one where a record of the journey is
+    // least excusable -- so it gets the same camera-aware routing as a trip
+    // to the polls rather than a bare address.
+    var box = destinations(r).filter(function (o) { return o.kind === 'dropbox'; })[0];
+    if (box) {
+      html += '<div class="vi-where vi-dropbox" data-kind="dropbox">' +
+        '<div class="vi-lbl">Ballot drop box nearest to you:</div>' +
+        '<div class="pp-name">' + esc(displayCase(box.place.name || 'Drop box')) + '</div>' +
+        '<div class="pp-addr">' + esc(addressForDisplay(box.place.address)) +
+        (box.place.note ? '<br>' + esc(box.place.note) : '') + '</div>' +
+        (box.all.length > 1
+          ? '<div class="pp-note">' + box.all.length + ' boxes in the city' +
+            (clerk && clerk.unrouted.length
+              ? ', plus ' + clerk.unrouted.length + ' inside City Hall' : '') +
+            ', open ' + esc(box.place.hours || '24/7') + '.</div>'
+          : '') +
+        '</div>';
+    }
+
     // --- election day row -------------------------------------------------
     // Where first, then when, matching the column order so the collapsed
     // single column stacks the same way. With no upcoming election at all
@@ -1119,9 +1144,23 @@
   // which also wants a site list: with a window published and no sites the
   // window is still open and it is our data that is short, and saying nothing
   // about the dates would blame the calendar for a gap of our own.
+  // The clerk's published dates when we have them, the calendar's otherwise.
+  // ONE accessor, because the answer block, the footer bar and the
+  // destination list each ask this question and a page that disagrees with
+  // itself about whether early voting is open is worse than one that says
+  // nothing.
+  function evWindow() {
+    if (clerk && clerk.early_voting) {
+      return { early_voting_from: clerk.early_voting.from,
+               early_voting_to: clerk.early_voting.to,
+               early_voting_sites: clerk.sites };
+    }
+    return activeEl;
+  }
+
   function earlyVotingStatus() {
-    var to = activeEl.early_voting_to;
-    switch (Elections.windowState(activeEl)) {
+    var to = evWindow().early_voting_to;
+    switch (Elections.windowState(evWindow())) {
       case 'none':   return 'Start date TBD';
       case 'closed': return 'Ended ' + Elections.monthDay(to);
       case 'before': return Elections.monthDay(activeEl.early_voting_from) +
@@ -1148,8 +1187,9 @@
   // a date range that does not exist yet.
   function earlyVotingForBlock() {
     if (!activeEl) return null;
-    var to = activeEl.early_voting_to;
-    switch (Elections.windowState(activeEl)) {
+    var window = evWindow();
+    var to = window.early_voting_to;
+    switch (Elections.windowState(window)) {
       case 'none':
         return null;
       case 'closed':
@@ -1157,7 +1197,7 @@
                  status: 'Ended ' + Elections.dayMonth(to), site: false };
       case 'before':
         return { label: 'Early voting upcoming',
-                 status: Elections.dayMonth(activeEl.early_voting_from) +
+                 status: Elections.dayMonth(window.early_voting_from) +
                          ' to ' + Elections.dayMonth(to), site: false };
       default:
         return { label: 'Early voting open',
@@ -1212,6 +1252,7 @@
     // redrawn with it so the two readings of the calendar cannot disagree.
     if (activeEl && activeEl.date < Elections.todayISO()) {
       activeEl = Elections.next(electionList);
+      clerk = placeCoords(clerkData);
       renderElectionBanner();
     }
 
@@ -1287,23 +1328,82 @@
   }
 
   // Which destinations are available for this voter right now.
+  // The clerk publishes addresses, not coordinates, so each one is geocoded
+  // here against the same street graph the route is drawn on. Deliberately
+  // not stored in the data file: a coordinate written down at build time can
+  // drift from the streets it is supposed to sit on, and this cannot.
+  //
+  // The addresses arrive the way a person writes them -- "1430 Quarry, NW",
+  // "2350 Eastern Avenue SE" -- with the street type sometimes spelled out
+  // and sometimes missing. canonStreet already reduces both to the same key,
+  // so all fourteen resolve with no special handling. Alleys share a name
+  // with the street they run behind ("FULLER ALY NE"), and they collide in
+  // that index, but an alley carries no address ranges so it is skipped on
+  // its way past rather than needing a rule.
+  function placeCoords(data) {
+    if (!data || !graph) return null;
+    function fix(place) {
+      var m = /^(\d+)\s+(.+)$/.exec(place.address || '');
+      var hit = m && graph.geocode(Number(m[1]), m[2]);
+      return hit ? Object.assign({}, place, { lat: hit.lat, lng: hit.lng }) : null;
+    }
+    return {
+      election: data.election,
+      early_voting: data.early_voting || null,
+      sites: (data.early_voting_sites || []).map(fix).filter(Boolean),
+      // A box with no street address -- the City Hall lobby ones -- cannot be
+      // routed to, so it is not offered as a destination. It is still real,
+      // and the answer block names it.
+      boxes: (data.drop_boxes || []).map(fix).filter(Boolean),
+      unrouted: (data.drop_boxes || []).filter(function (b) { return !b.address; })
+    };
+  }
+
+  function nearest(origin, places) {
+    if (!origin || !places || !places.length) return null;
+    return places.slice().sort(function (a, b) {
+      return ALPRRouter.haversine(origin.lat, origin.lng, a.lat, a.lng) -
+             ALPRRouter.haversine(origin.lat, origin.lng, b.lat, b.lng);
+    });
+  }
+
+  // Three places a ballot can go, and every one of them is a drive worth
+  // routing around the cameras: voting on the day, voting early, and posting
+  // an absentee ballot. The last is the one with the strongest case for it --
+  // dropping a ballot off is a discretionary errand, at a time of your
+  // choosing, and there is no reason a record of it should exist.
   function destinations(r) {
     var out = [];
-    if (Elections.isOpen(activeEl)) {
-      var origin = r.pin ? { lat: r.lat, lng: r.lng }
-                         : graph.geocode(r.number, r.street);
-      var sites = Elections.sites(activeEl).filter(function (s) { return s.lat && s.lng; });
-      if (origin && sites.length) {
-        sites = sites.slice().sort(function (a, b) {
-          return ALPRRouter.haversine(origin.lat, origin.lng, a.lat, a.lng) -
-                 ALPRRouter.haversine(origin.lat, origin.lng, b.lat, b.lng);
-        });
-        out.push({ kind: 'early', label: 'Early voting', place: sites[0],
-                   all: sites });
-      }
+    var origin = r.pin ? { lat: r.lat, lng: r.lng }
+                       : graph.geocode(r.number, r.street);
+
+    // The clerk's own sites when we have them, the calendar's otherwise.
+    var sites = (clerk && clerk.sites.length) ? clerk.sites
+              : Elections.sites(activeEl).filter(function (s) { return s.lat && s.lng; });
+    var evState = Elections.windowState(evWindow());
+    var ranked = nearest(origin, sites);
+    if (ranked && evState !== 'closed') {
+      out.push({ kind: 'early', label: 'Early voting', place: ranked[0],
+                 all: ranked, state: evState });
     }
+
     if (r.place && r.place.lat) {
       out.push({ kind: 'polling', label: 'Election day', place: r.place });
+    }
+
+    var boxes = nearest(origin, clerk && clerk.boxes);
+    if (boxes) {
+      out.push({ kind: 'dropbox', label: 'Drop box', place: boxes[0],
+                 all: boxes });
+    }
+
+    // Early voting leads only while it is actually open; before it starts,
+    // election day is still the answer to "where do I vote".
+    if (out.length > 1 && evState !== 'open') {
+      out.sort(function (a, b) {
+        var rank = { polling: 0, early: 1, dropbox: 2 };
+        return rank[a.kind] - rank[b.kind];
+      });
     }
     return out;
   }
@@ -1396,8 +1496,9 @@
       avoidExp: avoid.cameraCount,
       flagged: fast.camsOnRoute,
       opts: opts, origin: origin, place: place,
-      destSub: (pick.kind === 'early') ? 'Early voting site'
-                                       : 'Precinct ' + r.precinct
+      destSub: pick.kind === 'early' ? 'Early voting site'
+             : pick.kind === 'dropbox' ? 'Absentee ballot drop box'
+             : 'Precinct ' + r.precinct
     };
     if (identical) selected = 'avoid';
     // Default to the clean route, but do not fight a choice already made.
