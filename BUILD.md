@@ -188,6 +188,63 @@ The precinct layer is statewide, so `refresh_precincts.py` filters it
 server-side with `CountyFIPS='081' AND MCDFIPS='34000'` and receives 59
 features rather than every precinct in Michigan.
 
+## The per-election step, which is not automatic
+
+Streets, parcels and precinct polygons change on a yearly cadence and their
+scripts can run unattended. **Election data cannot.** Polling places, early
+voting sites and their hours are published as prose on pages maintained by
+hand, under URLs that change, describing whichever election someone last
+edited them for. There is no feed. This is the part a person has to do, and
+pretending otherwise is how a voter ends up at a building that closed.
+
+Timing: MCL 168.662 bars moving a polling place or early voting site inside
+**60 days** of an election, so nothing before that date is final. Run this
+after it, and again in the last fortnight if anything looked unsettled.
+
+```bash
+python3 scripts/refresh_polling.py        # county pages -> site/data/polling/
+python3 scripts/refresh_early_voting.py   # county + city cross-check
+python3 scripts/refresh_gr_clerk.py       # the city's own dates and sites
+```
+
+Then **read what they wrote**. Each script checks shape, never sense: that
+every precinct came back with somewhere to vote, that a window ends before its
+election, that the page still names the jurisdiction asked for. None of that
+catches a page that is simply describing the wrong election, which is the most
+common failure and the one that has actually happened here.
+
+What a person has to do by hand, every election:
+
+1. **Read the three sources against each other.** `refresh_polling.py` prints
+   the city clerk's directory against the county's page for all 59 Grand
+   Rapids precincts; `refresh_early_voting.py` prints the county against the
+   city. Disagreement is the point of running them: in September 2026 the
+   county was still describing the August primary while the city had published
+   November, and it listed three early voting sites where the city had opened
+   four.
+2. **Check the election each file names.** `gr-clerk.json` carries `election`,
+   `early-voting.json` carries `election`; if either is not the election you
+   are publishing for, that source is stale and its contents must not ship.
+3. **Re-transcribe `polling.json` from the clerk's PDF.** The directory moves
+   to a new generated filename every election, so the URL in the file's
+   provenance will 404 -- find the current one from the clerk's elections page
+   rather than assuming it is gone. This is the only source carrying entrance
+   notes and the consolidation footnotes, where one precinct votes at
+   another's location for a single election.
+4. **Update `elections.json` by hand** with the election date, and with the
+   early voting window and hours read from `gr-clerk.json`. Never derive the
+   window from statute: the minimum is nine days ending the Sunday before, and
+   Grand Rapids opened on the thirteenth day for November 2026.
+5. **Check the archive stamps.** Each scraped file's provenance carries a
+   Wayback URL for the page it read. If it says the capture predates the read,
+   the archive is showing an older version of the page and the citation is
+   weaker than it looks -- submit one by hand at `web.archive.org/save/`.
+
+None of this is automatable and none of it should be pretended away. The
+durable fix is upstream: a Bureau of Elections records request returns the
+statewide polling list as a spreadsheet, one row per precinct, once per
+election. Until that is a standing arrangement, this checklist is the process.
+
 ## Turn restrictions come from OpenStreetMap alone
 
 `scripts/build_restrictions.py` attaches declared OSM relations (this way, via
