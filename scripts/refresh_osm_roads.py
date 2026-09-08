@@ -19,6 +19,7 @@ from pathlib import Path
 # Paths are anchored to the repository root, one level up from this
 # file, since these scripts live in scripts/ and write into site/data.
 ROOT = Path(__file__).resolve().parent.parent
+PRECINCTS = ROOT / "site" / "data" / "precincts.geojson"
 BOUNDARY = ROOT / "site" / "data" / "boundary.json"
 OUT = ROOT / "build" / "osm_roads.json"
 
@@ -40,11 +41,21 @@ MIN_WAYS = 3000
 
 
 def bbox_from_boundary():
-    b = json.loads(BOUNDARY.read_text())
+    """The extent to ask OpenStreetMap about: every precinct in the county.
+
+    Taken from the precinct polygons rather than from boundary.json, which is
+    still the city limits. The precincts tile all 30 jurisdictions, so their
+    extent is the county's, and this needs no second boundary file to be
+    widened first.
+    """
     lats, lngs = [], []
-    for ring in b["rings"]:
-        for p in ring:
-            lngs.append(p[0]); lats.append(p[1])
+    for f in json.loads(PRECINCTS.read_text())["features"]:
+        g = f["geometry"]
+        rings = g["coordinates"] if g["type"] == "Polygon" else \
+            [r for poly in g["coordinates"] for r in poly]
+        for ring in rings:
+            for p in ring:
+                lngs.append(p[0]); lats.append(p[1])
     pad = 0.004
     return (min(lats) - pad, min(lngs) - pad, max(lats) + pad, max(lngs) + pad)
 

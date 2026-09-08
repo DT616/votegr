@@ -1,6 +1,20 @@
 #!/usr/bin/env python3
-"""Compile site/data/centerlines.json into site/data/graph.json: the routing
-graph the browser loads.
+"""Compile build/centerlines.json into build/graph.json: the county-wide
+routing graph that the per-jurisdiction browser chunks are cut from.
+
+This is a build artifact, not a browser asset. The whole region is one graph
+here ON PURPOSE, because node and edge identity has to be assigned exactly
+once: chunks reference their neighbours across a shared border, so the same
+intersection must carry the same id in every file that contains it. Splitting
+first and numbering per chunk would give the same junction two ids and leave
+the seam unroutable.
+
+The consequence is that chunks from different builds must never be mixed. Ids
+are positions in this build's arrays, so a stale chunk merged with a fresh one
+would point at the wrong roads. Every chunk therefore carries the `build`
+fingerprint stamped here, and the loader refuses to merge across a mismatch --
+which matters most once a service worker is caching these files and a deploy
+lands between two fetches.
 
 Nodes are segment endpoints, keyed by quantized coordinate PLUS grade-separation
 level so an overpass endpoint never fuses with the street beneath it. Edges
@@ -11,6 +25,7 @@ Cameras are NOT baked in here -- they live in cameras.json and are assigned to
 edges in the browser, which keeps the two files independent (a daily camera
 refresh never touches the graph).
 """
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -20,7 +35,7 @@ from provenance import provenance
 # file, since these scripts live in scripts/ and write into site/data.
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "build" / "centerlines.json"
-OUT = ROOT / "site" / "data" / "graph.json"
+OUT = ROOT / "build" / "graph.json"
 
 Q = 5  # coord rounding for node identity (~1.1m)
 
@@ -141,9 +156,15 @@ def main():
             "p": poly,
         })
 
+    # Fingerprint of the input, so a chunk can say which build it came from.
+    # Over the source bytes rather than the output: it changes exactly when
+    # upstream changes, and never when only this script's formatting does.
+    build_id = hashlib.sha1(SRC.read_bytes()).hexdigest()[:12]
+
     payload = {
         "meta": {
-            "built_from": "GR Street_Centerlines (AGoL)",
+            "built_from": "REGIS/Kent County Street_Centerlines (AGoL)",
+            "build": build_id,
             "bbox": [round(minlat, 6), round(minlng, 6),
                      round(maxlat, 6), round(maxlng, 6)],
             "nodes": len(nodes),
@@ -152,17 +173,21 @@ def main():
             "oneway": sum(1 for e in edges if e["d"]),
         },
         "provenance": provenance(
-            source="City of Grand Rapids street centerlines, published on "
-                   "ArcGIS Online.",
+            source="REGIS/Kent County street centerlines, published on the "
+                   "City of Grand Rapids ArcGIS Online tenant. 48 "
+                   "jurisdictions, not one city.",
             source_url="https://services2.arcgis.com/L81TiOwAPO1ZvU9b/arcgis/"
                        "rest/services/Transport_Street_Centerlines/"
                        "FeatureServer/6",
             licence="Published by the City of Grand Rapids as open data.",
-            made_by="build_graph.py, then build_restrictions.py",
+            made_by="build_graph.py, then build_restrictions.py, then "
+                    "build_graph_chunks.py",
             how_to_update="Run refresh_centerlines.py, then build_graph.py, "
-                          "then build_restrictions.py. The last step MUST "
-                          "follow the second: a graph rebuild drops the "
-                          "restrictions attached to the previous one.",
+                          "then build_restrictions.py, then "
+                          "build_graph_chunks.py. The order is not optional: a "
+                          "graph rebuild drops the restrictions attached to "
+                          "the previous one, and the chunks are cut from the "
+                          "result of both.",
             restrictions="Attached by build_restrictions.py, which stamps its "
                          "own sources here when it runs."),
         "nodes": nodes,
@@ -171,7 +196,7 @@ def main():
     OUT.write_text(json.dumps(payload, separators=(",", ":")))
     sz = OUT.stat().st_size
     print(f"nodes={len(nodes)} edges={len(edges)} oneway={payload['meta']['oneway']} "
-          f"skipped={skipped}")
+          f"skipped={skipped} build={build_id}")
     print(f"wrote {OUT} ({sz/1048576:.2f} MB raw)")
 
 
