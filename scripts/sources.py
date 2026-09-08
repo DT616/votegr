@@ -52,7 +52,7 @@ def load():
 
 
 def register(source_id, publisher, url, licence, retrieved=None,
-             archived=None, covers=None, note=None):
+             archived=None, covers=None, note=None, carried=True):
     """Record one source and return its id, so a caller can write it straight
     into the data it just built.
 
@@ -67,6 +67,11 @@ def register(source_id, publisher, url, licence, retrieved=None,
         "licence": licence,
         "retrieved": retrieved or date.today().isoformat(),
     })
+    # `carried: false` means we read this once, by hand, and do not track it:
+    # no script refreshes it, and nothing here will notice when it changes.
+    # Attributing such a reading to a source we DO track would be a lie about
+    # where the fact came from, and dropping the attribution would be worse.
+    entry["carried"] = bool(carried)
     if covers:
         entry["covers"] = covers
     if note:
@@ -94,5 +99,7 @@ if __name__ == "__main__":
     print(f"{len(doc['sources'])} sources in {OUT}")
     for key, entry in doc["sources"].items():
         stamp = entry.get("archived_timestamp", "")
+        mark = "" if entry.get("carried", True) else "  [not tracked]"
         print(f"  {key:<34} {entry['publisher'][:38]:<40} "
-              f"read {entry.get('retrieved','?')}" + (f"  archived {stamp[:8]}" if stamp else ""))
+              f"read {entry.get('retrieved','?')}"
+              + (f"  archived {stamp[:8]}" if stamp else "") + mark)

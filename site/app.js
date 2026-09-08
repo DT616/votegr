@@ -348,6 +348,10 @@
         (b.entrance_note || b.note
           ? '<span class="bx-where">Location: ' +
             esc(sentenceCase(b.entrance_note || b.note)) + '</span>' : '') +
+        // Only where it differs: eleven identical lines said nothing, one
+        // different line says everything.
+        (b.hours && !ALWAYS_OPEN.test(b.hours)
+          ? '<span class="bx-hours-odd">' + esc(b.hours) + '</span>' : '') +
 
         '</li>';
     });
@@ -471,15 +475,24 @@
   // our claim: MCL 168.761d requires the clerk to monitor each box. Worth
   // saying either way -- someone routing around plate readers is entitled to
   // know the destination is watched.
+  // Monitoring is true of every box: MCL 168.761d requires the clerk to
+  // monitor each one. Access is NOT -- the box in the City Hall lobby is open
+  // weekdays, 8 to 5, and somebody driving there on a Saturday with a ballot
+  // finds a locked building. So the sentence claims only what holds for all of
+  // them, and the rows carry hours wherever they differ.
   function boxAccess() {
-    var inside = (clerk && clerk.unrouted.length) || 0;
-    return 'Drop boxes are accessible 24/7 and monitored by video ' +
-      'surveillance, which Michigan law requires.' +
-      // The blanket claim is not true of the ones inside a building, and a
-      // sentence wrong about two of eleven is worth one more clause.
-      (inside ? ' The ' + (inside === 1 ? 'one' : inside) + ' inside City Hall ' +
-                (inside === 1 ? 'follows' : 'follow') + ' building hours.' : '');
+    var odd = ((clerk && clerk.boxes) || []).filter(function (b) {
+      return !ALWAYS_OPEN.test(b.hours || '');
+    }).length;
+    return 'Drop boxes are monitored by video surveillance, which Michigan law ' +
+      'requires.' +
+      (odd ? ' Most are accessible 24/7; ' + (odd === 1 ? 'one is not, and its'
+                                                        : odd + ' are not, and their') +
+             ' hours are on the list.'
+           : ' They are accessible 24/7.');
   }
+
+  var ALWAYS_OPEN = /^24\/7$/;
 
   function boxLabel(box) {
     return displayCase(box.name || box.address || 'Drop box');
@@ -1197,6 +1210,8 @@
         '<div class="pp-addr">' + esc(addressForDisplay(box.place.address)) +
         (box.place.note
           ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') +
+        (box.place.hours && !ALWAYS_OPEN.test(box.place.hours)
+          ? '<br><strong>' + esc(box.place.hours) + '</strong>' : '') +
         '</div>' +
         '<button type="button" class="box-open" id="boxListBtn">' +
         'Show all my drop box locations</button>';

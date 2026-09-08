@@ -7,9 +7,19 @@
    "licence": "Public record of the City of Grand Rapids.",
    "retrieved": "2026-09-08",
    "covers": "Grand Rapids early voting dates, sites and absentee drop boxes",
-   "note": "The source of record for the city. The county's pages are the cross-check, not the other way round.",
-   "archived": "https://web.archive.org/web/20260908173614/https://www.grandrapidsmi.gov/departments/clerks-office/elections/current-election-information/",
-   "archived_timestamp": "20260908173614"
+   "note": "The source of record for the city. The county's pages are the cross-check, not the other way round. GAP: the City Hall drop box appears here only as prose, with no address and no hours, so it cannot be routed to or acted on from this page alone. Worth asking the clerk to publish it the way the other ten are.",
+   "archived": "https://web.archive.org/web/20260908205129/https://www.grandrapidsmi.gov/departments/clerks-office/elections/current-election-information/",
+   "archived_timestamp": "20260908205129",
+   "carried": true
+  },
+  "mvic-voter-lookup": {
+   "publisher": "Michigan Voter Information Center, Bureau of Elections",
+   "url": "https://mvic.sos.state.mi.us/",
+   "licence": "Public record of the State of Michigan.",
+   "retrieved": "2026-09-08",
+   "covers": "Drop box addresses and hours the city clerk publishes only as prose",
+   "note": "Read by hand from a voter lookup on the date above, and NOT tracked: MVIC is behind a bot challenge, this project does not drive one, and nothing here will notice when it changes. Re-read it by hand whenever the clerk's page changes. It is recorded because the fact came from here and attributing it to the clerk would be false.",
+   "carried": false
   }
  }
 }

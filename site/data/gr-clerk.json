@@ -165,10 +165,10 @@
   },
   {
    "name":"City Hall",
-   "address":null,
-   "note":"Election Drop Boxes available during City Hall open hours on the Monroe and Calder Plaza levels.",
-   "hours":"City Hall open hours",
-   "src":"gr-clerk-current-election"
+   "address":"300 Monroe NW",
+   "note":"Monroe lobby and plaza level",
+   "hours":"Mon-Fri, 8am to 5pm",
+   "src":"mvic-voter-lookup"
   }
  ]
 }
