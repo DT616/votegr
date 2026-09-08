@@ -100,7 +100,7 @@ g = new R.Graph({
 g.assignCameras([]);
 let snap = g.snapToRoad(42.96045, -85.665);   // ~5m from alley, ~50m from street
 ok('snapToRoad: prefers a street over a nearer alley',
-   /REAL ST/.test(g.edges[snap.edge].n));
+   /REAL ST/.test(g.edgeName(snap.edge)));
 
 // A one-way may only be entered at its tail.
 g = new R.Graph({
@@ -190,27 +190,28 @@ function street() {
   });
 }
 g = street(); g.assignCameras([]);
-const beforeNodes = g.nodes.length, beforeEdges = g.edges.length;
+const beforeNodes = g.nodeCount(), beforeEdges = g.edgeCount();
 let sp = g.splitAt(42.960, -85.670);          // exact midpoint
 ok('splitAt: creates a new node', sp && sp.node === beforeNodes);
 ok('splitAt: node sits at the requested point', sp && Math.abs(sp.lng + 85.670) < 1e-6);
-ok('splitAt: adds two half-edges', g.edges.length === beforeEdges + 2);
+ok('splitAt: adds two half-edges', g.edgeCount() === beforeEdges + 2);
 ok('splitAt: halves sum to the original length',
-   Math.abs((g.edges[beforeEdges].l + g.edges[beforeEdges+1].l) - 1600) < 5);
+   Math.abs((g.edgeLen(beforeEdges) + g.edgeLen(beforeEdges+1)) - 1600) < 5);
 ok('splitAt: can route from the split point', g.route(sp.node, 1) !== null);
 const half = g.route(sp.node, 1);
 ok('splitAt: route from midpoint is about half', half && Math.abs(half.meters - 800) < 5);
 sp.release();
-ok('splitAt: release restores node count', g.nodes.length === beforeNodes);
-ok('splitAt: release restores edge count', g.edges.length === beforeEdges);
-ok('splitAt: release restores adjacency', g.adj.length === beforeNodes);
+ok('splitAt: release restores node count', g.nodeCount() === beforeNodes);
+ok('splitAt: release restores edge count', g.edgeCount() === beforeEdges);
+ok('splitAt: release restores adjacency',
+   g.linksFrom(0).length + g.linksFrom(1).length === 2);
 ok('splitAt: original edge usable again after release', g.route(0,1) !== null);
 
 // A point near an end reuses the real node rather than making a sliver.
 g = street(); g.assignCameras([]);
 sp = g.splitAt(42.960, -85.68001);
 ok('splitAt: near an end, reuses the existing node', sp && sp.node === 0);
-ok('splitAt: no sliver edge created', g.edges.length === 1);
+ok('splitAt: no sliver edge created', g.edgeCount() === 1);
 
 // Cameras on the parent edge carry to both halves, so a mid-block start does
 // not silently change the exposure count.
@@ -234,19 +235,24 @@ g = new R.Graph({
   ], meta:{}
 });
 g.assignCameras([{ id:'x', lat:42.960, lng:-85.675 }]);
-const base = { n: g.nodes.length, e: g.edges.length, a: g.adj.length,
-               c: g._edgeCams.length, deg: g.adj.map(l => l.length).join(',') };
+const degrees = (gr) => {
+  const out = [];
+  for (let n = 0; n < gr.nodeCount(); n++) out.push(gr.linksFrom(n).length);
+  return out.join(',');
+};
+const base = { n: g.nodeCount(), e: g.edgeCount(),
+               c: g._edgeCams.length, deg: degrees(g) };
 for (let i = 0; i < 50; i++) {
   const s1 = g.splitAt(42.960, -85.6755 + (i % 7) * 0.0004);
   const s2 = g.splitAt(42.960, -85.6645 - (i % 5) * 0.0003);
   try { g.route(s1 ? s1.node : 0, s2 ? s2.node : 2); }
   finally { if (s2) s2.release(); if (s1) s1.release(); }
 }
-ok('splitAt: no node leak over 50 cycles', g.nodes.length === base.n);
-ok('splitAt: no edge leak over 50 cycles', g.edges.length === base.e);
-ok('splitAt: no adjacency leak over 50 cycles', g.adj.length === base.a);
+ok('splitAt: no node leak over 50 cycles', g.nodeCount() === base.n);
+ok('splitAt: no edge leak over 50 cycles', g.edgeCount() === base.e);
+ok('splitAt: no adjacency leak over 50 cycles', degrees(g).split(',').length === base.n);
 ok('splitAt: no camera-array leak over 50 cycles', g._edgeCams.length === base.c);
-ok('splitAt: adjacency degrees unchanged', g.adj.map(l => l.length).join(',') === base.deg);
+ok('splitAt: adjacency degrees unchanged', degrees(g) === base.deg);
 ok('splitAt: graph still routes normally afterwards', g.route(0, 2) !== null);
 
 // --- freeway exclusion -------------------------------------------------
@@ -266,7 +272,7 @@ g.assignCameras([]);
 r = g.route(0, 1);
 ok('freeway: never used even when faster', r && r.edges.indexOf(0) === -1);
 ok('freeway: surface route found instead', r && r.edges.length === 3);
-ok('freeway: snap avoids it', /SURFACE|A ST|B ST/.test(g.edges[g.snapToRoad(42.9601,-85.670).edge].n));
+ok('freeway: snap avoids it', /SURFACE|A ST|B ST/.test(g.edgeName(g.snapToRoad(42.9601,-85.670).edge)));
 
 // --- address suggestions ------------------------------------------------
 // Grand Rapids numbers restart per quadrant from Fulton and Division, so a
@@ -402,7 +408,7 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
 
   const GR = '34000', KENTWOOD = '42820';
   const gr = new R.Graph(chunk(GR));
-  ok('a chunk loads at all', gr.nodes.length > 5000 && gr.edges.length > 5000);
+  ok('a chunk loads at all', gr.nodeCount() > 5000 && gr.edgeCount() > 5000);
   ok('a chunk geocodes', !!gr.geocode(602, 'ALEXANDER ST SE'));
 
   // The wire format is maps keyed by global id; everything downstream indexes
@@ -411,8 +417,8 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
   ok('global ids are kept', !!gr.nodeId && !!gr.edgeId);
   const someId = Object.keys(chunk(GR).nodes)[0];
   ok('a global node id resolves to its own point',
-     JSON.stringify(gr.nodes[gr.nodeId[someId]]) ===
-     JSON.stringify(chunk(GR).nodes[someId]));
+     gr.node(gr.nodeId[someId]).every((v, i) =>
+       Math.abs(v - chunk(GR).nodes[someId][i]) < 1e-6));
 
   const kw = new R.Graph(chunk(KENTWOOD));
   const both = new R.Graph([chunk(GR), chunk(KENTWOOD)]);
@@ -420,8 +426,8 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
   // A union, not a concatenation: the ring means hundreds of nodes are in
   // both chunks, and each is ONE node in the merge. If they were duplicated
   // the border would be two parallel road networks that never touch.
-  const sharedNodes = gr.nodes.length + kw.nodes.length - both.nodes.length;
-  const sharedEdges = gr.edges.length + kw.edges.length - both.edges.length;
+  const sharedNodes = gr.nodeCount() + kw.nodeCount() - both.nodeCount();
+  const sharedEdges = gr.edgeCount() + kw.edgeCount() - both.edgeCount();
   ok(`the ring is shared, not duplicated (${sharedNodes} nodes, ${sharedEdges} edges)`,
      sharedNodes > 100 && sharedEdges > 100);
   ok('no restriction is lost in the merge',
@@ -437,7 +443,7 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
   ).find((p) => p.lat);
   const missBy = (g) => {
     const d = g.snapToRoad(kentwood.lat, kentwood.lng);
-    return R.haversine(kentwood.lat, kentwood.lng, g.nodes[d.node][0], g.nodes[d.node][1]);
+    return R.haversine(kentwood.lat, kentwood.lng, g.nodeLat(d.node), g.nodeLng(d.node));
   };
   const alone = missBy(gr), together = missBy(both);
   ok(`merging reaches the destination (${Math.round(alone)}m -> ${Math.round(together)}m)`,
@@ -459,10 +465,10 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
   // A chunk document must survive being used twice: once alone, once merged.
   // Rewriting its endpoints in place would corrupt the second use.
   const doc = chunk(KENTWOOD);
-  const first = new R.Graph(doc).edges.length;
+  const first = new R.Graph(doc).edgeCount();
   new R.Graph([chunk(GR), doc]);
   ok('a chunk document is not consumed by use',
-     new R.Graph(doc).edges.length === first);
+     new R.Graph(doc).edgeCount() === first);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

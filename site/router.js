@@ -65,17 +65,169 @@
   // the rest of the file never learns that chunks exist.
   function Graph(data) {
     var merged = normalise(data);
-    this.nodes = merged.nodes;        // [ [lat,lng], ... ]
-    this.edges = merged.edges;        // [ {a,b,d,l,t,n,r,z,p}, ... ]
     this.meta = merged.meta;
     // Global id -> local index, kept because a caller holding an id from the
     // wire (a chunk's own bbox query, a saved route) has no other way back.
     this.nodeId = merged.nodeId;
     this.edgeId = merged.edgeId;
+    this._pack(merged.nodes, merged.edges);
     this._buildAdjacency();
     this._indexRestrictions(merged.restrictions);
     this._maxSpeed = 31.3;            // ~70mph m/s, for the heuristic
   }
+
+  // ---- storage ---------------------------------------------------------
+  //
+  // The whole county is 30,331 nodes, 39,164 edges and 545,903 polyline
+  // points, and it has to sit in a phone's memory all at once so that a
+  // lookup anywhere in Kent County needs no second fetch.
+  //
+  // As ordinary objects that costs 102 MiB, and almost none of it is the
+  // data. A point written [lat, lng] is a JS array: two numbers behind about
+  // seventy bytes of object header, half a million times over. The
+  // coordinates themselves are 4.4 MiB; the wrappers are ninety.
+  //
+  // So the graph is stored as flat typed arrays -- one Int32Array of
+  // microdegrees for every coordinate in the county, one Uint32Array saying
+  // where each edge's points begin -- and the same county costs 5.7 MiB,
+  // less than half of what Grand Rapids alone costs today.
+  //
+  // 1e-6 degrees is about 11cm. Road centrelines are not surveyed to
+  // anything like that, so nothing is lost by leaving floating point behind.
+  var MICRO = 1e6;
+
+  Graph.prototype._pack = function (nodes, edges) {
+    var i, j;
+    var nodeCount = nodes.length, edgeCount = edges.length, points = 0;
+    for (i = 0; i < edgeCount; i++) points += edges[i].p.length;
+
+    this._nodeCount = nodeCount;
+    this._edgeCount = edgeCount;
+    this._nodeXY = new Int32Array(nodeCount * 2);
+    this._eA = new Int32Array(edgeCount);
+    this._eB = new Int32Array(edgeCount);
+    this._eLen = new Float32Array(edgeCount);
+    this._eSec = new Float32Array(edgeCount);
+    this._eDir = new Uint8Array(edgeCount);
+    this._eCls = new Uint8Array(edgeCount);
+    this._eName = new Array(edgeCount);
+    // House-number ranges, four per edge: left from/to, right from/to.
+    // -1 means "no range on that side", which is not the same as zero.
+    this._eRange = new Int32Array(edgeCount * 4);
+    this._pOff = new Uint32Array(edgeCount + 1);
+    this._pXY = new Int32Array(points * 2);
+
+    for (i = 0; i < nodeCount; i++) {
+      this._nodeXY[i * 2] = Math.round(nodes[i][0] * MICRO);
+      this._nodeXY[i * 2 + 1] = Math.round(nodes[i][1] * MICRO);
+    }
+    var at = 0;
+    for (i = 0; i < edgeCount; i++) {
+      var e = edges[i];
+      this._eA[i] = e.a; this._eB[i] = e.b;
+      this._eLen[i] = e.l; this._eSec[i] = e.t;
+      this._eDir[i] = e.d; this._eCls[i] = e.c || 5;
+      this._eName[i] = e.n || '';
+      var r = e.r || [];
+      for (j = 0; j < 4; j++) {
+        this._eRange[i * 4 + j] = (r[j] == null) ? -1 : r[j];
+      }
+      this._pOff[i] = at;
+      for (j = 0; j < e.p.length; j++) {
+        this._pXY[at * 2] = Math.round(e.p[j][0] * MICRO);
+        this._pXY[at * 2 + 1] = Math.round(e.p[j][1] * MICRO);
+        at++;
+      }
+    }
+    this._pOff[edgeCount] = at;
+
+    // splitAt inserts a temporary node and two temporary half-edges for the
+    // duration of one lookup. Typed arrays do not grow, and reallocating the
+    // county's worth of them per lookup would be absurd, so the handful of
+    // temporaries live in plain objects past the end of the packed region.
+    // Every accessor checks here first. There are never more than three.
+    this._extraNodes = [];
+    this._extraEdges = [];
+  };
+
+  // ---- accessors -------------------------------------------------------
+  //
+  // These are the whole public shape of the graph now. They read like field
+  // access and compile to an array index, and they hide whether an item is
+  // packed or one of splitAt's temporaries.
+
+  Graph.prototype.nodeCount = function () {
+    return this._nodeCount + this._extraNodes.length;
+  };
+  Graph.prototype.edgeCount = function () {
+    return this._edgeCount + this._extraEdges.length;
+  };
+  Graph.prototype.nodeLat = function (i) {
+    return i < this._nodeCount ? this._nodeXY[i * 2] / MICRO
+                               : this._extraNodes[i - this._nodeCount][0];
+  };
+  Graph.prototype.nodeLng = function (i) {
+    return i < this._nodeCount ? this._nodeXY[i * 2 + 1] / MICRO
+                               : this._extraNodes[i - this._nodeCount][1];
+  };
+  // A fresh [lat, lng] pair. Allocates, so never call it in a loop over the
+  // whole graph -- that is what nodeLat/nodeLng are for.
+  Graph.prototype.node = function (i) {
+    return [this.nodeLat(i), this.nodeLng(i)];
+  };
+
+  Graph.prototype.edgeA = function (i) {
+    return i < this._edgeCount ? this._eA[i] : this._extraEdges[i - this._edgeCount].a;
+  };
+  Graph.prototype.edgeB = function (i) {
+    return i < this._edgeCount ? this._eB[i] : this._extraEdges[i - this._edgeCount].b;
+  };
+  Graph.prototype.edgeLen = function (i) {
+    return i < this._edgeCount ? this._eLen[i] : this._extraEdges[i - this._edgeCount].l;
+  };
+  Graph.prototype.edgeSec = function (i) {
+    return i < this._edgeCount ? this._eSec[i] : this._extraEdges[i - this._edgeCount].t;
+  };
+  Graph.prototype.edgeDir = function (i) {
+    return i < this._edgeCount ? this._eDir[i] : this._extraEdges[i - this._edgeCount].d;
+  };
+  Graph.prototype.edgeClass = function (i) {
+    return i < this._edgeCount ? this._eCls[i] : this._extraEdges[i - this._edgeCount].c;
+  };
+  Graph.prototype.edgeName = function (i) {
+    return i < this._edgeCount ? this._eName[i] : this._extraEdges[i - this._edgeCount].n;
+  };
+  // One of the four house-number range slots: 0 left-from, 1 left-to,
+  // 2 right-from, 3 right-to. null where the side carries no range.
+  Graph.prototype.edgeRange = function (i, slot) {
+    if (i >= this._edgeCount) {
+      var r = this._extraEdges[i - this._edgeCount].r || [];
+      return r[slot] == null ? null : r[slot];
+    }
+    var v = this._eRange[i * 4 + slot];
+    return v === -1 ? null : v;
+  };
+  Graph.prototype.edgePointCount = function (i) {
+    return i < this._edgeCount ? this._pOff[i + 1] - this._pOff[i]
+                               : this._extraEdges[i - this._edgeCount].p.length;
+  };
+  Graph.prototype.edgePointLat = function (i, k) {
+    return i < this._edgeCount ? this._pXY[(this._pOff[i] + k) * 2] / MICRO
+                               : this._extraEdges[i - this._edgeCount].p[k][0];
+  };
+  Graph.prototype.edgePointLng = function (i, k) {
+    return i < this._edgeCount ? this._pXY[(this._pOff[i] + k) * 2 + 1] / MICRO
+                               : this._extraEdges[i - this._edgeCount].p[k][1];
+  };
+  // The edge's geometry as [[lat,lng], ...]. Allocates the whole polyline,
+  // so it is for drawing and for step geometry, not for scanning.
+  Graph.prototype.edgePoly = function (i) {
+    var n = this.edgePointCount(i), out = new Array(n);
+    for (var k = 0; k < n; k++) {
+      out[k] = [this.edgePointLat(i, k), this.edgePointLng(i, k)];
+    }
+    return out;
+  };
 
   function isChunk(doc) {
     return !!doc && doc.nodes && !Array.isArray(doc.nodes);
@@ -201,33 +353,106 @@
   // on leaving this node and on arriving at the next, which the turn cost
   // reads. Seconds live on the edge and the camera cost is added at search
   // time, so a new camera set needs no rebuild.
+  // Compressed sparse row: one flat array of links, and an offset per node
+  // saying where its links begin. 73,015 links as {to, edge, depB, arrB}
+  // objects inside 30,331 arrays cost about 12 MiB; the same links as four
+  // parallel typed arrays cost 1.2 MiB, and the search reads them faster
+  // because each field is contiguous.
+  //
+  // The links a splitAt adds live in _extraLinks, a plain array consulted
+  // after the packed ones, so a lookup does not rebuild the county.
   Graph.prototype._buildAdjacency = function () {
-    this.adj = [];
-    for (var i = 0; i < this.nodes.length; i++) this.adj.push([]);
-    for (var ei = 0; ei < this.edges.length; ei++) this._linkEdge(ei);
+    var n = this._nodeCount, m = this._edgeCount, i, ei;
+
+    // Count first so every array is allocated once at the right size.
+    var counts = new Uint32Array(n);
+    for (ei = 0; ei < m; ei++) {
+      if (this._eCls[ei] === 1) continue;
+      if (this._pOff[ei + 1] - this._pOff[ei] < 2) continue;
+      var d = this._eDir[ei];
+      if (d === 0 || d === 1) counts[this._eA[ei]]++;
+      if (d === 0 || d === 2) counts[this._eB[ei]]++;
+    }
+    var off = new Uint32Array(n + 1), run = 0;
+    for (i = 0; i < n; i++) { off[i] = run; run += counts[i]; }
+    off[n] = run;
+
+    this._adjOff = off;
+    this._adjTo = new Int32Array(run);
+    this._adjEdge = new Int32Array(run);
+    this._adjDep = new Float32Array(run);
+    this._adjArr = new Float32Array(run);
+    this._extraLinks = {};        // node -> [{to, edge, depB, arrB}]
+    this._hiddenEdge = -1;        // an edge splitAt has taken out of service
+
+    var fill = off.slice();
+    for (ei = 0; ei < m; ei++) {
+      if (this._eCls[ei] === 1) continue;
+      var pts = this._pOff[ei + 1] - this._pOff[ei];
+      if (pts < 2) continue;
+      var fB = this._segBearing(ei, 0, 1);
+      var lB = this._segBearing(ei, pts - 2, pts - 1);
+      var dir = this._eDir[ei];
+      if (dir === 0 || dir === 1) {
+        var a = fill[this._eA[ei]]++;
+        this._adjTo[a] = this._eB[ei]; this._adjEdge[a] = ei;
+        this._adjDep[a] = fB; this._adjArr[a] = lB;
+      }
+      if (dir === 0 || dir === 2) {
+        var b = fill[this._eB[ei]]++;
+        this._adjTo[b] = this._eA[ei]; this._adjEdge[b] = ei;
+        this._adjDep[b] = (lB + 180) % 360; this._adjArr[b] = (fB + 180) % 360;
+      }
+    }
   };
 
-  // Wire one edge into the adjacency lists, in whichever directions its
-  // one-way flag allows. Shared by the initial build and by splitAt, so a
-  // temporary half-edge carries the same bearings as a real one and turning
-  // onto it is priced like any other turn.
-  Graph.prototype._linkEdge = function (ei) {
-    var e = this.edges[ei];
-    // Freeways are excluded outright, not merely discouraged. A trip to a
-    // polling place is a neighborhood trip: taking US-131 to vote saves a
-    // minute at best, and surface streets are where the tool's camera
-    // knowledge actually applies. Class 1 is the Act 51 freeway class.
-    if (e.c === 1) return;
-    var p = e.p;
-    if (p.length < 2) return;
-    var fB = bearing(p[0], p[1]);
-    var lB = bearing(p[p.length - 2], p[p.length - 1]);
+  Graph.prototype._segBearing = function (ei, j, k) {
+    return bearing([this.edgePointLat(ei, j), this.edgePointLng(ei, j)],
+                   [this.edgePointLat(ei, k), this.edgePointLng(ei, k)]);
+  };
+
+  // Every way out of a node, packed links then any temporary ones, skipping
+  // an edge splitAt has hidden. The search calls this once per expansion, so
+  // it returns a reused scratch array rather than allocating.
+  //
+  // Freeways never appear: they are left out of the adjacency entirely, not
+  // merely discouraged. A trip to a polling place is a neighbourhood trip;
+  // taking US-131 to vote saves a minute at best, and surface streets are
+  // where the tool's camera knowledge actually applies. Class 1 is the Act 51
+  // freeway class.
+  Graph.prototype.linksFrom = function (node, into) {
+    var out = into || [];
+    out.length = 0;
+    if (node < this._nodeCount) {
+      var lo = this._adjOff[node], hi = this._adjOff[node + 1];
+      for (var i = lo; i < hi; i++) {
+        if (this._adjEdge[i] === this._hiddenEdge) continue;
+        out.push({ to: this._adjTo[i], edge: this._adjEdge[i],
+                   depB: this._adjDep[i], arrB: this._adjArr[i] });
+      }
+    }
+    var extra = this._extraLinks[node];
+    if (extra) for (var j = 0; j < extra.length; j++) out.push(extra[j]);
+    return out;
+  };
+
+  // Wire a TEMPORARY edge into the adjacency. Only splitAt's half-edges come
+  // through here; the packed ones were laid down in _buildAdjacency.
+  Graph.prototype._linkExtraEdge = function (ei) {
+    var e = this._extraEdges[ei - this._edgeCount];
+    if (e.c === 1 || e.p.length < 2) return;
+    var fB = bearing(e.p[0], e.p[1]);
+    var lB = bearing(e.p[e.p.length - 2], e.p[e.p.length - 1]);
+    var self = this;
+    var add = function (node, link) {
+      (self._extraLinks[node] || (self._extraLinks[node] = [])).push(link);
+    };
     if (e.d === 0 || e.d === 1) {
-      this.adj[e.a].push({ to: e.b, edge: ei, depB: fB, arrB: lB });
+      add(e.a, { to: e.b, edge: ei, depB: fB, arrB: lB });
     }
     if (e.d === 0 || e.d === 2) {
-      this.adj[e.b].push({ to: e.a, edge: ei,
-                           depB: (lB + 180) % 360, arrB: (fB + 180) % 360 });
+      add(e.b, { to: e.a, edge: ei,
+                 depB: (lB + 180) % 360, arrB: (fB + 180) % 360 });
     }
   };
 
@@ -241,16 +466,17 @@
       return Math.round(la / CELL) + ':' + Math.round(ln / CELL);
     };
     // bucket edges by every vertex cell they touch
-    for (var ei = 0; ei < this.edges.length; ei++) {
-      var p = this.edges[ei].p, seen = {};
-      for (var k = 0; k < p.length; k++) {
-        var kk = key(p[k][0], p[k][1]);
+    var edgeTotal = this.edgeCount();
+    for (var ei = 0; ei < edgeTotal; ei++) {
+      var pts = this.edgePointCount(ei), seen = {};
+      for (var k = 0; k < pts; k++) {
+        var kk = key(this.edgePointLat(ei, k), this.edgePointLng(ei, k));
         if (!seen[kk]) { seen[kk] = 1; (grid[kk] || (grid[kk] = [])).push(ei); }
       }
     }
     // reset any prior assignment
     this._edgeCams = [];
-    for (var z = 0; z < this.edges.length; z++) this._edgeCams.push(null);
+    for (var z = 0; z < edgeTotal; z++) this._edgeCams.push(null);
     // Display positions are worked out here too. This loop already walks the
     // edges near each camera, so finding the nearest point on the road costs
     // almost nothing; doing it separately meant a full-graph scan per camera.
@@ -284,10 +510,13 @@
         ? parseFloat(faceRaw) : null;
       var bestSnap = null;
       for (var eid in candidates) {
-        var poly = this.edges[eid].p, near = null, nearA = null, nearB = null;
-        for (var sg = 0; sg < poly.length - 1; sg++) {
-          var pr = projectOnSeg(cam.lat, cam.lng, poly[sg], poly[sg + 1]);
-          if (!near || pr.d < near.d) { near = pr; nearA = poly[sg]; nearB = poly[sg + 1]; }
+        var id = +eid;
+        var np = this.edgePointCount(id), near = null, nearA = null, nearB = null;
+        for (var sg = 0; sg < np - 1; sg++) {
+          var segA = [this.edgePointLat(id, sg), this.edgePointLng(id, sg)];
+          var segB2 = [this.edgePointLat(id, sg + 1), this.edgePointLng(id, sg + 1)];
+          var pr = projectOnSeg(cam.lat, cam.lng, segA, segB2);
+          if (!near || pr.d < near.d) { near = pr; nearA = segA; nearB = segB2; }
         }
         if (!near) continue;
         if (near.d <= STANDOFF_M) {
@@ -333,13 +562,25 @@
     return this._edgeCams;
   };
 
-  // point-to-polyline distance in meters (min over segments)
-  Graph.prototype._distToEdge = function (lat, lng, poly) {
-    if (poly.length === 1) return haversine(lat, lng, poly[0][0], poly[0][1]);
+  // Point-to-edge distance in metres, min over the edge's segments.
+  //
+  // Reads coordinates straight out of the packed arrays through two reusable
+  // pairs rather than materializing the polyline. snapToRoad calls this once
+  // per edge in the county, twice per lookup: building 39,164 polylines to
+  // throw them away was the single largest allocation in the whole page.
+  Graph.prototype._distToEdge = function (lat, lng, ei) {
+    var n = this.edgePointCount(ei);
+    if (n === 0) return Infinity;
+    var A = this._segA || (this._segA = [0, 0]);
+    var B = this._segB || (this._segB = [0, 0]);
+    A[0] = this.edgePointLat(ei, 0); A[1] = this.edgePointLng(ei, 0);
+    if (n === 1) return haversine(lat, lng, A[0], A[1]);
     var best = Infinity;
-    for (var i = 0; i < poly.length - 1; i++) {
-      var d = projectOnSeg(lat, lng, poly[i], poly[i + 1]).d;
+    for (var i = 0; i < n - 1; i++) {
+      B[0] = this.edgePointLat(ei, i + 1); B[1] = this.edgePointLng(ei, i + 1);
+      var d = projectOnSeg(lat, lng, A, B).d;
       if (d < best) best = d;
+      A[0] = B[0]; A[1] = B[1];
     }
     return best;
   };
@@ -381,11 +622,13 @@
   // space by the average node degree (about 3 here), which at this size costs
   // a couple of milliseconds and is what makes turn restrictions enforceable.
   Graph.prototype.route = function (srcId, dstId) {
-    var self = this, nodes = this.nodes, adj = this.adj;
-    var dst = nodes[dstId];
+    var self = this;
+    var dstLat = this.nodeLat(dstId), dstLng = this.nodeLng(dstId);
     var h = function (nid) {
-      return haversine(nodes[nid][0], nodes[nid][1], dst[0], dst[1]) / self._maxSpeed;
+      return haversine(self.nodeLat(nid), self.nodeLng(nid), dstLat, dstLng) /
+             self._maxSpeed;
     };
+    var scratch = [];
     var g = {}, cam = {}, prev = {}, closed = {};
     var key = function (n, e) { return n + '|' + (e == null ? '-' : e); };
 
@@ -401,15 +644,15 @@
       closed[cur.k] = 1;
       if (cur.node === dstId) { endKey = cur.k; break; }
 
-      var outs = adj[cur.node];
+      var outs = this.linksFrom(cur.node, scratch);
       for (var i = 0; i < outs.length; i++) {
         var ev = outs[i];
         if (!this.turnAllowed(cur.edge, cur.node, ev.edge)) continue;
-        var e = this.edges[ev.edge];
         var passCams = this._edgeCams ? this._edgeCams[ev.edge] : null;
         var addCam = passCams ? passCams.length : 0;
         var nk = key(ev.to, ev.edge);
-        var ng = g[cur.k] + e.t + (ev.edge === cur.edge ? UTURN_PENALTY : 0) +
+        var ng = g[cur.k] + this.edgeSec(ev.edge) +
+                 (ev.edge === cur.edge ? UTURN_PENALTY : 0) +
                  (cur.arrB == null ? 0 : turnCost(cur.arrB, ev.depB));
         var nc = cam[cur.k] + addCam;
         var cost = nc * CAMERA_PENALTY + ng;
@@ -444,7 +687,7 @@
     return {
       edges: eids, nodes: nids,
       seconds: g[endKey], meters: eids.reduce(function (s, id) {
-        return s + self.edges[id].l;
+        return s + self.edgeLen(id);
       }, 0),
       cameras: camList, cameraCount: cam[endKey]
     };
@@ -469,8 +712,9 @@
     var snap = this.snapToRoad(lat, lng);
     if (!snap || snap.edge == null) return null;
 
-    var e = this.edges[snap.edge];
-    var poly = e.p;
+    var parent = snap.edge;
+    var poly = this.edgePoly(parent);
+    var eA = this.edgeA(parent), eB = this.edgeB(parent);
 
     // Closest vertex pair, and the fraction along that pair.
     var best = { i: 0, t: 0, d: Infinity };
@@ -484,14 +728,16 @@
     var head = poly.slice(0, best.i + 1).concat([[best.lat, best.lng]]);
     var tail = [[best.lat, best.lng]].concat(poly.slice(best.i + 1));
     var headLen = polyLength(head), tailLen = polyLength(tail);
-    if (headLen < 8) return { node: e.a, lat: poly[0][0], lng: poly[0][1],
+    if (headLen < 8) return { node: eA, lat: poly[0][0], lng: poly[0][1],
                               release: function () {} };
-    if (tailLen < 8) return { node: e.b, lat: poly[poly.length-1][0],
+    if (tailLen < 8) return { node: eB, lat: poly[poly.length-1][0],
                               lng: poly[poly.length-1][1], release: function () {} };
 
-    var nodeCount = this.nodes.length, edgeCount = this.edges.length;
-    var mid = this.nodes.length;
-    this.nodes.push([best.lat, best.lng]);
+    // The temporaries go past the end of the packed arrays, as plain objects.
+    // There are exactly three of them and they live for one lookup.
+    var extraNodes = this._extraNodes.length, extraEdges = this._extraEdges.length;
+    var mid = this._nodeCount + extraNodes;
+    this._extraNodes.push([best.lat, best.lng]);
 
     // Split length and time PROPORTIONALLY out of the parent rather than
     // recomputing them from the geometry, so the two halves always sum to
@@ -500,45 +746,48 @@
     var total = headLen + tailLen;
     var frac = total > 0 ? headLen / total : 0.5;
     var self = this;
+    var pLen = this.edgeLen(parent), pSec = this.edgeSec(parent);
+    var pDir = this.edgeDir(parent), pCls = this.edgeClass(parent);
+    var pName = this.edgeName(parent);
+    var pRange = [this.edgeRange(parent, 0), this.edgeRange(parent, 1),
+                  this.edgeRange(parent, 2), this.edgeRange(parent, 3)];
     function piece(a, b, pts, lenShare, secShare) {
-      return { a: a, b: b, d: e.d, c: e.c, l: Math.round(lenShare * 10) / 10,
-               t: Math.round(secShare * 10) / 10, n: e.n, r: e.r, z: e.z, p: pts };
+      return { a: a, b: b, d: pDir, c: pCls, l: Math.round(lenShare * 10) / 10,
+               t: Math.round(secShare * 10) / 10, n: pName, r: pRange, p: pts };
     }
-    var eHead = this.edges.length;
-    this.edges.push(piece(e.a, mid, head, e.l * frac, e.t * frac));
-    var eTail = this.edges.length;
-    this.edges.push(piece(mid, e.b, tail, e.l * (1 - frac), e.t * (1 - frac)));
+    var eHead = this._edgeCount + this._extraEdges.length;
+    this._extraEdges.push(piece(eA, mid, head, pLen * frac, pSec * frac));
+    var eTail = this._edgeCount + this._extraEdges.length;
+    this._extraEdges.push(piece(mid, eB, tail, pLen * (1 - frac), pSec * (1 - frac)));
 
     // The temporary halves inherit the parent's cameras, so exposure counting
     // does not change just because a route happens to start mid-block.
     if (this._edgeCams) {
-      var parentCams = this._edgeCams[snap.edge] || null;
+      var parentCams = this._edgeCams[parent] || null;
       this._edgeCams[eHead] = parentCams ? parentCams.slice() : null;
       this._edgeCams[eTail] = parentCams ? parentCams.slice() : null;
     }
 
     // Wire the new pieces in, and hide the original so the router cannot use
-    // it to bypass the split point.
-    var savedAdjA = this.adj[e.a].slice();
-    var savedAdjB = this.adj[e.b].slice();
-    this.adj.push([]);                       // adjacency for `mid`
-    var drop = function (list) {
-      return list.filter(function (x) { return x.edge !== snap.edge; });
-    };
-    this.adj[e.a] = drop(this.adj[e.a]);
-    this.adj[e.b] = drop(this.adj[e.b]);
-    this._linkEdge(eHead);
-    this._linkEdge(eTail);
+    // it to bypass the split point. Hiding is a single id rather than a
+    // rebuilt adjacency list: linksFrom skips it wherever it appears.
+    var wasHidden = this._hiddenEdge;
+    this._hiddenEdge = parent;
+    this._linkExtraEdge(eHead);
+    this._linkExtraEdge(eTail);
 
     return {
       node: mid, lat: best.lat, lng: best.lng, meters: best.d,
       release: function () {
-        self.nodes.length = nodeCount;
-        self.edges.length = edgeCount;
-        self.adj.length = nodeCount;
-        self.adj[e.a] = savedAdjA;
-        self.adj[e.b] = savedAdjB;
-        if (self._edgeCams) self._edgeCams.length = edgeCount;
+        self._extraNodes.length = extraNodes;
+        self._extraEdges.length = extraEdges;
+        self._hiddenEdge = wasHidden;
+        // The only nodes that gained temporary links are the parent's two
+        // ends and the new midpoint, so only those three need clearing.
+        delete self._extraLinks[eA];
+        delete self._extraLinks[eB];
+        delete self._extraLinks[mid];
+        if (self._edgeCams) self._edgeCams.length = self._edgeCount + extraEdges;
       }
     };
   };
@@ -576,26 +825,26 @@
   // Alleys are deprioritized rather than excluded: some addresses genuinely
   // only touch one, so they stay available at a penalty.
   Graph.prototype.snapToRoad = function (lat, lng) {
-    var bestEdge = -1, bestD = Infinity;
-    for (var i = 0; i < this.edges.length; i++) {
-      var e = this.edges[i];
-      if (e.c === 1) continue;      // never snap a start or end to a freeway
-      var d = this._distToEdge(lat, lng, e.p);
-      if (/\bALY\b|\bALLEY\b/.test(e.n || '')) d += 120;   // metres of penalty
+    var bestEdge = -1, bestD = Infinity, n = this.edgeCount();
+    for (var i = 0; i < n; i++) {
+      if (this.edgeClass(i) === 1) continue;  // never snap an end to a freeway
+      var d = this._distToEdge(lat, lng, i);
+      if (ALLEY.test(this.edgeName(i))) d += 120;   // metres of penalty
       if (d < bestD) { bestD = d; bestEdge = i; }
     }
     if (bestEdge < 0) return this.nearestNode(lat, lng);
-    var edge = this.edges[bestEdge];
-    var a = this.nodes[edge.a], b = this.nodes[edge.b];
-    var da = haversine(lat, lng, a[0], a[1]);
-    var db = haversine(lat, lng, b[0], b[1]);
+    var ea = this.edgeA(bestEdge), eb = this.edgeB(bestEdge);
+    var da = haversine(lat, lng, this.nodeLat(ea), this.nodeLng(ea));
+    var db = haversine(lat, lng, this.nodeLat(eb), this.nodeLng(eb));
     // A one-way edge can only be entered at its tail.
-    var node;
-    if (edge.d === 1) node = edge.a;
-    else if (edge.d === 2) node = edge.b;
-    else node = da <= db ? edge.a : edge.b;
+    var dir = this.edgeDir(bestEdge), node;
+    if (dir === 1) node = ea;
+    else if (dir === 2) node = eb;
+    else node = da <= db ? ea : eb;
     return { node: node, meters: bestD, edge: bestEdge };
   };
+
+  var ALLEY = /\bALY\b|\bALLEY\b/;
 
   // Where a camera should be DRAWN: on the road it watches, not at the pole
   // beside it. Computed during assignCameras.
@@ -604,11 +853,11 @@
     return p || [lat, lng];
   };
 
-  // Nearest node to a lat/lng (linear scan; fine at 7.5k nodes).
+  // Nearest node to a lat/lng (linear scan over the packed coordinates).
   Graph.prototype.nearestNode = function (lat, lng) {
-    var best = -1, bestD = Infinity;
-    for (var i = 0; i < this.nodes.length; i++) {
-      var d = haversine(lat, lng, this.nodes[i][0], this.nodes[i][1]);
+    var best = -1, bestD = Infinity, n = this.nodeCount();
+    for (var i = 0; i < n; i++) {
+      var d = haversine(lat, lng, this.nodeLat(i), this.nodeLng(i));
       if (d < bestD) { bestD = d; best = i; }
     }
     return { node: best, meters: bestD };
@@ -663,8 +912,8 @@
   Graph.prototype._streetIndex = function () {
     if (this._sidx) return this._sidx;
     var idx = {};
-    for (var i = 0; i < this.edges.length; i++) {
-      var k = canonStreet(this.edges[i].n);
+    for (var i = 0; i < this._edgeCount; i++) {
+      var k = canonStreet(this._eName[i]);
       if (!k) continue;
       (idx[k] || (idx[k] = [])).push(i);
     }
@@ -708,8 +957,9 @@
 
     // The first segment whose address range holds the number wins.
     for (var i = 0; i < ids.length; i++) {
-      var e = this.edges[ids[i]], r = e.r || [];
-      var lf = r[0], lt = r[1], rf = r[2], rt = r[3];
+      var id = ids[i];
+      var lf = this.edgeRange(id, 0), lt = this.edgeRange(id, 1);
+      var rf = this.edgeRange(id, 2), rt = this.edgeRange(id, 3);
       var onLeft = inRange(number, lf, lt);
       var onRight = inRange(number, rf, rt);
       if (!onLeft && !onRight) continue;
@@ -719,25 +969,28 @@
       else { from = rf; to = rt; }
       var span = (to - from);
       var f = span ? (number - from) / span : 0.5;
-      var pt = pointAtFraction(e.p, f);
-      return { lat: pt[0], lng: pt[1], edge: ids[i], street: e.n, exact: true,
-               node: this.nearestNode(pt[0], pt[1]).node };
+      var pt = pointAtFraction(this.edgePoly(id), f);
+      return { lat: pt[0], lng: pt[1], edge: id, street: this.edgeName(id),
+               exact: true, node: this.nearestNode(pt[0], pt[1]).node };
     }
     // number outside every known range on that street: fall back to the
     // midpoint of the nearest-numbered segment, flagged inexact.
-    var closest = null, bestGap = Infinity;
+    var closest = -1, bestGap = Infinity;
     for (var j = 0; j < ids.length; j++) {
-      var ee = this.edges[ids[j]], rr = ee.r || [];
-      [[rr[0], rr[1]], [rr[2], rr[3]]].forEach(function (pair) {
-        if (pair[0] == null || pair[1] == null) return;
+      var ee = ids[j];
+      var pairs = [[this.edgeRange(ee, 0), this.edgeRange(ee, 1)],
+                   [this.edgeRange(ee, 2), this.edgeRange(ee, 3)]];
+      for (var q = 0; q < 2; q++) {
+        var pair = pairs[q];
+        if (pair[0] == null || pair[1] == null) continue;
         var gap = Math.min(Math.abs(number - pair[0]), Math.abs(number - pair[1]));
         if (gap < bestGap) { bestGap = gap; closest = ee; }
-      });
+      }
     }
-    if (!closest) return null;
-    var mid = pointAtFraction(closest.p, 0.5);
+    if (closest < 0) return null;
+    var mid = pointAtFraction(this.edgePoly(closest), 0.5);
     var n2 = this.nearestNode(mid[0], mid[1]);
-    return { lat: mid[0], lng: mid[1], edge: -1, street: closest.n,
+    return { lat: mid[0], lng: mid[1], edge: -1, street: this.edgeName(closest),
              exact: false, node: n2.node };
   };
 
@@ -786,17 +1039,17 @@
     // Orient each edge to travel direction and collect its points.
     var legs = [];
     route.edges.forEach(function (id, i) {
-      var e = self.edges[id];
-      var poly = (route.nodes[i] !== e.a) ? e.p.slice().reverse() : e.p;
-      var name = e.n || '';
+      var poly = self.edgePoly(id);
+      if (route.nodes[i] !== self.edgeA(id)) poly.reverse();
+      var name = self.edgeName(id) || '';
       var cams = (self._edgeCams && self._edgeCams[id]) || [];
       var last = legs[legs.length - 1];
       if (last && last.name === name) {
-        last.meters += e.l;
+        last.meters += self.edgeLen(id);
         last.points = last.points.concat(poly.slice(1));
         cams.forEach(function (c) { if (last.cameras.indexOf(c) < 0) last.cameras.push(c); });
       } else {
-        legs.push({ name: name, meters: e.l, points: poly.slice(),
+        legs.push({ name: name, meters: self.edgeLen(id), points: poly,
                     cameras: cams.slice() });
       }
     });

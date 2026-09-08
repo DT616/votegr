@@ -276,10 +276,12 @@
       if (!this._graph) return {};
       if (this._buckets) return this._buckets;
       var b = {};
-      var edges = this._graph.edges;
-      for (var i = 0; i < edges.length; i++) {
-        var c = edges[i].c || 5;
-        (b[c] || (b[c] = [])).push(edges[i].p);
+      // Built once and kept: this is the only place the whole county's
+      // geometry is materialized as arrays, and it is what gets drawn.
+      var g = this._graph, n = g.edgeCount();
+      for (var i = 0; i < n; i++) {
+        var c = g.edgeClass(i) || 5;
+        (b[c] || (b[c] = [])).push(g.edgePoly(i));
       }
       this._buckets = b;
       return b;
@@ -546,7 +548,7 @@
       // every road they can see to be named; holding locals back one whole
       // level is what left most of the map anonymous.
       var maxCls = z >= 14 ? 5 : z >= 13 ? 4 : 3;
-      var edges = this._graph.edges;
+      var g = this._graph, edgeTotal = g.edgeCount();
       // Up to three candidate blocks per street name, ranked by how close
       // they sit to the screen center. The old rule kept only the LONGEST
       // block city-wide, which for long north-south avenues was usually off
@@ -564,10 +566,16 @@
         }
       }
 
-      for (var i = 0; i < edges.length; i++) {
-        var e = edges[i];
-        if (!e.n || (e.c || 5) > maxCls || ALLEY.test(e.n) || RAMP.test(e.n)) continue;
-        var p = e.p, a = pt(p[0]), b = pt(p[p.length - 1]);
+      for (var i = 0; i < edgeTotal; i++) {
+        // Endpoints only: a label needs where the block starts and ends, not
+        // its shape, so this reads two coordinate pairs out of the packed
+        // arrays rather than building the polyline on every pan.
+        var en = g.edgeName(i), ec = g.edgeClass(i) || 5;
+        if (!en || ec > maxCls || ALLEY.test(en) || RAMP.test(en)) continue;
+        var lastPt = g.edgePointCount(i) - 1;
+        if (lastPt < 1) continue;
+        var a = pt([g.edgePointLat(i, 0), g.edgePointLng(i, 0)]);
+        var b = pt([g.edgePointLat(i, lastPt), g.edgePointLng(i, lastPt)]);
         if ((a[0] < 0 && b[0] < 0) || (a[0] > size.x && b[0] > size.x) ||
             (a[1] < 0 && b[1] < 0) || (a[1] > size.y && b[1] > size.y)) continue;
         var dx = b[0] - a[0], dy = b[1] - a[1];
@@ -581,7 +589,7 @@
         // arterial matters more than naming the side street beside it; and
         // everything relaxes as you zoom in. The old flat 42px at z13-15 is
         // what left those zooms almost entirely anonymous.
-        var kls = e.c || 5;
+        var kls = ec;
         var minRun;
         if (kls === 1) minRun = 18;
         else if (kls <= 3) minRun = z >= 15 ? 22 : 28;
@@ -591,7 +599,7 @@
         var d2 = (mx0 - cx) * (mx0 - cx) + (my0 - cy) * (my0 - cy);
         // For a street the route uses, rank by distance to the route line
         // instead of to the screen center.
-        if (routeScreen && route[e.n]) {
+        if (routeScreen && route[en]) {
           var rd = Infinity;
           for (var rp = 0; rp < routeScreen.length; rp++) {
             var ddx = routeScreen[rp][0] - mx0, ddy = routeScreen[rp][1] - my0;
@@ -601,16 +609,16 @@
           // 30px of the line counts as "on it"; beyond that it sorts worse
           d2 = rd < 900 ? rd : 1e7 + rd;
         }
-        var cand = { len: len, a: a, b: b, cls: e.c || 5, d2: d2 };
-        var lst = best[e.n] || (best[e.n] = []);
+        var cand = { len: len, a: a, b: b, cls: ec, d2: d2 };
+        var lst = best[en] || (best[en] = []);
         lst.push(cand);
         // Prefer blocks near the middle of the screen, but keep a deep bench:
         // a long avenue crossing the whole view has many blocks, and if the
         // first few fall in cells already claimed by cross streets the name
         // was being dropped entirely.
         lst.sort(function (x, y) { return x.d2 - y.d2; });
-        if (lst.length > ((e.c || 5) === 1 ? 24 : 10)) {
-          lst.length = (e.c || 5) === 1 ? 24 : 10;
+        if (lst.length > (ec === 1 ? 24 : 10)) {
+          lst.length = ec === 1 ? 24 : 10;
         }
       }
 

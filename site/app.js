@@ -2091,9 +2091,9 @@
   function routePoints(r) {
     var pts = [];
     r.edges.forEach(function (id, i) {
-      var e = graph.edges[id], poly = e.p;
-      if (r.nodes[i] !== e.a) poly = poly.slice().reverse();
-      poly.forEach(function (p) { pts.push([p[0], p[1]]); });
+      var poly = graph.edgePoly(id);
+      if (r.nodes[i] !== graph.edgeA(id)) poly.reverse();
+      poly.forEach(function (p) { pts.push(p); });
     });
     return pts;
   }
