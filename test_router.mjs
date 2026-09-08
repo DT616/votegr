@@ -388,5 +388,82 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
      String(noGeo.precinct) === '6');
 }
 
+// ---- per-jurisdiction chunks ------------------------------------------
+// The county graph ships as thirty chunks so a phone parses one jurisdiction
+// rather than all of it. They keep county-wide node and edge ids and store
+// maps rather than arrays, and Graph compacts that to its dense arrays once
+// at construction. What is worth testing is not the compaction but the thing
+// it exists for: two adjacent chunks overlap in a 150m ring, and a merged
+// pair has to be ONE connected graph, not two graphs in one object.
+{
+  const fs = await import('fs');
+  const chunk = (mcd) =>
+    JSON.parse(fs.readFileSync(`./site/data/graph/${mcd}.json`, 'utf8'));
+
+  const GR = '34000', KENTWOOD = '42820';
+  const gr = new R.Graph(chunk(GR));
+  ok('a chunk loads at all', gr.nodes.length > 5000 && gr.edges.length > 5000);
+  ok('a chunk geocodes', !!gr.geocode(602, 'ALEXANDER ST SE'));
+
+  // The wire format is maps keyed by global id; everything downstream indexes
+  // dense arrays. Both maps have to survive, because an id from the wire has
+  // no other way back to a local index.
+  ok('global ids are kept', !!gr.nodeId && !!gr.edgeId);
+  const someId = Object.keys(chunk(GR).nodes)[0];
+  ok('a global node id resolves to its own point',
+     JSON.stringify(gr.nodes[gr.nodeId[someId]]) ===
+     JSON.stringify(chunk(GR).nodes[someId]));
+
+  const kw = new R.Graph(chunk(KENTWOOD));
+  const both = new R.Graph([chunk(GR), chunk(KENTWOOD)]);
+
+  // A union, not a concatenation: the ring means hundreds of nodes are in
+  // both chunks, and each is ONE node in the merge. If they were duplicated
+  // the border would be two parallel road networks that never touch.
+  const sharedNodes = gr.nodes.length + kw.nodes.length - both.nodes.length;
+  const sharedEdges = gr.edges.length + kw.edges.length - both.edges.length;
+  ok(`the ring is shared, not duplicated (${sharedNodes} nodes, ${sharedEdges} edges)`,
+     sharedNodes > 100 && sharedEdges > 100);
+  ok('no restriction is lost in the merge',
+     both.restrictionCount === gr.restrictionCount + kw.restrictionCount);
+
+  // The point of the whole thing. A Grand Rapids origin and a Kentwood
+  // destination: on the GR chunk alone the router still answers, but it stops
+  // at the edge of the chunk, most of a kilometre short of where the voter is
+  // going. That is worse than an error, because it looks like a route.
+  const origin = { lat: 42.9276, lng: -85.6353 };     // 602 Alexander St SE
+  const kentwood = Object.values(
+    JSON.parse(fs.readFileSync('./site/data/polling/42820.json', 'utf8')).precincts
+  ).find((p) => p.lat);
+  const missBy = (g) => {
+    const d = g.snapToRoad(kentwood.lat, kentwood.lng);
+    return R.haversine(kentwood.lat, kentwood.lng, g.nodes[d.node][0], g.nodes[d.node][1]);
+  };
+  const alone = missBy(gr), together = missBy(both);
+  ok(`merging reaches the destination (${Math.round(alone)}m -> ${Math.round(together)}m)`,
+     together < alone / 2);
+  const crossed = both.route(both.snapToRoad(origin.lat, origin.lng).node,
+                             both.snapToRoad(kentwood.lat, kentwood.lng).node);
+  ok('a route crosses the jurisdiction line', !!crossed && crossed.edges.length > 0);
+
+  // Ids are positions in ONE build. Chunks from different builds share
+  // numbers that mean different roads, and merging them would splice
+  // unrelated streets together with no visible error -- a route down a road
+  // that does not exist. It has to refuse.
+  const stale = chunk(KENTWOOD);
+  stale.meta = Object.assign({}, stale.meta, { build: 'deadbeef0000' });
+  let refused = false;
+  try { new R.Graph([chunk(GR), stale]); } catch (e) { refused = /build/.test(e.message); }
+  ok('chunks from different builds are refused', refused);
+
+  // A chunk document must survive being used twice: once alone, once merged.
+  // Rewriting its endpoints in place would corrupt the second use.
+  const doc = chunk(KENTWOOD);
+  const first = new R.Graph(doc).edges.length;
+  new R.Graph([chunk(GR), doc]);
+  ok('a chunk document is not consumed by use',
+     new R.Graph(doc).edges.length === first);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
