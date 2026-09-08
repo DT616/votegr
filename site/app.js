@@ -736,21 +736,75 @@
     return optional ? p.catch(function () { return null; }) : p;
   }
 
+  // The county road network, streamed.
+  //
+  // Every jurisdiction is resident at once, so a route that crosses a city
+  // line needs no second fetch -- but the chunks are read ONE AT A TIME and
+  // each is dropped before the next is asked for. Holding all thirty parsed
+  // at once peaks at 102 MiB against a 13 MiB steady state, and that
+  // transient is what decides whether an older phone survives the load.
+  //
+  // The index says how big each chunk is, which is what lets the graph
+  // allocate its arrays once before reading any of them.
+  //
+  // A few requests in flight, but only ONE parsed document alive.
+  //
+  // Strictly sequential would mean thirty round trips end to end, which on a
+  // phone is seconds of nothing but latency. Promise.all would mean thirty
+  // parsed chunks landing on top of each other, which is the 102 MiB peak
+  // this exists to avoid.
+  //
+  // So the fetches run a few ahead while the parsing stays in order and one
+  // at a time. What is held early is a compressed response body, tens of
+  // kilobytes; what is bounded is the parsed form, which is a hundred times
+  // larger. Each document is dropped as soon as it is folded in.
+  var CHUNK_LOOKAHEAD = 4;
+
+  function loadCountyGraph() {
+    return loadJson('graph/index').then(function (index) {
+      var g = ALPRRouter.Graph.streaming(index);
+      var chunks = index.chunks, inFlight = [];
+
+      function fetchAt(i) {
+        return i < chunks.length ? loadJson('graph/' + chunks[i].mcd) : null;
+      }
+      for (var k = 0; k < CHUNK_LOOKAHEAD && k < chunks.length; k++) {
+        inFlight.push(fetchAt(k));
+      }
+
+      var at = 0;
+      function next() {
+        if (at >= chunks.length) return g.finish();
+        var pending = inFlight[at];
+        var ahead = at + CHUNK_LOOKAHEAD;
+        if (ahead < chunks.length) inFlight[ahead] = fetchAt(ahead);
+        at++;
+        return pending.then(function (doc) {
+          g.addChunk(doc);
+          doc = null;
+          inFlight[at - 1] = null;      // release the settled promise's value
+          return next();
+        });
+      }
+      return next();
+    });
+  }
+
   function loadData() {
     var input = $('addr');
     input.disabled = true;
     Promise.all([
-      loadJson('graph'), loadJson('cameras'), loadJson('addresses'), loadJson('polling'),
+      loadCountyGraph(), loadJson('cameras'), loadJson('addresses'), loadJson('polling'),
       loadJson('boundary', true), loadJson('elections', true), loadJson('landcover', true),
       loadJson('neighbors', true), loadJson('precincts', true),
       loadJson('gr-clerk', true), loadJson('sources', true)
     ]).then(function (res) {
-      var graphData = res[0], cameraData = res[1], addresses = res[2], polling = res[3];
+      var cameraData = res[1], addresses = res[2], polling = res[3];
       var boundary = res[4], calendar = res[5], landcover = res[6];
       var neighborData = res[7], precinctData = res[8], clerkData = res[9];
       var sourceData = res[10];
 
-      graph = new ALPRRouter.Graph(graphData);
+      graph = res[0];
       cachedCameras = cameraData.cameras;
       P = new Precincts(addresses, polling);
       drawPollingPlaces();
@@ -765,11 +819,15 @@
       precincts = (precinctData && precinctData.precincts) || null;
       if (precincts) ownBase.setPrecincts(precincts);
       ownBase.setData(graph, landcover || null);
-      // Only cameras inside the city are shown or counted. The Overpass pull
-      // is a rectangle, so most of what it returns is Wyoming, Kentwood and
-      // Walker -- outside the routes this tool can draw, and outside the map
-      // the veil says this tool is about.
-      cameras = cityCameras(cachedCameras);
+      // Every camera in the county, not just the ones inside the city.
+      //
+      // This used to filter to the city rings, because the routes stopped at
+      // the city line and a camera in Wyoming could not be on one. The graph
+      // now covers all thirty jurisdictions, so that filter would hide
+      // cameras that sit on roads a route actually uses -- and a route drawn
+      // as clean past a plate reader we know about is the one failure this
+      // whole tool exists to prevent.
+      cameras = cachedCameras;
       // Election day hours are statewide and statutory, so they are one
       // object beside the list rather than a field repeated on every election.
       electionDayHours = (calendar && calendar.election_day_hours) || null;
@@ -899,10 +957,10 @@
     return graph ? graph.cameraPos(c.id, c.lat, c.lng) : [c.lat, c.lng];
   }
 
-  // `cameras` is already filtered to the city by cityCameras, so its length is
-  // the number reported inside the city limits and not the wider fetch bbox.
-  // Rendered from the data rather than written into the copy, so it stays true
-  // when the camera file is refreshed.
+  // Every camera in the county now, not the city subset: the routes reach
+  // every jurisdiction, so the count has to describe the same area the
+  // avoidance does. Rendered from the data rather than written into the copy,
+  // so it stays true when the camera file is refreshed.
   function renderCameraCount() {
     var fold = $('camCountFold');
     if (!fold) return;
@@ -911,9 +969,9 @@
     // to the toggle; with the toggle gone, nothing else on the map says where
     // these came from or how old they can be.
     fold.textContent = n + ' reported camera' + (n === 1 ? '' : 's') +
-      ' in the city, from OpenStreetMap as of the last time this page was ' +
-      'published. Volunteer-mapped and certainly incomplete, so treat it as ' +
-      'a floor rather than a full count.';
+      ' in Kent County, from OpenStreetMap as of the last time this page ' +
+      'was published. Volunteer-mapped and certainly incomplete, so treat ' +
+      'it as a floor rather than a full count.';
   }
 
   // Cameras appear only once there is a route for them to matter to. A person
@@ -2287,10 +2345,6 @@
   // the build's job now: scripts/refresh_cameras.py rewrites the file, and the
   // daily workflow runs it. reroute() went with the toggle; nothing swaps a
   // camera list under a drawn route any more.
-
-  function cityCameras(list) {
-    return (list || []).filter(function (c) { return insideCity(c.lat, c.lng); });
-  }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
