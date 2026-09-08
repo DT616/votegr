@@ -555,21 +555,25 @@
              " through ", el("strong", "when", Elections.monthDay(election.date)))
         : el("span", null, "Through ",
              el("strong", "when", Elections.monthDay(election.date)))));
+    const inside = boxes.filter((b) => !b.address).length;
     parts.push(el("div", "ev-note",
-      Elections.todayISO() < from
+      (Elections.todayISO() < from
         ? `Ballots are mailed from ${Elections.monthDay(from)}, and boxes ` +
-          "accept them until the polls close on election day."
-        : "Return it by the time the polls close on election day."));
+          "accept them until the polls close on election day. "
+        : "Return it by the time the polls close on election day. ") +
+      // Not our claim: MCL 168.761d requires the clerk to monitor each box.
+      "Drop boxes are accessible 24/7 and monitored by video surveillance, " +
+      "which Michigan law requires." +
+      (inside ? ` The ${inside === 1 ? "one" : inside} inside City Hall ` +
+                `${inside === 1 ? "follows" : "follow"} building hours.` : "")));
 
     for (const box of boxes) {
       parts.push(locationRow({
         name: box.name || box.address || "Drop box",
         address: box.address || "Inside City Hall",
-        entrance_note: [box.note, box.hours
-          ? (/^24\/7$/.test(box.hours) ? "Accessible 24/7"
-             : `Accessible during ${box.hours}`)
-          : null]
-          .filter(Boolean).join(" \u00b7 "),
+        // No hours per row: they are the same for every street box, and are
+        // said once under the dates above.
+        entrance_note: box.note || "",
       }, "ev-site"));
     }
     return [el("div", "ev-block ev-boxes", ...parts)];
