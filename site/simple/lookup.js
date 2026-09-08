@@ -529,8 +529,8 @@
                  `-${String(start.getDate()).padStart(2, "0")}`;
     parts.push(el("div", "ev-note",
       Elections.todayISO() < from
-        ? `Ballots are mailed from ${Elections.monthDay(from)}. Until then ` +
-          "there is nothing to drop off."
+        ? `Ballots are mailed from ${Elections.monthDay(from)}. Boxes accept ` +
+          `them from then until the polls close on ${Elections.monthDay(election.date)}.`
         : `Return it by the time the polls close on ${Elections.monthDay(election.date)}.`));
 
     for (const box of boxes) {

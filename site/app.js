@@ -341,8 +341,8 @@
         (i === chosen[kind] ? ' class="is-chosen"' : '') + '>' +
         '<span class="bx-name">' + esc(boxLabel(b)) +
         (b.metres != null
-          ? '<span class="bx-dist">' + RoutePanel.fmtMi(b.metres) +
-            ' as the crow flies</span>' : '') + '</span>' +
+          ? '<span class="bx-dist">' + RoutePanel.fmtMi(b.metres) + '</span>'
+          : '') + '</span>' +
         '<span class="bx-addr">' + esc(addressForDisplay(b.address)) + '</span>' +
         (b.entrance_note || b.note
           ? '<span class="bx-where">Location: ' +
@@ -363,8 +363,9 @@
     }
     // Everything here is inside the city, because everything this tool can
     // answer is. A Wyoming voter has drop boxes too; we do not have them.
-    return html + '</ul><p class="bx-hours">Grand Rapids city locations only. ' +
-      'This tool covers the city.</p>' + provenanceHtml();
+    return html + '</ul><p class="bx-hours">Ordered by straight-line distance ' +
+      'from the address you typed; the driving route appears when you pick ' +
+      'one. Grand Rapids city locations only.</p>' + provenanceHtml();
   }
 
   // Where this list came from, said in the panel that shows it rather than
@@ -425,8 +426,8 @@
     if (today < from) {
       return { label: 'Absentee voting upcoming', status: range, live: true,
                note: 'Absentee ballots are mailed from ' +
-                     Elections.monthDay(from) + '. Until then there is nothing '
-                     + 'to drop off.' };
+                     Elections.monthDay(from) + '. Boxes accept them from then '
+                     + 'until the polls close on election day.' };
     }
     if (today > activeEl.date) {
       return { label: 'Absentee voting closed', status: range };
