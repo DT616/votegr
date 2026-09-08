@@ -38,6 +38,8 @@ import time
 import urllib.request
 from collections import defaultdict
 
+from archive import cite
+
 BASE = "https://www.kentcountymi.gov"
 UA = {"User-Agent": "vote-gr/1.0 (+https://github.com/DT616/votegr)"}
 DELAY_SECONDS = 2.0            # be a polite guest: 30 pages, one at a time
@@ -260,6 +262,7 @@ def main():
                           "Drop Box & Polling Locations",
                 "source_url": f"{BASE}/{slug}",
                 "matched_against": "site/data/precincts.json",
+                **cite(f"{BASE}/{slug}"),
                 "generated": time.strftime("%Y-%m-%d"),
                 "licence": "Public record of Kent County, redistributed as published.",
                 "how_to_update": "Run refresh_polling.py. Polling places change "

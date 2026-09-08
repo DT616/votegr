@@ -37,6 +37,8 @@ import sys
 import urllib.request
 import html as html_module
 
+from archive import snapshot_or_note
+
 URL = "https://www.kentcountymi.gov/250/Drop-Box-Polling-Locations"
 CITY_URL = ("https://www.grandrapidsmi.gov/departments/clerks-office/"
             "elections/early-voting/")
@@ -245,6 +247,7 @@ def main():
             "source_url": URL,
             "generated": datetime.date.today().isoformat(),
             "licence": "Public record of Kent County, redistributed as published.",
+            **snapshot_or_note(URL),
             "how_to_update": "Run refresh_early_voting.py after each election "
                              "is settled. MCL 168.662 fixes early voting sites "
                              "60 days out, so before that the page may still "
@@ -267,7 +270,8 @@ def main():
         # Deliberately NOT merged: where the two disagree, both readings are
         # kept so the disagreement is visible instead of resolved by whichever
         # script ran last.
-        "grand_rapids_clerk": dict(city, source_url=CITY_URL),
+        "grand_rapids_clerk": dict(city, source_url=CITY_URL,
+                                   **snapshot_or_note(CITY_URL)),
     }
     OUT.write_text(json.dumps(document, separators=(",", ":"), indent=1) + "\n")
 

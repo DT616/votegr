@@ -109,6 +109,31 @@ def snapshot(url, today=None, force=False):
     return {**fresh, "captured": fresh.get("timestamp") != before}
 
 
+def cite(url):
+    """The capture the archive already has, without asking for a new one.
+
+    For bulk sources. Thirty jurisdiction pages means thirty Save Page Now
+    submissions per run, which is a lot to ask of a free archive for pages
+    that change three times a year -- and a fast way to get rate limited into
+    uselessness. So a bulk caller cites what exists and leaves the asking to
+    the one-page sources.
+    """
+    from datetime import date
+    have = existing(url)
+    if not have:
+        return {"archived": None,
+                "archive_note": "The Wayback Machine holds no capture of this "
+                                "page. Nothing was submitted: this is one of "
+                                "thirty pages read per run."}
+    block = {"archived": have["url"], "archived_timestamp": have["timestamp"]}
+    age = _age_days(have["timestamp"] or "", date.today())
+    if age is not None and age > MAX_AGE_DAYS:
+        block["archive_note"] = (
+            f"An existing capture, {age} days old, cited rather than made. It "
+            f"may show an earlier version of the page than the one read here.")
+    return block
+
+
 def snapshot_or_note(url, **kwargs):
     """What goes into a provenance block, whether or not archiving worked.
 
