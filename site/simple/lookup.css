@@ -225,3 +225,10 @@ a.dir-btn svg { width: 1.15rem; height: 1.15rem; fill: currentColor; }
 .ev-hours .is-today { color: var(--fg); font-weight: 600; }
 
 .ev-site { margin-top: 1.3rem; }
+
+/* Where an out-of-city street actually is, said in the option itself. */
+.opt-where { color: var(--dim); font-size: .9em; }
+
+/* The out-of-city answer reads like the other advisories, because that is
+   what it is: an honest limit, not an error. */
+.advisory.outside { border-left-color: var(--dim); }

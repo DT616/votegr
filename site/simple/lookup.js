@@ -44,6 +44,9 @@
     return response.json();
   };
 
+  let neighbours = null;    // street -> the jurisdictions it is in
+  let clerk = null;         // gr-clerk.json: early voting and drop boxes
+
   // Set by render(); the Directions links start the route here.
   let typedAddress = null;
 
@@ -236,7 +239,8 @@
         "clerk or the Michigan Voter Information Center.") : null,
 
       // Last, so the advisories stay next to the precinct answer they qualify.
-      ...earlyVoting(uncertain));
+      ...earlyVoting(uncertain),
+      ...dropBoxes());
 
     clearResult();
     resultBox.append(el("div", "card", body));
@@ -260,7 +264,12 @@
   function renderList() {
     optionList.textContent = "";
     suggestions.forEach((suggestion, i) => {
-      const option = el("li", null, suggestion.text);
+      // A street outside the city names where it is, because that is the
+      // whole answer for it and the reader should see it before choosing.
+      const option = suggestion.outside
+        ? el("li", null, suggestion.text,
+             el("span", "opt-where", ` in ${placeList(suggestion.outside)}`))
+        : el("li", null, suggestion.text);
       option.id = `opt-${i}`;
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", i === active ? "true" : "false");
@@ -284,10 +293,50 @@
       : matches.filter((street) => resolve(street, number))
                .slice(0, MAX_SUGGESTIONS)
                .map((street) => ({ text: `${number} ${street}`, street, number }));
+    suggestions = suggestions.concat(outsideMatches(rest, number, suggestions))
+                             .slice(0, MAX_SUGGESTIONS);
 
     active = -1;
     renderList();
     say(suggestions.length ? "" : notFoundHint(number, matches.length));
+  }
+
+  // More than half of all Grand Rapids mailing addresses are outside the city
+  // limits. Refusing to list those streets meant a person who typed their own
+  // address correctly got "no address found", which reads as a broken tool
+  // rather than an honest limit. They are offered last, filling only what the
+  // city's own matches leave, and labelled with where they actually are.
+  const outsideMatches = (rest, number, already) => {
+    if (!neighbours || !rest || rest.length < 2) return [];
+    const have = new Set(already.map((s) => s.street));
+    return Object.keys(neighbours)
+      .filter((name) => !have.has(name) && name.startsWith(rest))
+      .sort()
+      .slice(0, MAX_SUGGESTIONS)
+      .map((street) => ({
+        text: number === null ? street : `${number} ${street}`,
+        street, number, outside: neighbours[street] || [],
+      }));
+  };
+
+  const placeList = (where) =>
+    where.length === 1 ? where[0]
+      : `${where.slice(0, -1).join(", ")} or ${where[where.length - 1]}`;
+
+  // Picking one is an answer, not a rejection: which jurisdiction it is in,
+  // and where to go instead. The address stays in the box, because it is
+  // right.
+  function renderOutside(picked) {
+    const where = placeList(picked.outside);
+    clearResult();
+    resultBox.append(el("div", "card", el("div", "card-body",
+      el("div", "lead", "Address: ", el("span", "addr-quote", picked.text)),
+      advisory("outside",
+        `This address is in ${where}, not the City of Grand Rapids, so this ` +
+        "page cannot say where you vote. A Grand Rapids mailing address does " +
+        `not always mean you live in the city. Your clerk is the one for ${where}.`),
+      el("div", "ev-note", "The Michigan Voter Information Center at " +
+        "mvic.sos.state.mi.us has the polling place for any Michigan address."))));
   }
 
   const notFoundHint = (number, streetHits) => {
@@ -301,6 +350,12 @@
   function choose(index) {
     const picked = suggestions[index];
     if (!picked) return;
+    if (picked.outside) {
+      input.value = picked.text;
+      closeList();
+      renderOutside(picked);
+      return;
+    }
 
     // A street on its own is half an address: put it in the box and wait.
     if (picked.number == null) {
@@ -391,13 +446,29 @@
   // has not closed. Returns an empty array otherwise, so render can spread it
   // without a conditional. Once the window passes this goes quiet on its own,
   // with no edit to make and nothing to remember.
+  // The clerk's own dates and sites when the file is about THIS election, the
+  // calendar's otherwise. gr-clerk.json names the election it describes, and
+  // that is checked rather than assumed: a file about a finished election
+  // must not supply dates for the next one.
+  const clerkWindow = () => {
+    if (!clerk || !clerk.early_voting || !election ||
+        clerk.election !== election.date) return null;
+    return {
+      early_voting_from: clerk.early_voting.from,
+      early_voting_to: clerk.early_voting.to,
+      early_voting_sites: clerk.early_voting_sites || [],
+      early_voting_hours: null,
+    };
+  };
+
   function earlyVoting(uncertain) {
     if (!election) return [];
+    const source = clerkWindow() || election;
     const { early_voting_from: from, early_voting_to: to,
-            early_voting_sites: sites, early_voting_hours: hours } = election;
+            early_voting_sites: sites, early_voting_hours: hours } = source;
     if (!(sites || []).length) return [];
 
-    const state = Elections.windowState(election);
+    const state = Elections.windowState(source);
     if (state === "none" || state === "closed") return [];
     const open = state === "open";
 
@@ -441,6 +512,38 @@
     return [el("div", "ev-block", ...parts)];
   }
 
+  // Every drop box, with a directions link each. No "nearest": this page does
+  // no geocoding and cannot honestly rank them by distance, so it lists them
+  // and lets the reader pick the one they know.
+  function dropBoxes() {
+    const boxes = (clerk && clerk.drop_boxes) || [];
+    if (!boxes.length || !election || clerk.election !== election.date) return [];
+
+    const parts = [el("div", "lead-2", "Drop off an absentee ballot")];
+    // A box is only useful once there is a ballot to put in it. Michigan
+    // sends absentee ballots 40 days before an election, and a returned
+    // ballot has to be in hand when the polls close.
+    const start = Elections.dayStart(election.date);
+    start.setDate(start.getDate() - 40);
+    const from = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}` +
+                 `-${String(start.getDate()).padStart(2, "0")}`;
+    parts.push(el("div", "ev-note",
+      Elections.todayISO() < from
+        ? `Ballots are mailed from ${Elections.monthDay(from)}. Until then ` +
+          "there is nothing to drop off."
+        : `Return it by the time the polls close on ${Elections.monthDay(election.date)}.`));
+
+    for (const box of boxes) {
+      parts.push(locationRow({
+        name: box.name || box.address || "Drop box",
+        address: box.address || "Inside City Hall",
+        entrance_note: [box.note, box.hours ? `Open ${box.hours}` : null]
+          .filter(Boolean).join(" \u00b7 "),
+      }, "ev-site"));
+    }
+    return [el("div", "ev-block", ...parts)];
+  }
+
   // ---- clicks outside the suggestion list close it ------------------------
 
   document.addEventListener("click", (event) => {
@@ -453,11 +556,18 @@
     input.disabled = true;
     say("Loading...");
     try {
-      const [addresses, places, calendar] = await Promise.all([
+      const optional = (url) => getJSON(url).catch(() => null);
+      const [addresses, places, calendar, neighbourData, clerkData] = await Promise.all([
         getJSON("../data/addresses.json"),
         getJSON("../data/polling.json"),
         getJSON("../data/elections.json"),
+        // Both optional. A copy of this page hosted without them still
+        // answers the question it exists to answer; it just answers less.
+        optional("../data/neighbors.json"),
+        optional("../data/gr-clerk.json"),
       ]);
+      neighbours = (neighbourData && neighbourData.streets) || null;
+      clerk = clerkData || null;
 
       streets = addresses.streets;
       streetNames = Object.keys(streets);
