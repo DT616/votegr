@@ -304,5 +304,34 @@
     "3"
    ]
   }
+ },
+ "grand_rapids_clerk":{
+  "sites":[
+   {
+    "name":"St. Peter and Paul School",
+    "address":"1430 Quarry NW"
+   },
+   {
+    "name":"GRPS University",
+    "address":"1400 Fuller NE"
+   },
+   {
+    "name":"Ottawa Hills High School",
+    "address":"2055 Rosewood SE"
+   },
+   {
+    "name":"New Hope Baptist Church",
+    "address":"130 Delaware SW"
+   }
+  ],
+  "hours":[
+   "Saturdays*, Sundays, Monday, Wednesday, Friday - 9:00 a.m. - 5:00 p.m.",
+   "Tuesday, Thursday - 11:00 a.m. - 7:00 p.m.",
+   "*October 31 7:00 a.m. - 3:00 p.m."
+  ],
+  "dates_mentioned":[
+   "October 31"
+  ],
+  "source_url":"https://www.grandrapidsmi.gov/departments/clerks-office/elections/early-voting/"
  }
 }
