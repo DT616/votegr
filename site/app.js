@@ -19,6 +19,7 @@
   var pinArmed = false;
   var ac = null;            // the suggestion list, from autocomplete.js
   var clerk = null;         // gr-clerk.json: early voting sites and drop boxes
+  var sources = {};         // sources.json: every upstream this site reads, by id
   // Which place, within a kind, the reader picked from its list. The nearest
   // is only the default: someone drops a ballot on the way to somewhere else,
   // and the box outside the library they were visiting beats the one four
@@ -373,24 +374,32 @@
   // are typed by hand at the other end, so a reader deciding whether to trust
   // one is entitled to see the source, the date it was read, and -- when the
   // archive took a copy -- the page as it stood that day.
-  function provenanceHtml() {
-    var p = clerk && clerk.provenance;
-    if (!p) return '';
-    var bits = [];
-    if (p.source) {
-      bits.push(p.source_url
-        ? 'Source: <a href="' + esc(p.source_url) + '" target="_blank" ' +
-          'rel="noopener">' + esc(p.source) + '</a>'
-        : 'Source: ' + esc(p.source));
-    }
-    if (p.generated) bits.push('read ' + esc(Elections.monthDay(p.generated)));
-    if (p.archived) {
-      bits.push('<a href="' + esc(p.archived) + '" target="_blank" ' +
-        'rel="noopener">archived copy</a>');
-    }
-    if (!bits.length) return '';
-    return '<p class="bx-prov">' + bits.join(' \u00b7 ') +
-      (p.archive_note ? '<br>' + esc(p.archive_note) : '') + '</p>';
+  // Resolved through sources.json rather than read out of the data file. A
+  // record says which source it came from -- "src": "gr-clerk-current-election"
+  // -- and the registry says who that is, what licence it carries, when it was
+  // read and where the archive copy sits. So a list whose entries come from
+  // two places can credit both, without either file repeating a publisher's
+  // name on every row.
+  function provenanceHtml(opt) {
+    var ids = [], seen = {};
+    ((opt && opt.all) || []).concat([clerk || {}]).forEach(function (r) {
+      var id = r && r.src;
+      if (id && sources[id] && !seen[id]) { seen[id] = 1; ids.push(id); }
+    });
+    if (!ids.length) return '';
+
+    return '<p class="bx-prov">' + ids.map(function (id) {
+      var s = sources[id];
+      var bits = ['Source: <a href="' + esc(s.url) + '" target="_blank" ' +
+        'rel="noopener">' + esc(s.publisher) + '</a>'];
+      if (s.retrieved) bits.push('read ' + esc(Elections.monthDay(s.retrieved)));
+      if (s.archived) {
+        bits.push('<a href="' + esc(s.archived) + '" target="_blank" ' +
+          'rel="noopener">archived copy</a>');
+      }
+      return bits.join(' \u00b7 ') +
+        (s.archive_note ? '<br>' + esc(s.archive_note) : '');
+    }).join('<br>') + '</p>';
   }
 
   // The right-hand cell of every row: what it is called, when it applies, and
@@ -710,11 +719,12 @@
       loadJson('graph'), loadJson('cameras'), loadJson('addresses'), loadJson('polling'),
       loadJson('boundary', true), loadJson('elections', true), loadJson('landcover', true),
       loadJson('neighbors', true), loadJson('precincts', true),
-      loadJson('gr-clerk', true)
+      loadJson('gr-clerk', true), loadJson('sources', true)
     ]).then(function (res) {
       var graphData = res[0], cameraData = res[1], addresses = res[2], polling = res[3];
       var boundary = res[4], calendar = res[5], landcover = res[6];
       var neighborData = res[7], precinctData = res[8], clerkData = res[9];
+      var sourceData = res[10];
 
       graph = new ALPRRouter.Graph(graphData);
       cachedCameras = cameraData.cameras;
@@ -741,6 +751,7 @@
       electionDayHours = (calendar && calendar.election_day_hours) || null;
       electionList = (calendar && calendar.elections) || [];
       activeEl = Elections.next(electionList);
+      sources = (sourceData && sourceData.sources) || {};
       clerk = placeCoords(clerkData);
       renderElectionBanner();
       startCountdown();
@@ -1650,6 +1661,7 @@
       // Carried through so the panel can say where its list came from. The
       // file knows; without this the page did not.
       provenance: data.provenance || null,
+      src: data.src || null,
       election: data.election,
       early_voting: data.early_voting || null,
       sites: (data.early_voting_sites || []).map(fix).filter(Boolean),

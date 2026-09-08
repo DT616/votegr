@@ -32,9 +32,11 @@ import sys
 import urllib.request
 
 from archive import snapshot_or_note
+from sources import register
 
 URL = ("https://www.grandrapidsmi.gov/departments/clerks-office/elections/"
        "current-election-information/")
+SOURCE_ID = "gr-clerk-current-election"
 UA = {"User-Agent": "vote-gr/1.0 (+https://github.com/DT616/votegr)"}
 OUT = pathlib.Path(__file__).resolve().parent.parent / "site" / "data" / "gr-clerk.json"
 
@@ -99,7 +101,8 @@ def main():
         if match:
             sites.append({"name": match.group(1).strip(),
                           "address": match.group(2).strip(),
-                          "entrance_note": (match.group(3) or "").strip() or None})
+                          "entrance_note": (match.group(3) or "").strip() or None,
+                          "src": SOURCE_ID})
 
     # Dated, one day per pair of lines: "Tuesday, October 20" / "11 am - 7 pm".
     # Dated days, taken only while they run CONSECUTIVELY from the first. The
@@ -135,17 +138,18 @@ def main():
             # written as prose and with hours instead of an address.
             if "City Hall" in line:
                 boxes.append({"name": "City Hall", "address": None,
-                              "note": line, "hours": "City Hall open hours"})
+                              "note": line, "hours": "City Hall open hours",
+                              "src": SOURCE_ID})
             continue
         match = BOX.match(line)
         if match:
             boxes.append({"name": match.group(1).strip(),
                           "address": match.group(2).strip(),
                           "note": (match.group(3) or "").strip() or None,
-                          "hours": "24/7"})
+                          "hours": "24/7", "src": SOURCE_ID})
         elif re.match(r"^\d+\s", line):
             boxes.append({"name": None, "address": line, "note": None,
-                          "hours": "24/7"})
+                          "hours": "24/7", "src": SOURCE_ID})
         elif boxes and boxes[-1].get("note") is None and boxes[-1]["name"] is None:
             boxes[-1]["note"] = line          # the description on its own line
 
@@ -153,16 +157,25 @@ def main():
         sys.exit(f"REFUSE: parsed {len(sites)} sites and {len(boxes)} drop "
                  f"boxes; the page has been rewritten")
 
+    # The source goes in the registry; the file keeps what is true of the file.
+    snapshot = snapshot_or_note(URL)
+    src = register(
+        SOURCE_ID,
+        publisher="City of Grand Rapids, City Clerk's Office",
+        url=URL,
+        licence="Public record of the City of Grand Rapids.",
+        archived=snapshot,
+        covers="Grand Rapids early voting dates, sites and absentee drop boxes",
+        note="The source of record for the city. The county's pages are the "
+             "cross-check, not the other way round.")
+
     document = {
+        "src": src,
         "provenance": {
             "description": "Grand Rapids early voting dates, sites and absentee "
-                           "drop boxes, from the City Clerk. The source of "
-                           "record for the city; the county's pages are the "
-                           "cross-check, not the other way round.",
-            "source": "City of Grand Rapids, City Clerk's Office",
-            "source_url": URL,
+                           "drop boxes, from the City Clerk.",
+            "source_registry": "sources.json",
             "generated": datetime.date.today().isoformat(),
-            "licence": "Public record of the City of Grand Rapids.",
             "how_to_update": "Run refresh_gr_clerk.py AND READ WHAT IT WROTE. "
                              "This is a prose page maintained by hand and it "
                              "carries copy errors: under the November heading "
@@ -174,7 +187,6 @@ def main():
                                "Grand Rapids opens earlier than that, so the "
                                "window is read from this page and never "
                                "computed from the statute.",
-            **snapshot_or_note(URL),
         },
         "election": election,
         "early_voting": {"from": dates[0], "to": dates[-1], "days": days},
