@@ -272,6 +272,50 @@
   // know and cost a line of width on a phone. Stripped when drawing only.
   // The stored value keeps its ZIP: /simple builds "..., Grand Rapids, MI
   // 49504" from it to hand OpenStreetMap something it can geocode.
+  // The right-hand cell of every row: what it is called, when it applies, and
+  // -- when that window has not opened or has closed -- a line saying so. One
+  // shape for all three rows, so a reader compares them down the column
+  // instead of learning a new layout per row.
+  function whenCell(state, extra) {
+    return '<div class="vi-when">' +
+      '<div class="vi-lbl' + (state.live ? ' live' : '') + '">' +
+      esc(state.label) + '</div>' +
+      '<div class="vi-val">' + esc(state.status) + '</div>' +
+      (state.note ? '<div class="pp-note">' + esc(state.note) + '</div>' : '') +
+      (extra || '') + '</div>';
+  }
+
+  // A drop box is only useful once there is a ballot to put in it, and the
+  // dates for that are statute, not something a clerk publishes per box.
+  // Michigan sends absentee ballots to voters 40 days before an election, and
+  // a returned ballot must be in hand by the time the polls close. So a box
+  // standing open in September accepts nothing, and the page should say that
+  // rather than list an address as though it were ready.
+  var ABSENTEE_LEAD_DAYS = 40;
+
+  function absenteeState() {
+    if (!activeEl) return { label: 'Ballot drop box', status: 'No election scheduled' };
+    var start = Elections.dayStart(activeEl.date);
+    start.setDate(start.getDate() - ABSENTEE_LEAD_DAYS);
+    var from = start.getFullYear() + '-' +
+      String(start.getMonth() + 1).padStart(2, '0') + '-' +
+      String(start.getDate()).padStart(2, '0');
+    var range = Elections.dayMonth(from) + ' to ' + Elections.dayMonth(activeEl.date);
+    var today = Elections.todayISO();
+    if (today < from) {
+      return { label: 'Drop boxes, not yet', status: range,
+               note: 'Absentee ballots are mailed from ' +
+                     Elections.monthDay(from) + '. Until then there is nothing '
+                     + 'to drop off.' };
+    }
+    if (today > activeEl.date) {
+      return { label: 'Drop boxes closed', status: range };
+    }
+    return { label: 'Accepting ballots', status: range, live: true,
+             note: 'A returned ballot has to be in the clerk\'s hands by the '
+                   + 'time the polls close on election day.' };
+  }
+
   // "bike rack" -> "Bike rack", and "Across from Calder Plaza" left alone.
   // Only the first letter moves: the rest may hold names the clerk cased on
   // purpose ("Monroe and Calder Plaza levels").
@@ -910,58 +954,27 @@
       '<div><div class="vi-lbl">Precinct</div>' +
       '<div class="vi-num">' + esc(r.precinct) + '</div></div></div>';
 
-    // --- early voting row -------------------------------------------------
-    // One row, spanning both content columns: when it runs, then where to go,
-    // then the hours. Split across two panels the site read as an aside about
-    // somewhere else, when it is the same fact as the dates beside it -- a
-    // voter deciding to vote early needs both halves or neither.
-    //
-    // ev can still come back empty with a window published, because
-    // destinations() also wants sites with coordinates and an origin to
-    // measure from: the honest thing then is to give the dates and name
-    // nothing, rather than blame the calendar for a gap of our own.
-    // destinations() already ranks by distance from this origin, so the
-    // nearest is read back from it rather than sorted a second time here.
-    var evState = earlyVotingForBlock();
-    if (evState) {
-      var ev = evState.site
-        ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
-        : null;
-      html += '<div class="vi-when vi-full vi-ev"' +
-        (ev ? ' data-kind="early"' : '') + '>' +
-        '<div class="vi-lbl live">' + esc(evState.label) + '</div>' +
-        '<div class="vi-val">' + esc(evState.status) + '</div>' +
-        (ev
-          ? '<div class="vi-ev-site">' +
-            '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
-            '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) +
-            (ev.place.entrance_note
-              ? '<br>Location: ' + esc(sentenceCase(ev.place.entrance_note)) : '') +
-            '</div>' +
-            (ev.all.length > 1
-              ? '<div class="pp-note">Any Grand Rapids voter may use any of the ' +
-                ev.all.length + ' sites, whatever precinct they are in.</div>'
-              : '') +
-            '</div>' + evHoursHtml(activeEl)
-          : '') +
-        '</div>';
-    }
+    // Three ways to cast a ballot, in the order a voter can act on them:
+    // the drop box is open first and for longest, early voting comes next,
+    // and election day is the deadline. Every row reads the same way -- the
+    // place and its hours on the left, when it applies on the right -- so the
+    // three can be compared down a column instead of re-read one at a time.
+    // A row whose window has not opened, or has closed, says so where the
+    // dates are.
 
     // --- absentee drop box ------------------------------------------------
-    // The nearest box to this address, as its own destination. An absentee
-    // ballot is the one trip here you make entirely at a time of your own
-    // choosing, which makes it the one where a record of the journey is
-    // least excusable -- so it gets the same camera-aware routing as a trip
-    // to the polls rather than a bare address.
+    // Returning an absentee ballot is the one trip here made entirely at a
+    // time of your own choosing, which makes it the one where a record of the
+    // journey is least excusable. It gets the same camera-aware routing as a
+    // trip to the polls.
     var box = destinations(r).filter(function (o) { return o.kind === 'dropbox'; })[0];
     if (box) {
       html += '<div class="vi-where vi-dropbox" data-kind="dropbox">' +
-        '<div class="vi-lbl">Ballot drop box nearest to you:</div>' +
+        '<div class="vi-lbl">Ballot drop box nearest to you</div>' +
         '<div class="pp-name">' + esc(boxLabel(box.place)) + '</div>' +
         '<div class="pp-addr">' + esc(addressForDisplay(box.place.address)) +
         (box.place.note
-          ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') + '</div>' +
-        '</div>';
+          ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') + '</div>';
       // Every box, not a count of them. The nearest is only nearest to the
       // address typed: someone drops a ballot on the way to somewhere else,
       // and the one by the library they were visiting anyway beats the one
@@ -987,14 +1000,42 @@
           '<span class="bx-addr">Inside the building, so there is no ' +
           'address to route to.</span></li>';
       });
-      html += '</ul><p class="bx-hours">Open ' +
-        esc(box.place.hours || '24/7') + '.</p></details>';
+      html += '</ul></details></div>';
+
+      html += whenCell(absenteeState(), 'Open ' + esc(box.place.hours || '24/7') + '.');
     }
 
-    // --- election day row -------------------------------------------------
-    // Where first, then when, matching the column order so the collapsed
-    // single column stacks the same way. With no upcoming election at all
-    // there is no when-cell, so the place spans the row.
+    // --- early voting -----------------------------------------------------
+    var evState = earlyVotingForBlock();
+    if (evState) {
+      // ev can come back empty with a window published, because destinations()
+      // also wants sites with coordinates and an origin to measure from: the
+      // honest thing then is to give the dates and name nothing, rather than
+      // blame the calendar for a gap of our own. destinations() already ranks
+      // by distance from this origin, so the nearest is read back from it.
+      var ev = evState.site
+        ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
+        : null;
+      html += '<div class="vi-where' + (ev ? '' : ' vi-full') + '"' +
+        (ev ? ' data-kind="early"' : '') + '>' +
+        '<div class="vi-lbl">Early voting site nearest to you</div>' +
+        (ev
+          ? '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
+            '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) +
+            (ev.place.entrance_note
+              ? '<br>Location: ' + esc(sentenceCase(ev.place.entrance_note)) : '') +
+            '</div>' +
+            (ev.all.length > 1
+              ? '<div class="pp-note">Any Grand Rapids voter may use any of the ' +
+                ev.all.length + ' sites, whatever precinct they are in.</div>'
+              : '')
+          : '<div class="pp-addr">No site published yet.</div>') +
+        '</div>';
+      html += whenCell({ label: evState.label, status: evState.status },
+                       ev ? evHoursHtml(activeEl) : '');
+    }
+
+    // --- election day -----------------------------------------------------
     html += '<div class="vi-where' + (activeEl ? '' : ' vi-full') +
       '" data-kind="polling"><div class="vi-lbl">Election day polling place</div>';
     if (place) {
@@ -1008,7 +1049,8 @@
           : '') + '>' +
         '<div class="pp-name">' + esc(displayCase(place.name)) + '</div>' +
         '<div class="pp-addr">' + esc(addressForDisplay(place.address)) +
-        (place.entrance_note ? '<br>' + esc(place.entrance_note) : '') + '</div>' +
+        (place.entrance_note
+          ? '<br>Location: ' + esc(sentenceCase(place.entrance_note)) : '') + '</div>' +
         '</div>';
       if (place.consolidated_with) {
         html += '<div class="pp-note">Precinct ' + esc(r.precinct) + ' votes with precinct ' +
@@ -1021,15 +1063,13 @@
     html += '</div>';
 
     if (activeEl) {
-      html += '<div class="vi-when">' +
-        '<div class="vi-lbl">Election day</div>' +
-        '<div class="vi-val">' + esc(Elections.withWeekday(activeEl.date)) + '</div>' +
-        (electionDayHours && electionDayHours.open && electionDayHours.close
+      html += whenCell(
+        { label: 'Election day', status: Elections.withWeekday(activeEl.date) },
+        electionDayHours && electionDayHours.open && electionDayHours.close
           ? '<div class="vi-hours"><span class="vi-hours-lbl">Hours:</span> ' +
             esc(Elections.shortTime(electionDayHours.open)) + ' to ' +
             esc(Elections.shortTime(electionDayHours.close)) + '</div>'
-          : '') +
-        '</div>';
+          : '');
     }
 
     html += '</div></div>';
