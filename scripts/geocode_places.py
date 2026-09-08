@@ -355,6 +355,30 @@ def load_bboxes():
     return {j["mcd"]: j["bbox"] for j in index["jurisdictions"] if j.get("bbox")}
 
 
+def neighbours_of(bboxes):
+    """MCD -> the MCDs whose bounding boxes touch it.
+
+    A polling place sometimes sits on a street that is not in its own
+    jurisdiction's chunk at all: Whitneyville Avenue is not in Caledonia
+    Township's file, because the 150m ring does not reach it. Merging the
+    neighbouring chunks fixes that, and merging chunks is precisely what the
+    format was built for. Bounding boxes rather than real adjacency because
+    this only decides which files to open, and opening one too many costs a
+    second at build time.
+    """
+    out = {}
+    for mcd, box in bboxes.items():
+        touching = []
+        for other, box2 in bboxes.items():
+            if other == mcd:
+                continue
+            if (box[0] <= box2[2] and box2[0] <= box[2]
+                    and box[1] <= box2[3] and box2[1] <= box[3]):
+                touching.append(other)
+        out[mcd] = touching
+    return out
+
+
 def inside(bbox, lat, lng):
     if not bbox:
         return True
@@ -408,6 +432,7 @@ def main():
 
     index = build_index(load_parcels(args.parcels))
     bboxes = load_bboxes()
+    neighbours = neighbours_of(bboxes)
     pending = []
     # Grand Rapids keeps its own polling places, hand-transcribed WITH
     # coordinates in polling.json, and that file is better than anything
@@ -451,8 +476,10 @@ def main():
 
     # Second pass, over everything the parcels could not place.
     print(f"\ntrying {len(pending)} more from the street centrelines")
-    found = centreline([{k: v for k, v in item.items() if not k.startswith("_")}
-                        for item in pending])
+    found = centreline([
+        dict({k: v for k, v in item.items() if not k.startswith("_")},
+             neighbours=neighbours.get(item["mcd"], []))
+        for item in pending])
     for item in pending:
         hit = found.get(item["key"])
         if not hit:
