@@ -24,7 +24,7 @@ exceptions. Everything else runs on a bare interpreter.
 
 | File | Made by | From |
 |---|---|---|
-| `graph.json` | `build_graph.py`, then `build_restrictions.py` | city centerlines, sign inventory, OpenStreetMap |
+| `graph/<mcd>.json` | `build_graph.py`, `build_restrictions.py`, then `build_graph_chunks.py` | REGIS/Kent centerlines, OpenStreetMap restrictions |
 | `cameras.json` | `refresh_cameras.py` — **automated, see below** | OpenStreetMap |
 | `addresses.json` | `refresh_addresses.py` | Kent County parcels, matched to precincts |
 | `precincts.geojson` | `refresh_precincts.py` | Michigan Secretary of State |
@@ -73,11 +73,12 @@ step's output.
 
 ```
 # Routing graph
-python3 scripts/refresh_centerlines.py   # city centerlines        -> build/
-python3 scripts/build_graph.py           # compile the graph       -> site/data/graph.json
+python3 scripts/refresh_centerlines.py   # REGIS/Kent centerlines  -> build/
+python3 scripts/build_graph.py           # compile the county graph -> build/graph.json
 python3 scripts/refresh_osm_roads.py     # OSM ways + restrictions -> build/
-python3 scripts/refresh_signs.py         # city sign inventory     -> build/
-python3 scripts/build_restrictions.py    # attach restrictions     -> site/data/graph.json
+python3 scripts/refresh_osm_via_nodes.py # the relations' via nodes -> build/
+python3 scripts/build_restrictions.py    # attach restrictions     -> build/graph.json
+python3 scripts/build_graph_chunks.py    # cut per jurisdiction    -> site/data/graph/
 
 # Precincts, addresses, boundaries
 python3 scripts/refresh_precincts.py     # SOS precinct polygons   -> site/data/precincts.geojson
@@ -177,7 +178,6 @@ If an endpoint returns 429, back off rather than retrying immediately.
 | Data | Endpoint |
 |---|---|
 | Street centerlines, one-ways, speeds | `services2.arcgis.com/L81TiOwAPO1ZvU9b/…/Transport_Street_Centerlines/FeatureServer/6` |
-| Turn signs | `services2.arcgis.com/L81TiOwAPO1ZvU9b/…/signs/FeatureServer/0` |
 | Voting precincts | `services3.arcgis.com/dxRQUfTDNtfqZ301/…/VotingPrecinct/FeatureServer/0` |
 | Parcel addresses | `gis.kentcountymi.gov/agisprod/…/ParcelsWithCondos/FeatureServer/0` |
 | City limits, neighbouring streets | `gisagocss.state.mi.us/…/michigan_geographic_framework/MapServer` |
@@ -188,24 +188,31 @@ The precinct layer is statewide, so `refresh_precincts.py` filters it
 server-side with `CountyFIPS='081' AND MCDFIPS='34000'` and receives 59
 features rather than every precinct in Michigan.
 
-## Turn restrictions come from two sources
+## Turn restrictions come from OpenStreetMap alone
 
-`scripts/build_restrictions.py` merges them. OpenStreetMap contributes declared
-relations (this way, via this node, to that way). The City of Grand Rapids
-sign inventory contributes the MUTCD no-turn family, which is larger and
-uniquely records which signs have been RETIRED, so a restriction that no
-longer exists is not enforced forever.
+`scripts/build_restrictions.py` attaches declared OSM relations (this way, via
+this node, to that way) and nothing else. The centerlines carry no turn
+restrictions at all, which is the only reason a second source is involved.
 
-A sign is a point with a bearing rather than a declared relation, so turning
-one into a restriction is inference. The script decides how to read the
-DIRECTION column by MEASURING both interpretations against the OSM set and
-keeping whichever agrees and does not contradict; it reports the comparison
-on every run. Anything that cannot be tied to a junction unambiguously is
-dropped rather than guessed.
+Matching is geometric, since the two datasets share no keys: for each OSM
+restriction the script finds the centerline node nearest the via point, then
+picks the incident edges whose bearings best match the OSM from- and to-ways.
+Anything that cannot be tied to a junction unambiguously is dropped rather
+than guessed, because a wrong restriction silently forbids a legal turn.
+240 attach across Kent County.
+
+The City of Grand Rapids sign inventory was the second source until the county
+widening and is no longer used. It covered one jurisdiction of thirty, had been
+frozen upstream since 2024-03-29, and inferring a ban from a sign's DIRECTION
+column was inference on top of inference. Dropping it cost 45 restrictions in
+Grand Rapids and bought one source, one licence, and the same treatment in
+every jurisdiction. `refresh_signs.py` is deleted; nothing reads
+`build/signs.json`.
 
 ## Licensing
 
-Code is public domain under the Unlicense. Road geometry, address ranges and posted speeds come from the
-City of Grand Rapids. **Turn restrictions and camera locations come from
+Code is public domain under the Unlicense. Road geometry, address ranges and
+posted speeds come from the REGIS/Kent County centerlines. **Turn restrictions
+and camera locations come from
 OpenStreetMap and are ODbL**, so `graph.json` and `cameras.json` carry an
 ODbL obligation: keep the attribution and share derivatives alike.
