@@ -453,10 +453,12 @@ body {
 .vi-lbl {
   font-size: var(--label-size); font-weight: 700;
   letter-spacing: var(--label-track); text-transform: uppercase;
-  color: var(--dim); line-height: 1.5; margin-bottom: 2px;
+  color: var(--accent); line-height: 1.5; margin-bottom: 2px;
 }
-/* Early voting is the only group that is true right now, so it is the only
-   one that takes the accent. */
+/* Every label in the answer takes the accent -- "Election day polling
+   place", "Ballot drop box nearest to you", the rail's Ward and Precinct --
+   so the headings stand off the body text at a glance. .live used to be the
+   only one; it is kept as a hook and no longer differs. */
 .vi-lbl.live { color: var(--accent); }
 /* The jurisdiction, above the ward and precinct numbers. A name, not a
    number, so it takes a text size rather than the numeral size: "Plainfield
