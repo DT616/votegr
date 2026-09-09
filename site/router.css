@@ -394,8 +394,17 @@ body {
 .field input {
   width: 100%; background: var(--raise); color: var(--fg);
   border: 1.5px solid var(--line); border-radius: 8px;
-  padding: 12px 13px; font: inherit; font-size: 1rem;
+  /* Room on the left for the pin inside the box. */
+  padding: 12px 13px 12px 38px; font: inherit; font-size: 1rem;
 }
+/* The map pin inside the search box. Grey at rest, accent while the box
+   has focus, so it behaves like part of the field rather than a sticker on
+   it. Centred on the input's own height, and never in the way of a click. */
+.field-pin {
+  position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; color: var(--dim); pointer-events: none;
+}
+.field:focus-within .field-pin { color: var(--accent); }
 .field input:focus {
   outline: none; border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
@@ -1133,6 +1142,8 @@ ol.steps .scam {
   transition: color .12s, border-color .12s;
 }
 .pin-btn svg { width: 20px; height: 20px; }
+/* The thumbtack leans the way a tack is pushed into a board. */
+.pin-btn .push-pin { transform: rotate(28deg); }
 .pin-btn:hover { color: var(--accent); border-color: var(--accent); }
 .pin-btn.armed {
   color: var(--accent); border-color: var(--accent); background: var(--panel);
@@ -1209,7 +1220,7 @@ ol.steps .scam {
 }
 #col:not(.has-result) .field input {
   font-size: 1.06rem;
-  padding: 15px 16px;
+  padding: 15px 16px; padding-left: 40px;
 }
 .reset-btn { display: none; }
 #col.has-result .reset-btn { display: flex; }

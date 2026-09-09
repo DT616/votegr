@@ -60,17 +60,25 @@
     <label class="field-label" for="addr">Where are you starting?</label>
     <div class="field-row">
       <div class="field">
+        <!-- The map pin, inside the box on the left: the same glyph every
+             suggestion carries, saying "this is a place". Decorative, so it
+             is hidden from assistive tech and takes no clicks. -->
+        <svg class="field-pin pin-glyph" viewBox="0 0 24 24" fill="currentColor"
+             fill-rule="evenodd" aria-hidden="true">
+          <path d="M12 2c-3.87 0-7 3.13-7 7 0 5.25 6.3 12.3 6.57 12.6a.58.58 0 0 0 .86 0C12.7 21.3 19 14.25 19 9c0-3.87-3.13-7-7-7zM12 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/>
+        </svg>
         <input id="addr" placeholder="300 Monroe Ave NW" autocomplete="off"
                spellcheck="false">
       </div>
       <button type="button" class="pin-btn" id="pinBtn" aria-pressed="false"
               title="Route from a spot on the map instead">
-        <!-- The same pin the type-ahead puts on every suggestion (PIN_SVG in
-             autocomplete.js). Filled, because a 2px outline at this size reads
-             as a circle rather than a pin. -->
-        <svg class="pin-glyph" viewBox="0 0 24 24" fill="currentColor"
-             fill-rule="evenodd" aria-hidden="true">
-          <path d="M12 2c-3.87 0-7 3.13-7 7 0 5.25 6.3 12.3 6.57 12.6a.58.58 0 0 0 .86 0C12.7 21.3 19 14.25 19 9c0-3.87-3.13-7-7-7zM12 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/>
+        <!-- A push pin, not a map pin: this button DROPS a pin on the map,
+             and a thumbtack is the thing you push into a map. The map-pin
+             glyph now lives inside the search box and on every suggestion,
+             where it means "a place"; two different jobs, two different
+             pins. Drawn here, symmetric about x=12: head, collar, needle. -->
+        <svg class="push-pin" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M9 3h6v2l-1 1v5l3 2v2h-4v7l-1 1-1-1v-7H7v-2l3-2V6L9 5z"/>
         </svg>
       </button>
       <button type="button" class="pin-btn reset-btn" id="resetBtn" hidden
