@@ -1142,6 +1142,11 @@ ol.steps .scam {
 /* The numbered reasons. Numerals rather than bullets because the list is an
    argument in three parts, and being able to say "reason 2" is useful. */
 .why-list { margin: 0; padding-left: 22px; }
+/* The state's own words, set apart as a quotation and not restyled into ours. */
+.why-list blockquote {
+  margin: 10px 0; padding: 8px 12px; border-left: 3px solid var(--line);
+  color: var(--dim); font-size: .92rem; line-height: 1.55;
+}
 .why-list li { margin-bottom: 10px; }
 .why-list li:last-child { margin-bottom: 0; }
 /* Standfirst under the About header. Full-strength ink, not dim: it is the
