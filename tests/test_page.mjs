@@ -14,7 +14,7 @@ import { createServer } from 'http';
 import { readFile } from 'fs/promises';
 import { join, extname, normalize } from 'path';
 import { fileURLToPath } from 'url';
-import { chromium } from 'playwright';
+import { chromium, devices } from 'playwright';
 
 const ROOT = join(fileURLToPath(new URL('..', import.meta.url)), 'site');
 
@@ -362,6 +362,56 @@ for (const w of WIDTHS) {
      document.body.classList.contains('has-result') && document.getElementById('steps').innerText.trim().length > 0));
   ok('the address of a debug run is shareable', (await page.url()).includes('debug&from='));
   ok('the debug run threw nothing', errors.length === 0);
+  if (errors.length) errors.forEach(e => console.log('       ' + e));
+  await ctx.close();
+}
+
+// --- a phone tap on a suggestion must not scroll the page ---
+// A touch is replayed as mousedown then click. The list chooses on the
+// mousedown, so by the time the click arrives the answer has been drawn
+// under the finger, and on a phone the card that had appeared there took
+// the click as "directions here" and scrolled the reader down to the map.
+// The click that belongs to the choosing tap has to be eaten, and only
+// that one: the next tap on a card is real and must still work. Where
+// the trailing click lands is the browser's call and differs by screen,
+// so the swallow is exercised directly: choose on mousedown, then fire the
+// click at a card ourselves.
+{
+  const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto(URL_, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => !document.getElementById('addr').disabled, null, { timeout: 60000 });
+  await page.evaluate(() => {
+    window.__cardClicks = 0;
+    document.getElementById('precinctInfo').addEventListener('click', () => { window.__cardClicks++; });
+  });
+  await page.tap('#addr');
+  await page.type('#addr', '602 Alexander St SE');
+  await page.waitForSelector('.ac-item', { timeout: 10000 });
+  const r = await page.evaluate(() => {
+    const item = document.querySelector('.ac-item');
+    item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    // The answer is drawn synchronously by the choose; the click the touch
+    // still owes arrives next, on whatever is under the finger now.
+    const card = document.querySelector('#precinctInfo [data-kind]');
+    if (!card) return { drawn: false };
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return { drawn: true, clicks: window.__cardClicks };
+  });
+  await page.waitForTimeout(1200);
+  const after = await page.evaluate(() => ({ y: Math.round(window.scrollY), clicks: window.__cardClicks }));
+  ok('choosing a suggestion on mousedown draws the answer', r.drawn);
+  ok('the tap\'s trailing click never reaches the answer', r.drawn && r.clicks === 0 && after.clicks === 0);
+  ok('the page does not scroll after a phone lookup', after.y === 0);
+  // The swallow is one click wide: the next click on a card still lands.
+  const later = await page.evaluate(() => {
+    document.querySelector('#precinctInfo [data-kind]').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return window.__cardClicks;
+  });
+  ok('the next tap on a card is still a tap', later === 1);
+  ok('the phone lookup threw nothing', errors.length === 0);
   if (errors.length) errors.forEach(e => console.log('       ' + e));
   await ctx.close();
 }

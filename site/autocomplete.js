@@ -104,11 +104,26 @@
         // list before the click could land on it.
         button.addEventListener('mousedown', function (e) {
           e.preventDefault();
+          swallowNextClick();
           opts.onChoose(items[Number(button.dataset.i)]);
         });
       });
       el.hidden = false;
       index = -1;
+    }
+
+    // Choosing on mousedown leaves the browser's click still on its way,
+    // and by the time it lands the list is gone and the answer has been
+    // drawn under the finger. On a phone, where a touch is replayed as
+    // mousedown then click, that click hit whichever place card had appeared
+    // there and scrolled the reader down to its directions. Eat the one
+    // click that belongs to the choosing tap; anything later is a real tap.
+    function swallowNextClick() {
+      var t;
+      function eat(e) { e.stopPropagation(); e.preventDefault(); off(); }
+      function off() { document.removeEventListener('click', eat, true); clearTimeout(t); }
+      document.addEventListener('click', eat, true);
+      t = setTimeout(off, 700);
     }
 
     function highlight(n) {
