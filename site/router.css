@@ -417,6 +417,11 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
 @media (max-width: 640px) {
   .block h2 { font-size: 1.12rem; letter-spacing: .05em; }
 }
+/* The one block heading that is centred and takes the accent. It heads a row
+   of three buttons rather than a column of text, so centring it over them
+   reads as labelling the set; and it is the landing point a tap on a place
+   scrolls to, which is a job the page's other headings do not have. */
+.block h2.dir-head { text-align: center; color: var(--accent); }
 
 /* ---- address input ---- */
 .field { position: relative; }
@@ -566,7 +571,15 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
    either, and the one the directions are actually for carries an accent ring
    so the answer to "which address is this route for" is on the address
    itself rather than only in the control below the map. */
-.vi-dest { cursor: pointer; transition: background .12s, box-shadow .12s; }
+.vi-dest { cursor: pointer; }
+/* The fade belongs to a pointer crossing a card, which is a continuous
+   gesture worth easing. A tap is not: it is a state change, and animating it
+   made a selection look like the page was still deciding. So the transition
+   lives with the hover rules that need it. */
+@media (hover: hover) {
+  .vi-dest { transition: background .12s, box-shadow .12s; }
+  .vi-card, .vi-fold { transition: background-color .16s ease, box-shadow .16s ease; }
+}
 /* A background a shade lighter is not enough of a signal on its own: on a
    card that is already tinted, most people never noticed the cards were
    clickable at all. Hover draws a thin accent ring and lights the place name,
@@ -693,7 +706,6 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
      place, the phone was reading as four different blues at once. The head
      takes a press highlight, so a tap is answered before the card has
      finished opening. */
-  .vi-card, .vi-fold { transition: background-color .16s ease, box-shadow .16s ease; }
   .vi-fold[open] {
     display: block; border-radius: 8px;
     background: var(--tint-hover);

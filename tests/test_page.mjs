@@ -521,16 +521,127 @@ for (const w of WIDTHS) {
   await page.waitForTimeout(500);
   ok('and the top lights the first', await litPill() === 'Voting info');
 
-  // Nothing on this page moves the phone's viewport by itself: not the
-  // lookup, not opening a card, not tapping a place for directions. The tap
-  // is dispatched rather than driven, because the driver scrolls the target
-  // into view before it taps and that scroll is the test harness's, not the
-  // page's.
-  const before = await page.evaluate(() => Math.round(window.scrollY));
+  // Tapping a place takes you to the directions for it. This used to assert
+  // the opposite, and the opposite was right while the route section had no
+  // heading: there was nowhere to land except the middle of it, so every
+  // anchor tried put the reader somewhere they had not asked to be. #dirHead
+  // is that anchor now. The tap is dispatched rather than driven, because the
+  // driver scrolls the target into view before it taps and that scroll would
+  // be the harness's, not the page's.
+  //
+  // Checked as a POSITION, not as "scrollY changed": the heading has to come
+  // to rest just under the sticky bar. A page that scrolled to the wrong
+  // place would pass a movement check.
+  // Waits for the smooth scroll to come to REST rather than for a fixed
+  // number of milliseconds. A 950px glide takes Chrome about 1.2s and a
+  // shorter one a fraction of that, so any constant here is either flaky or
+  // slow, and a constant that happened to fit this page would rot the first
+  // time a card above it changed height.
+  const landing = async () => {
+    await page.waitForFunction(() => {
+      const y = Math.round(window.scrollY);
+      const settled = window.__lastY === y ? (window.__still || 0) + 1 : 0;
+      window.__lastY = y; window.__still = settled;
+      return settled >= 3;
+    }, null, { timeout: 8000, polling: 100 });
+    return page.evaluate(() => {
+      const h = document.getElementById('dirHead');
+      const bar = document.getElementById('searchBar');
+      if (!h || !bar) return Number.NaN;      // reported, not thrown
+      return Math.round(h.getBoundingClientRect().top - bar.getBoundingClientRect().bottom);
+    });
+  };
+  ok('the route section has a heading to land on',
+     await page.evaluate(() => !!document.getElementById('dirHead')));
+  const beforeTap = await page.evaluate(() => Math.round(window.scrollY));
   await page.evaluate(() => document.querySelector('[data-kind="polling"]').click());
-  await page.waitForTimeout(900);
-  ok('tapping a place for directions does not scroll the page',
-     await page.evaluate(() => Math.round(window.scrollY)) === before);
+  const gapAfterTap = await landing();
+  ok('tapping a place scrolls down to the directions', 
+     await page.evaluate(() => Math.round(window.scrollY)) > beforeTap);
+  // Under the bar, not behind it, and near the top rather than merely moved:
+  // measured at 25px, which is the route block's own top padding. Nothing
+  // scrolled would read as several hundred; overscrolled would read negative.
+  ok('and leaves the heading clear of the sticky bar',
+     gapAfterTap >= 0 && gapAfterTap <= 48);
+
+  // The other way a place gets chosen: out of the full list, by name. Picking
+  // "Main Library" there is the same intent as tapping the card that names
+  // it, so it has to land in the same place. The two were wired separately,
+  // which is exactly how they would drift apart.
+  await page.evaluate(() => window.scrollTo({ top: 0 }));
+  await page.waitForTimeout(400);
+  ok('there is a full drop box list to pick from',
+     await page.evaluate(() => !!document.getElementById('boxListBtn')));
+  await page.evaluate(() => {
+    const b = document.getElementById('boxListBtn');
+    if (b) b.click();
+  });
+  await page.waitForSelector('#placeModal:not([hidden]) li[data-pick]', { timeout: 10000 });
+  const picked = await page.evaluate(() => {
+    // Not the first row: that is the one already chosen, and choosing it
+    // again would prove nothing about a change of destination.
+    const li = [...document.querySelectorAll('#placeModal li[data-pick]')][1]
+            || document.querySelector('#placeModal li[data-pick]');
+    if (!li) return '';
+    const name = li.textContent.trim().slice(0, 40);
+    li.click();
+    return name;
+  });
+  const gapAfterPick = await landing();
+  ok('picking a place out of the list lands on the same heading',
+     gapAfterPick >= 0 && gapAfterPick <= 48);
+  ok('and it really was a named place that was picked', picked.length > 3);
+
+  // The heading itself: centred, and in the accent.
+  const head = await page.evaluate(() => {
+    const h = document.getElementById('dirHead');
+    if (!h) return {};
+    const hex = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(', ');
+    const cs = getComputedStyle(h);
+    return { text: h.textContent.trim(), align: cs.textAlign,
+             accent: cs.color.includes(rgb), caps: cs.textTransform,
+             aboveButtons: !!(h.compareDocumentPosition(document.getElementById('destPick'))
+                              & Node.DOCUMENT_POSITION_FOLLOWING) };
+  });
+  ok('the route section is headed Directions', head.text === 'Directions' && head.caps === 'uppercase');
+  ok('centred and in the accent', head.align === 'center' && head.accent);
+  ok('and above the destination buttons', head.aboveButtons);
+
+  // The cue on a place card is a chevron and nothing else. A navigation arrow
+  // was tried beside it and taken back out; this asserts it stayed out, and
+  // that the one mark left still clears the address.
+  const cue = await page.evaluate(() => {
+    const c = document.querySelector('.vi-where .dir-cue');
+    if (!c) return {};
+    const addr = c.closest('.vi-where').querySelector('.pp-addr');
+    const a = addr && addr.getBoundingClientRect(), b = c.getBoundingClientRect();
+    return { shown: getComputedStyle(c).display !== 'none',
+             marks: c.childElementCount,
+             hasChevron: c.textContent.includes('\u203a'),
+             overlapsText: a ? a.right > b.left + 0.5 : false };
+  });
+  ok('the place cue is a chevron on its own',
+     cue.shown && cue.hasChevron && cue.marks === 0);
+  ok('and it clears the address', !cue.overlapsText);
+
+  // Selection is a state on a phone, not something the page animates into.
+  // Duration, not property: with no transition set at all, transition-property
+  // computes to "all", so reading it cannot tell "everything animates" from
+  // "nothing does". The wide block asserts the other half, that a pointer
+  // still gets the fade.
+  ok('a selected place is not animated into being', await page.evaluate(() =>
+     getComputedStyle(document.querySelector('.vi-dest')).transitionDuration === '0s'));
+
+  // The absentee summary says when a ballot can go back, and stops there.
+  const note = await page.evaluate(() => {
+    const n = document.querySelector('.vi-card-dropbox .pp-note');
+    return n ? n.textContent : '';
+  });
+  ok('the absentee summary has a note to check', note.length > 20);
+  ok('and it drops the monitoring sentence', !/monitor/i.test(note));
+  ok('and the drop box hours', !/24\/7|hours are on the list/i.test(note));
+  ok('and does not trail a space where those sentences were', note === note.trim());
   // Ward and precinct read as a row of labelled numbers, each centred.
   ok('the rail centres each value under its label', await page.evaluate(() =>
      [...document.querySelectorAll('.vi-rail > div')]
@@ -606,6 +717,10 @@ for (const w of WIDTHS) {
   // The width clause is load bearing, not belt and braces: with align-items
   // gone the rows stretch to the full rail and TRIVIALLY share a centre, so
   // an axis check on its own goes green on the layout it is meant to catch.
+  // The other half of the touch rule above: gating the fade on a real pointer
+  // has to leave the pointer's fade alone, or it is just a deletion.
+  ok('a pointer still gets the fade a touch does not', await page.evaluate(() =>
+     getComputedStyle(document.querySelector('.vi-dest')).transitionDuration !== '0s'));
   ok('the rail is three rows on one centre axis',
      rail.rows.length === 3 &&
      rail.rows.every(r => Math.abs(r.block - rail.rows[0].block) < 0.6) &&
