@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Stamp coordinates onto every polling place, drop box and early voting site.
 
 Grand Rapids has always placed its destinations by interpolating along the

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Fetch the coordinates of every OpenStreetMap via-node the restriction
 relations point at, and write build/osm_via_nodes.json.
 

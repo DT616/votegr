@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """The master list of where our data comes from: site/data/sources.json.
 
 Every data file used to carry its own provenance block, which meant the same

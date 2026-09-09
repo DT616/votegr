@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Pull the street centerlines and write a normalized intermediate for
 build_graph.py.
 

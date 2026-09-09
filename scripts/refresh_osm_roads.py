@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Fetch the drivable road network for Grand Rapids from OpenStreetMap.
 
 An alternative build input to refresh_centerlines.py. OSM carries two things

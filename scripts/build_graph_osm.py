@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Compile build/osm_roads.json into a routing graph, same shape as
 build_graph.py produces from the city centerlines, plus turn restrictions.
 

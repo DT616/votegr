@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Fetch the City of Grand Rapids limits and write site/data/boundary.json.
 
 Drawn on the map so the covered area is obvious: routing stops at the city

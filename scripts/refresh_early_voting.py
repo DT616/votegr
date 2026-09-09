@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Scrape Kent County's early voting sites and hours into
 site/data/early-voting.json.
 

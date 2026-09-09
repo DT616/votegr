@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Pull known ALPR camera positions across Kent County from OpenStreetMap via
 Overpass, and write the cached camera floor (site/data/cameras.json).
 

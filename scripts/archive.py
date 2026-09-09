@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Ask the Wayback Machine to keep a copy of a page we scraped, and hand back
 the snapshot's address so it can be written into provenance.
 

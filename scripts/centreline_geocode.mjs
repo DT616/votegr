@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // Geocode addresses the parcel layer does not carry, by interpolating along
 // the street centreline -- exactly what the browser does for Grand Rapids.
 //

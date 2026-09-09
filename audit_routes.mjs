@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // Route safety audit. Not a unit test: it drives the REAL city graph with
 // hundreds of real trips and mechanically checks every safety invariant on
 // every route produced. Run it after any data refresh or router change.

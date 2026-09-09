@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Attach OpenStreetMap turn restrictions to the centerline graph.
 
 Run AFTER build_graph.py: it reads build/graph.json and writes the

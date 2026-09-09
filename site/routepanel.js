@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // What the route panel SAYS: the two route cards and their verdict line, the
 // turn list, the unavoidable-cameras note, and the destination picker.
 //
