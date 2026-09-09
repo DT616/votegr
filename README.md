@@ -15,7 +15,7 @@ the State of Michigan. The Michigan Voter Information Center is still the offici
 
 ## Why
 
-Two reasons:
+Three reasons:
 
 1. **Finding out where you vote should not require identifying yourself.** The
 state's Michigan Voter Information Center is accurate and it is the official
@@ -31,17 +31,28 @@ full:
    servers to show you where you vote, and the state does not need to learn
    that you looked. Your voter record is already a public record, disclosable
    under FOIA whether or not you ever agree to that notice -- so the notice is
-   not protecting the record. It is asking you to consent to a *new* one: that
-   you, from this address, on this day, looked up your own information. Why
-   should finding out where you vote create another data point about you, one
-   you have to agree to share before the tool will work? Every answer here
+   not protecting the record. What it seems to have you acknowledge is that
+   visiting their site creates a *new* one: that you, from this address, on
+   this day, looked up your own information, a record that did not exist until
+   you asked and is disclosable in the same way. Why should finding out where
+   you vote create a new record about you, one you have to agree to before the
+   tool will work? Every answer here
    comes from public records already on your device. There is no form to agree
    to, and no record of the lookup exists anywhere, because it never left your
    hands.
 
 2. **Driving to perform a constitutionally protected activity shouldn't be surveilled.**
 Kent County has automated license plate readers on traffic signals and utility poles, in Grand Rapids and well beyond it. They photograph
-every passing vehicle, perform OCR, and store it with the time and place, whether or not anyone suspects you of anything, and can alert officers in realtime of a flagged vehicle. The records are also searchable later, and many systems let agencies search across each other's networks. 
+every passing vehicle, perform OCR, and store it with the time and place, whether or not anyone suspects you of anything, and can alert officers in realtime of a flagged vehicle. The records are also searchable later, and many systems let agencies search across each other's networks. Nobody should have a
+reason to feel uneasy about being tracked to go vote. While being pulled over
+because a camera read your license plate is unlikely for most, it is a real
+possibility, as are false positives. If this site helps one eligible voter find
+the polls and vote, and results in the government having less data to collect,
+it was worth it.
+
+3. **Decentralized, free and open source software is possible.** More of it
+should be built on principles that provide utility, maximize privacy and
+decentralize what does not need to be central.
 
 ## Inventory
 
