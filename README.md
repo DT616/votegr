@@ -30,7 +30,7 @@ full:
    Nothing about your registration needs to be processed on the state's
    servers to show you where you vote, and the state does not need to learn
    that you looked. Your voter record is already a public record, disclosable
-   under FOIA whether or not you ever agree to that notice -- so the notice is
+   under FOIA whether or not you ever agree to that notice, so the notice is
    not protecting the record. What it seems to have you acknowledge is that
    visiting their site creates a *new* one: that you, from this address, on
    this day, looked up your own information, a record that did not exist until
@@ -83,7 +83,7 @@ scripts/                     the data refresh and build scripts, the link checke
 ```
 
 The `<mcd>` in a filename is the state's five-digit code for the city or
-township -- `34000` is Grand Rapids, `42820` Kentwood -- and every precinct is
+township (`34000` is Grand Rapids, `42820` Kentwood), and every precinct is
 identified by the state's 13-digit code, of which that is the middle. A bare
 precinct number is no identity in a county with a Precinct 1 in twenty-nine
 places.

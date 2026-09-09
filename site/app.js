@@ -1,4 +1,4 @@
-/* Get to your polling place — Grand Rapids
+/* Get to your polling place, Grand Rapids
  * Released into the public domain under the Unlicense, see UNLICENSE.
  *
  * One address in. The destination is never asked for: it is derived
