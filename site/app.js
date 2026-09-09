@@ -691,6 +691,44 @@
 
   // Bring the answer to the top of the viewport. The address bar is sticky,
   // so scrolling the block to y=0 would tuck its heading underneath it.
+  // Which section pill is lit. Set on a press, and kept honest by the scroll.
+  var spyPending = false;
+
+  function markSection(btn) {
+    Array.prototype.forEach.call(document.querySelectorAll('#sectionNav button'), function (b) {
+      var on = b === btn;
+      b.classList.toggle('is-current', on);
+      b.setAttribute('aria-current', on ? 'true' : 'false');
+    });
+  }
+
+  // The section under the sticky bar is the one you are reading. Walk the
+  // pills in page order and take the last one whose block has passed the bar;
+  // above the first block nothing is lit, because nothing has been reached.
+  function syncSectionNav() {
+    var nav = $('sectionNav');
+    if (!nav || nav.hidden) return;
+    var bar = $('searchBar');
+    var line = (bar ? bar.getBoundingClientRect().bottom : 0) + 12;
+    var current = null, live = [];
+    Array.prototype.forEach.call(nav.querySelectorAll('button'), function (b) {
+      var id = b.dataset.goto;
+      if (id === 'mapBlock' && $('mapBlock').hidden) id = 'routeBlock';
+      var el = $(id);
+      if (!el || el.hidden) return;
+      live.push(b);
+      if (el.getBoundingClientRect().top <= line) current = b;
+    });
+    // The last section is usually shorter than a screen, so its top never
+    // reaches the bar and it could never be lit by the rule above. At the
+    // bottom of the page you are, by definition, in the last one.
+    var doc = document.documentElement;
+    if (live.length && window.innerHeight + window.scrollY >= doc.scrollHeight - 4) {
+      current = live[live.length - 1];
+    }
+    markSection(current);
+  }
+
   function scrollToResult(id) {
     var el = $(id), bar = $('searchBar');
     if (!el || el.hidden) return;
@@ -772,9 +810,18 @@
         // The map is inside the route block and starts hidden until a route
         // draws; jump to the block that holds it if it is not there yet.
         if (id === 'mapBlock' && $('mapBlock').hidden) id = 'routeBlock';
+        markSection(b);
         scrollToResult(id);
       };
     });
+    // The pill you are reading, not only the pill you last pressed: scrolling
+    // away from a section has to give the mark up, or the nav claims you are
+    // somewhere you left.
+    window.addEventListener('scroll', function () {
+      if (spyPending) return;
+      spyPending = true;
+      requestAnimationFrame(function () { spyPending = false; syncSectionNav(); });
+    }, { passive: true });
     $('pinBtn').onclick = function () { pinArmed ? disarmPin() : armPin(); };
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
@@ -1697,7 +1744,7 @@
     $('col').classList.add('has-result');
     document.body.classList.add('has-result');
     var nav = $('sectionNav');
-    if (nav) nav.hidden = false;
+    if (nav) { nav.hidden = false; requestAnimationFrame(syncSectionNav); }
     revealMap();
     // No standing caption: the header names the destination and the map shows
     // it. The note is reserved for the one moment it carries an instruction,

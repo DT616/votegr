@@ -494,6 +494,33 @@ for (const w of WIDTHS) {
   ok('an open card is lit differently from a shut one', lit.open !== lit.shut);
   ok('and a shut card carries no highlight of its own',
      /rgba\(0, 0, 0, 0\)/.test(lit.shut));
+  // The section pills say where you are: the one you press lights, and
+  // scrolling hands the light on, including to the last section, whose top
+  // never reaches the bar because the page ends first.
+  const litPill = () => page.evaluate(() => {
+    const b = document.querySelector('#sectionNav button.is-current');
+    return b ? b.textContent.trim() : null;
+  });
+  ok('the first section is lit as soon as the answer lands', await litPill() === 'Voting info');
+  await page.tap('#sectionNav button[data-goto="mapBlock"]');
+  await page.waitForTimeout(800);
+  ok('pressing a pill lights it', await litPill() === 'Map');
+  ok('and only it', await page.evaluate(() =>
+     document.querySelectorAll('#sectionNav button.is-current').length === 1));
+  ok('a lit pill is drawn in the accent', await page.evaluate(() => {
+    const b = document.querySelector('#sectionNav button.is-current');
+    const other = document.querySelector('#sectionNav button:not(.is-current)');
+    const c = getComputedStyle(b);
+    return c.color !== getComputedStyle(other).color &&
+           b.getAttribute('aria-current') === 'true';
+  }));
+  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight }));
+  await page.waitForTimeout(500);
+  ok('the bottom of the page lights the last pill', await litPill() === 'Directions');
+  await page.evaluate(() => window.scrollTo({ top: 0 }));
+  await page.waitForTimeout(500);
+  ok('and the top lights the first', await litPill() === 'Voting info');
+
   // Nothing on this page moves the phone's viewport by itself: not the
   // lookup, not opening a card, not tapping a place for directions. The tap
   // is dispatched rather than driven, because the driver scrolls the target

@@ -455,6 +455,12 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
     border-radius: 999px; padding: 7px 8px; cursor: pointer;
   }
   .section-nav button:active { border-color: var(--accent); color: var(--accent); }
+  /* The section you are in, lit: pressing a pill lights it, and scrolling
+     hands the light to whichever section has passed under the bar. */
+  .section-nav button.is-current {
+    color: var(--accent); border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 15%, var(--raise));
+  }
 }
 .hint { font-size: .85rem; color: var(--dim); margin-top: 8px; line-height: 1.45; }
 
