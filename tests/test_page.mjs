@@ -292,7 +292,9 @@ for (const w of WIDTHS) {
   const ada = await page.evaluate(() => ({
     info: document.getElementById('precinctInfo').innerText.replace(/\s+/g, ' '),
     box: (document.querySelector('.vi-dropbox') || {}).innerText || '',
-    note: (document.querySelector('.vi-when-dropbox') || {}).innerText || '',
+    // textContent, not innerText: on a phone the note sits behind a closed
+    // <details>, which innerText leaves out and textContent does not.
+    note: (document.querySelector('.vi-when-dropbox') || {}).textContent || '',
     ward: !!document.querySelector('.vi-rail .vi-num + .vi-lbl'),
   }));
   ok('a township with no drop box names its clerk\'s office instead',
