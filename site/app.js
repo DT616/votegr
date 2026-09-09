@@ -525,13 +525,13 @@
         esc(sentenceCase(text)) + '</div>'
       : '';
   }
-  // "Directions" on each card. On a phone the cards are not obviously
-  // tappable and the destination tabs sit below the map, a screen away, so
-  // each place carries its own button; wider screens hide it (the cell is
-  // the control there, and the tabs are in view).
+  // The cue on the right of each card, on a phone: a chevron, the way a
+  // list row says "tap for more". The whole card is the tap target there --
+  // tapping a place routes to it and scrolls down to the directions -- and
+  // the chevron is what says so. Wider screens hide it: the cell is the
+  // control and the destination tabs are in view beside the map.
   function dirButton(kind) {
-    return '<button type="button" class="dir-btn" data-dir="' + kind + '">' +
-      'Directions</button>';
+    return '<span class="dir-cue" aria-hidden="true">\u203a</span>';
   }
 
   function metaBlock(lines) {
@@ -1545,29 +1545,28 @@
     // older job of framing itself on the map.
     wirePlaceLists(r);
 
-    Array.prototype.forEach.call($('precinctInfo').querySelectorAll('.dir-btn'), function (b) {
-      b.onclick = function (e) {
-        e.stopPropagation();          // the cell behind it routes too; once is enough
-        if (!current) return;
-        routeTo(current, b.dataset.dir);
-        // The route block, not the map: that keeps the destination tabs and
-        // the distance line above the map on screen, instead of just under
-        // the sticky bar.
-        scrollToResult('routeBlock');
-      };
-    });
-
     var destCells = $('precinctInfo').querySelectorAll('[data-kind]');
     var multi = destinations(r).length > 1;
+    var phone = isPhone();
     Array.prototype.forEach.call(destCells, function (cell) {
       var kind = cell.dataset.kind;
-      if (!multi) return;
+      // On a phone every place card is a tap target even when it is the only
+      // destination, because the tap is also how you get down to the
+      // directions. On a wider screen a lone destination has nothing to
+      // toggle and the polling place keeps its show-on-map job.
+      if (!multi && !phone) return;
       cell.classList.add('vi-dest');
       cell.setAttribute('role', 'button');
       cell.setAttribute('tabindex', '0');
       cell.setAttribute('aria-pressed', 'false');
-      cell.title = 'Get directions here instead';
-      cell.onclick = function () { if (current) routeTo(current, kind); };
+      cell.title = phone ? 'Directions here' : 'Get directions here instead';
+      cell.onclick = function () {
+        if (!current) return;
+        routeTo(current, kind);
+        // The route block, not the map, so the destination tabs and the
+        // distance line stay on screen above the map.
+        if (phone) scrollToResult('routeBlock');
+      };
       cell.onkeydown = function (e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cell.click(); }
       };
@@ -1646,11 +1645,11 @@
 
     routeTo(r, focusKind);
     // After routeTo, because the blocks it fills are hidden until then and a
-    // hidden element has no offset to scroll to. The top of the answer, on
-    // every screen: landing on the map put too much on a phone's screen at
-    // once, and the Directions button on each card and the section bar are
-    // how the map is reached from here.
-    scrollToResult('resultBlock');
+    // hidden element has no offset to scroll to. Wider screens go to the top
+    // of the answer. A phone is left where it is: every attempt to scroll it
+    // somewhere landed too far down, and with the bar sticky the answer is
+    // directly under it anyway.
+    if (!isPhone()) scrollToResult('resultBlock');
   }
 
   // ---- election + destination -----------------------------------------
