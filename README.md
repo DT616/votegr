@@ -149,7 +149,7 @@ search returns the one passing the fewest cameras, with each unavoidable camera 
 
 ```bash
 node test_display_case.mjs         # display casing: vectors, then two invariants over the real corpus
-node test_router.mjs               # 111 assertions: routing, chunks, restrictions, addresses, the county index
+node test_router.mjs               # 122 assertions: routing, chunks, restrictions, addresses, the county index, the polls clock
 node audit_routes.mjs              # drives hundreds of real trips, checks every route
 npm ci && node test_page.mjs       # 174 assertions: the page itself, in a browser, city and county
 node test_early_voting_states.mjs  # the four early voting states, from a dated fixture

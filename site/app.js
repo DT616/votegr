@@ -8,13 +8,13 @@
   'use strict';
 
   var map, graph, P, cameras;
-  var boundaryLayer, pollLayer, camLayer, routeLayer, pinLayer;
+  var pollLayer, camLayer, routeLayer, pinLayer;
   var cachedCameras = null, current = null;
   var activeEl = null, destChoice = null, electionDayHours = null;
   // Kept beside activeEl because the countdown re-asks the calendar when the
   // day rolls over under a page nobody has reloaded.
   var electionList = null;
-  var cityRings = null, ownBase = null;      // cityRings: [lat, lng] pairs
+  var ownBase = null;
   var neighbors = null, precincts = null;
   var pinArmed = false;
   var ac = null;            // the suggestion list, from autocomplete.js
@@ -97,7 +97,6 @@
   function onSchemeChanged() {
     if (!map) return;
     ownBase.setDark(prefersDark());
-    if (cityRings) drawBoundary();
     if (routes) renderAll(false);
     else if (cameras) drawCameras();
     // The key is the same drawing as the marker and reads --pin-ring the same
@@ -206,8 +205,17 @@
   // The detail is shown UNDER the map instead, at the full width of the
   // column, where it can be read at any screen size and nothing is covered.
   // The markup is unchanged: the same builders that fed the popups feed this.
-  function showDetail(html) {
+  // What the card is showing: a marker's own detail, or the precinct under
+  // an idle tap. A tap on the map while a MARKER's detail is up closes it --
+  // that is what tapping off something means -- and only the next tap asks
+  // which precinct was tapped. Without the distinction the county map, where
+  // nearly every tap lands in some precinct, could never close a camera's
+  // detail by tapping away; it only swapped it for a precinct's.
+  var detailKind = null;
+
+  function showDetail(html, kind) {
     var d = $('mapDetail');
+    detailKind = kind || 'precinct';
     $('mapDetailBody').innerHTML = html;
     d.hidden = false;
     // Only chase it into view if it actually sits off the bottom, so a click
@@ -219,6 +227,7 @@
   function hideDetail() {
     var d = $('mapDetail');
     if (d) { d.hidden = true; $('mapDetailBody').innerHTML = ''; }
+    detailKind = null;
   }
 
 
@@ -585,7 +594,7 @@
       m.bindPopup(html, { maxWidth: maxWidth, className: 'cam-popup' });
     } else {
       m.on('click', function () {
-        showDetail(typeof html === 'function' ? html() : html);
+        showDetail(typeof html === 'function' ? html() : html, 'marker');
       });
     }
   }
@@ -658,7 +667,6 @@
       if (mq.addEventListener) mq.addEventListener('change', onScheme);
       else if (mq.addListener) mq.addListener(onScheme);
     }
-    boundaryLayer = L.layerGroup().addTo(map);
     pollLayer = L.layerGroup().addTo(map);
     camLayer = L.layerGroup().addTo(map);
     routeLayer = L.layerGroup().addTo(map);
@@ -685,11 +693,21 @@
       // card under the map that the markers use, with the same dismissals
       // (close button, Escape, a tap outside the city). Marker clicks do not
       // bubble here, so their own detail is never overridden.
+      if (detailKind === 'marker') { hideDetail(); return; }
       var pr = precinctAt(e.latlng.lat, e.latlng.lng);
       if (pr) showDetail(precinctInfoHtml(pr));
       else hideDetail();
     });
     $('detailX').onclick = hideDetail;
+    Array.prototype.forEach.call(document.querySelectorAll('#sectionNav button'), function (b) {
+      b.onclick = function () {
+        var id = b.dataset.goto;
+        // The map is inside the route block and starts hidden until a route
+        // draws; jump to the block that holds it if it is not there yet.
+        if (id === 'mapBlock' && $('mapBlock').hidden) id = 'routeBlock';
+        scrollToResult(id);
+      };
+    });
     $('pinBtn').onclick = function () { pinArmed ? disarmPin() : armPin(); };
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
@@ -900,30 +918,20 @@
                 ' jurisdictions. This happens once.');
       }),
       loadJson('cameras'), loadCountyIndex(),
-      loadJson('boundary', true), calendarP, loadJson('landcover', true),
+      calendarP, loadJson('landcover', true),
       loadJson('neighbors', true),
       loadJson('gr-clerk', true), loadJson('sources', true)
     ]).then(function (res) {
       var cameraData = res[1], county = res[2];
-      var boundary = res[3], calendar = res[4], landcover = res[5];
-      var neighborData = res[6], clerkData = res[7];
-      var sourceData = res[8];
+      var calendar = res[3], landcover = res[4];
+      var neighborData = res[5], clerkData = res[6];
+      var sourceData = res[7];
 
       graph = res[0];
       cachedCameras = cameraData.cameras;
       P = county.P;
       var precinctData = county.index;
       drawPollingPlaces();
-      if (boundary && boundary.rings) {
-        // boundary.json stores [lng, lat]; everything here wants [lat, lng].
-        // The city limits are no longer drawn as a veil -- the lookup covers
-        // the whole county, so a veil at the city line would mark the wrong
-        // edge -- but they still decide which jurisdiction's own clerk data
-        // applies, which only Grand Rapids has.
-        cityRings = boundary.rings.map(function (ring) {
-          return ring.map(function (p) { return [p[1], p[0]]; });
-        });
-      }
       neighbors = (neighborData && neighborData.streets) || null;
       precincts = (precinctData && precinctData.precincts) || null;
       if (precincts) ownBase.setPrecincts(precincts);
@@ -966,44 +974,12 @@
     });
   }
 
-  // The city limits, drawn because routing stops at them: without the outline
-  // a route that stops at the edge looks like a bug rather than the edge of
-  // the data.
-  function drawBoundary() {
-    if (!cityRings) return;
-    boundaryLayer.clearLayers();
 
-    // Everything outside the city is veiled: routing stops at the line, and
-    // fading the outside says so before anyone has to read that it does.
-    // Built as one polygon whose outer ring is the world and whose holes are
-    // the city, so the hole IS the covered area and the two can never disagree.
-    var world = [[-85, -180], [-85, 180], [85, 180], [85, -180]];
-    L.polygon([world].concat(cityRings), {
-      stroke: false,
-      fillColor: getVar('--bg'),
-      // The light basemap is already near-white, so fading toward the page
-      // needs more of it to register than the dark one does.
-      fillOpacity: prefersDark() ? 0.66 : 0.78,
-      interactive: false,
-      className: 'city-veil'
-    }).addTo(boundaryLayer);
 
-    L.polygon(cityRings, {
-      color: getVar('--dim'), weight: 2, opacity: .6,
-      dashArray: '7 6', fill: false, interactive: false
-    }).addTo(boundaryLayer);
-  }
 
-  // Inside the city limits? Only one thing still turns on this: whether the
-  // city clerk's own data applies to a dropped pin. Coverage is decided by
-  // the precinct polygons now, which reach every jurisdiction in the county.
-  // With no boundary file loaded, nothing counts as inside the city.
-  function insideCity(lat, lng) {
-    return !!cityRings && Precincts.pointInRings(lat, lng, cityRings);
-  }
 
   // Every polling place in the city, shown from the start. This is a voting
-  // tool: where people vote is the subject, and seeing all 59 makes the one
+  // tool: where people vote is the subject, and seeing all 202 makes the one
   // that turns out to be yours legible as part of a pattern rather than a
   // lone pin. The active one is drawn separately as the finish flag.
   function drawPollingPlaces(activePrecinct) {
@@ -1149,6 +1125,7 @@
     $('routeBlock').classList.remove('map-only');
     routes = null;   // out of scope: reset also takes the cameras off the map
     $('col').classList.remove('has-result');
+    if ($('sectionNav')) $('sectionNav').hidden = true;
     window.scrollTo({ top: 0, behavior: 'smooth' });
     disarmPin();
     ownBase.setRouteStreets([], null);
@@ -1362,6 +1339,8 @@
   function show(r, focusKind) {
     current = r;
     $('col').classList.add('has-result');
+    var nav = $('sectionNav');
+    if (nav) nav.hidden = false;
     revealMap();
     // No standing caption: the header names the destination and the map shows
     // it. The note is reserved for the one moment it carries an instruction,
