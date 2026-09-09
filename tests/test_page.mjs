@@ -387,7 +387,17 @@ for (const w of WIDTHS) {
     window.__cardClicks = 0;
     document.getElementById('precinctInfo').addEventListener('click', () => { window.__cardClicks++; });
   });
+  // A street on its own is not an address: no rows until a house number
+  // leads, and Enter on a bare street says what is missing.
   await page.tap('#addr');
+  await page.type('#addr', 'Division');
+  await page.waitForTimeout(400);
+  ok('a bare street name gets no suggestions', await page.evaluate(() => !document.querySelector('.ac-item')));
+  await page.press('#addr', 'Enter');
+  await page.waitForTimeout(200);
+  ok('and Enter on it asks for the house number', await page.evaluate(() =>
+     /start with the house number/i.test(document.getElementById('precinctInfo').innerText)));
+  await page.fill('#addr', '');
   await page.type('#addr', '602 Alexander St SE');
   await page.waitForSelector('.ac-item', { timeout: 10000 });
   // The row says which jurisdiction, as a name: no "in", and "City" spelled

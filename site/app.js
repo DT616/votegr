@@ -830,7 +830,6 @@
     ac = Autocomplete.attach({
       input: $('addr'),
       suggest: suggestWithNeighbours,
-      hasNumber: function (text) { return P.parseTyped(text).number != null; },
       onChoose: choose,
       onMiss: function (text) { showError(missExplanation(text)); }
     });
@@ -1261,14 +1260,6 @@
       return;
     }
     var input = $('addr');
-    if (item.number == null) {
-      // a street was picked: keep any number already typed and reopen
-      var num = (input.value.match(/^(\d+)/) || [])[1] || '';
-      input.value = (num ? num + ' ' : '') + displayCase(item.street) + (num ? '' : ' ');
-      input.focus();
-      ac.refresh();
-      return;
-    }
     // The box shows the address the way it is written, not the way the index
     // stores it. ALL CAPS is how the parcel file happens to hold a street, not
     // how anyone writes one, and the lookup uppercases whatever it is given --
@@ -1324,6 +1315,10 @@
   }
 
   function suggestWithNeighbours(text, limit) {
+    // Nothing until the text starts with a house number. A street on its own
+    // is not an address, and a list of streets to finish was one more thing
+    // to read before the answer; the box's placeholder shows the shape.
+    if (P.parseTyped(text).number == null) return [];
     var out = P.suggest(text, limit) || [];
     // Say which jurisdiction EVERY suggestion is in, not only the ones from
     // outside. A list where some rows are labelled and some are bare reads as
@@ -1376,7 +1371,10 @@
   function missExplanation(typed) {
     // parseTyped already uppercases, collapses spaces and strips the house
     // number, which is exactly the form neighbors.json is keyed by.
-    var street = P.parseTyped(typed).rest;
+    var parsed = P.parseTyped(typed), street = parsed.rest;
+    if (parsed.number == null) {
+      return 'Start with the house number, like 300 Monroe Ave NW.';
+    }
     var hit = neighbors && street ? neighbors[street] : null;
     if (hit && hit.length) {
       var where = hit.length === 1 ? esc(hit[0])
@@ -1384,10 +1382,10 @@
       return 'That street is in ' + where + ', which this tool does not have ' +
         'an address index for. Your clerk is the one for ' + where + '.';
     }
-    return 'No Kent County street matches that. Check the spelling, or type ' +
-      'just the street name to see the options. This tool covers Kent ' +
-      'County, Michigan; an address in Ottawa, Allegan, Barry, Ionia, ' +
-      'Montcalm or Newaygo County is not in it.';
+    return 'No Kent County street matches that. Check the spelling and the ' +
+      'direction, like 300 Monroe Ave NW. This tool covers Kent County, ' +
+      'Michigan; an address in Ottawa, Allegan, Barry, Ionia, Montcalm or ' +
+      'Newaygo County is not in it.';
   }
 
   // ---- dropped pin -----------------------------------------------------
