@@ -954,6 +954,11 @@ ol.steps li.arrive::before {
 ol.steps .stext { flex: 1; }
 ol.steps li { cursor: pointer; }
 ol.steps li:hover { background: var(--raise); }
+/* The step being looked at, and the last one. A highlighted turn is the
+   instruction in play, and "Arrive at your destination" is the one every
+   trip ends on; both are read at a glance from the corner of an eye on the
+   road, so they carry the weight. */
+ol.steps li.cur, ol.steps li:hover, ol.steps li.arrive { font-weight: 700; }
 ol.steps li.cur {
   background: var(--raise);
   box-shadow: inset 3px 0 0 var(--accent);
@@ -1142,8 +1147,7 @@ ol.steps .scam {
   transition: color .12s, border-color .12s;
 }
 .pin-btn svg { width: 20px; height: 20px; }
-/* The thumbtack leans the way a tack is pushed into a board. */
-.pin-btn .push-pin { transform: rotate(28deg); }
+.pin-btn .push-pin { width: 18px; height: 18px; }
 .pin-btn:hover { color: var(--accent); border-color: var(--accent); }
 .pin-btn.armed {
   color: var(--accent); border-color: var(--accent); background: var(--panel);
@@ -1376,10 +1380,11 @@ ol.steps li .glyph {
 .map-legend .k.wardk {
   height: 15px; border-radius: 3px; border: 1px solid var(--line);
   background: linear-gradient(90deg,
-    var(--lg-jur1, hsl(265,54%,50%)) 0 17%,
-    var(--lg-jur2, hsl(42,54%,50%)) 17% 34%,
-    var(--lg-jur3, hsl(180,54%,50%)) 34% 50%,
-    var(--lg-jur4, hsl(317,54%,50%)) 50% 67%,
-    var(--lg-jur5, hsl(95,54%,50%)) 67% 84%,
-    var(--lg-jur6, hsl(232,54%,50%)) 84%);
+    var(--lg-ward1, hsl(265,54%,50%)) 0 25%,
+    var(--lg-ward2, hsl(190,54%,50%)) 25% 50%,
+    var(--lg-ward3, hsl(32,54%,50%)) 50% 75%,
+    var(--lg-scope, hsl(210,54%,50%)) 75%);
+}
+.map-legend .k.bordk {
+  height: 0; border-top: 3px solid var(--lg-border, #ffd76a); border-radius: 2px;
 }
