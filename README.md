@@ -18,10 +18,18 @@ the State of Michigan. The Michigan Voter Information Center is still the offici
 Two reasons:
 
 1. **Finding out where you vote should not require identifying yourself.** The
-state's Michigan Voter Information Center is accurate and it is the official source, but it asks for your name, your birth month and year, and your
-registration ZIP before it will tell your ward and precinct number. To find where to vote, you either have to give them your address or the personal info.
-Their privacy notice you have to agree to states information such as a name or address may be released under a Freedom of
-Information Act request. The records of your searches or the fact you looked them up could be subject to FOIA, and that didn't sit right with me.
+state's Michigan Voter Information Center is accurate and it is the official
+source, but it asks for your name, your birth month and year, and your
+registration ZIP before it will tell you your ward and precinct, and every
+lookup runs on its servers. The notice you agree to on that form says, in
+full:
+
+   > The information collected on this form is only what is needed to complete your transaction as authorized by MCL 168.509ii, MCL 168.759, MCL 168.759a, and MCL 168.764c. As a public body, MDOS is subject to the Michigan Freedom of Information Act (FOIA), MCL 15.231 et seq., and information such as a name or address may be disclosed in response to a FOIA request.
+
+   **This site is a proof of concept that none of that information needs to
+   be collected to show you where you vote.** Every answer comes from public
+   records already on your device. There is no form, no transaction, and
+   nothing for a FOIA request to disclose, because nothing was ever collected.
 
 2. **Driving to perform a constitutionally protected activity shouldn't be surveilled.**
 Kent County has automated license plate readers on traffic signals and utility poles, in Grand Rapids and well beyond it. They photograph
