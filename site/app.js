@@ -446,13 +446,22 @@
   // -- when that window has not opened or has closed -- a line saying so. One
   // shape for all three rows, so a reader compares them down the column
   // instead of learning a new layout per row.
+  // On a phone the when-cell is folded into the bottom of its place card,
+  // and its note and hours -- a six-line paragraph about absentee ballots,
+  // twelve days of early voting hours -- sit behind a "More" that opens
+  // in place. The dates themselves stay in view; the answer went from four
+  // screens to two.
   function whenCell(kind, state, extra) {
+    var note = (state.note ? '<div class="pp-note">' + esc(state.note) + '</div>' : '') +
+               (extra || '');
+    if (note && isPhone()) {
+      note = '<details class="vi-more"><summary>More</summary>' + note + '</details>';
+    }
     return '<div class="vi-when vi-when-' + kind + '">' +
       '<div class="vi-lbl' + (state.live ? ' live' : '') + '">' +
       esc(state.label) + '</div>' +
       '<div class="vi-val">' + esc(state.status) + '</div>' +
-      (state.note ? '<div class="pp-note">' + esc(state.note) + '</div>' : '') +
-      (extra || '') + '</div>';
+      note + '</div>';
   }
 
   // A drop box is only useful once there is a ballot to put in it, and the
