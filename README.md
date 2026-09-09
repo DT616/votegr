@@ -15,7 +15,7 @@ the State of Michigan. The Michigan Voter Information Center is still the offici
 
 ## Why
 
-Three reasons:
+Two reasons:
 
 1. **Finding out where you vote should not require identifying yourself.** The
 state's Michigan Voter Information Center is accurate and it is the official
@@ -43,16 +43,7 @@ full:
 
 2. **Driving to perform a constitutionally protected activity shouldn't be surveilled.**
 Kent County has automated license plate readers on traffic signals and utility poles, in Grand Rapids and well beyond it. They photograph
-every passing vehicle, perform OCR, and store it with the time and place, whether or not anyone suspects you of anything, and can alert officers in realtime of a flagged vehicle. The records are also searchable later, and many systems let agencies search across each other's networks. Nobody should have a
-reason to feel uneasy about being tracked to go vote. While being pulled over
-because a camera read your license plate is unlikely for most, it is a real
-possibility, as are false positives. If this site helps one eligible voter find
-the polls and vote, and results in the government having less data to collect,
-it was worth it.
-
-3. **Decentralized, free and open source software is possible.** More of it
-should be built on principles that provide utility, maximize privacy and
-decentralize what does not need to be central.
+every passing vehicle, perform OCR, and store it with the time and place, whether or not anyone suspects you of anything, and can alert officers in realtime of a flagged vehicle. The records are also searchable later, and many systems let agencies search across each other's networks. 
 
 ## Inventory
 
