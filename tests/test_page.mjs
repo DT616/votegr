@@ -378,6 +378,29 @@ for (const w of WIDTHS) {
   ok('the three marks are three different drawings',
      new Set(marks.shapes).size === 3 && marks.shapes.every(n => n > 0));
 
+  // No link anywhere is left to the browser's own blue, or to the purple it
+  // turns once followed: both are illegible on a dark panel, and neither is
+  // a state any link on this page has.
+  await page.evaluate(() => document.querySelector('.about-btn').click());
+  await page.waitForTimeout(200);
+  const linkColours = await page.evaluate(() => {
+    const DEFAULTS = ['rgb(0, 0, 238)', 'rgb(85, 26, 139)', 'rgb(0, 0, 255)'];
+    const bad = [];
+    document.querySelectorAll('a').forEach(a => {
+      if (!a.offsetParent && !a.closest('#aboutModal')) return;
+      const c = getComputedStyle(a).color;
+      if (DEFAULTS.includes(c)) bad.push(a.textContent.trim().slice(0, 30) + ' ' + c);
+    });
+    return { bad, about: [...document.querySelectorAll('#aboutModal a')].length };
+  });
+  ok('the About panel is full of links', linkColours.about > 4);
+  ok('and no link is left the browser default blue or purple', linkColours.bad.length === 0);
+  if (linkColours.bad.length) linkColours.bad.forEach(b => console.log('       ' + b));
+  ok('the About panel says plainly that this is a proof of concept',
+     await page.evaluate(() => /proof of concept/i.test(document.getElementById('aboutModal').innerText) &&
+       /estimate, not a record/i.test(document.getElementById('aboutModal').innerText)));
+  await page.evaluate(() => document.querySelector('#aboutModal .modal-x').click());
+
   ok('nothing failed to load and nothing threw', errors.length === 0);
   // Asserted after a full lookup and a drawn route, so it covers the paths a
   // reader actually walks, not just the load.

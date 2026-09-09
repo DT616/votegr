@@ -124,6 +124,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Links read as body text with a quiet underline, and read the SAME whether
+   or not they have been followed. Left to the browser they came out default
+   blue and then default purple: two colours neither of which is legible on a
+   dark panel, and a change of colour that says "you clicked this", which is
+   not a thing any link on this page means. The accent is kept for the
+   pointer, where it is a state and not a permanent stain. */
+a, a:visited {
+  color: var(--fg); text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--dim) 80%, transparent);
+  text-underline-offset: 2px;
+}
+a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--accent); }
+
 /* ---------------------------------------------------------------------
    One centred column, the width of a paragraph, the same shape on a phone
    as on a desktop. An earlier version gave the map half the screen at all

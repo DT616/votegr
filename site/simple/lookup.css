@@ -61,7 +61,16 @@ label { display: block; margin-bottom: .35rem; font-size: .85rem; }
   border-radius: .4rem;
   background: color-mix(in srgb, var(--warn) 8%, transparent);
 }
-.disclaimer a { color: var(--accent); }
+
+/* Same rule as the map page: body colour, quiet underline, and no change of
+   colour once followed -- the browser's blue and purple are both illegible
+   on a dark panel and the purple claims a meaning these links do not have. */
+a, a:visited {
+  color: var(--fg); text-decoration: underline;
+  text-decoration-color: var(--dim); text-underline-offset: 2px;
+}
+a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--accent); }
+.disclaimer a, .disclaimer a:visited { color: var(--fg); }
 
 /* Search box and its suggestion list */
 
