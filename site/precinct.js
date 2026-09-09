@@ -2,11 +2,12 @@
  * Released into the public domain under the Unlicense, see UNLICENSE.
  *
  * The matching logic here (parseTyped / streetMatches / resolve) is carried
- * over from Cantica's vote-gr project, which is MIT licensed, so the two tools
- * answer "which precinct is this address in" identically. Keeping it a faithful
- * copy is deliberate: two implementations of the same lookup would eventually
+ * over from the earlier vote-gr project, so the two tools answer "which
+ * precinct is this address in" identically. Keeping it a faithful copy is
+ * deliberate: two implementations of the same lookup would eventually
  * disagree, and disagreeing about someone's polling place is the one failure
- * this tool must not have.
+ * this tool must not have. Like everything else here it is public domain
+ * under the Unlicense.
  *
  * As in vote-gr, the whole lookup is a dictionary hit against a file the page
  * already downloaded. The address is never sent anywhere.
