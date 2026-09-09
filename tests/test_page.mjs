@@ -390,6 +390,12 @@ for (const w of WIDTHS) {
   await page.tap('#addr');
   await page.type('#addr', '602 Alexander St SE');
   await page.waitForSelector('.ac-item', { timeout: 10000 });
+  // The row says which jurisdiction, as a name: no "in", and "City" spelled
+  // out because Grand Rapids Township is next door.
+  const label = await page.evaluate(() => document.querySelector('.ac-item .ac-where').textContent.trim());
+  ok('a suggestion names its jurisdiction as "Grand Rapids City"', label === 'Grand Rapids City');
+  ok('no row is coloured for being outside the city', await page.evaluate(() =>
+     !document.querySelector('.ac-item.is-outside')));
   const r = await page.evaluate(() => {
     const item = document.querySelector('.ac-item');
     item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));

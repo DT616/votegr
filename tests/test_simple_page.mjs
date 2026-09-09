@@ -84,12 +84,17 @@ async function open(width) {
   return { ctx, page, errors, offsite };
 }
 
+// What the rows said about where they are, as of the last pick.
+let lastWhere = [], lastOutsideRows = 0;
+
 // Type, then pick the option at `index` the way a mouse does.
 async function pick(page, text, index = 0) {
   await page.fill('#addr, input[type="text"]', '');
   await page.type('#addr, input[type="text"]', text, { delay: 5 });
   await page.waitForSelector('#opts li', { timeout: 5000 });
   const options = await page.$$eval('#opts li', els => els.map(e => e.innerText.trim()));
+  lastWhere = await page.$$eval('#opts li .opt-where', els => els.map(e => e.textContent.trim()));
+  lastOutsideRows = await page.$$eval('#opts li .opt-outside', els => els.length);
   await page.$$eval('#opts li', (els, i) => {
     els[i].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
   }, index);
@@ -150,6 +155,11 @@ for (const width of [1280, 390, 320]) {
      options.some(o => o.includes(outsideStreet)));
   ok('and the option says which jurisdiction it is in',
      options.some(o => neighbours.streets[outsideStreet].some(j => o.includes(j))));
+  // A name, not a phrase: "Kentwood City" or "Ada Township", never "in …",
+  // and the same grey whether or not the street is in the city.
+  ok('every row names its place as a City or a Township, with no "in"',
+     lastWhere.length > 0 && lastWhere.every(w => /(City|Township)$/.test(w) && !/^in /.test(w)));
+  ok('no row is coloured for being outside the city', lastOutsideRows === 0);
 
   const outside = await page.evaluate(() => ({
     text: document.body.innerText.replace(/\s+/g, ' '),

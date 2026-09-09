@@ -76,15 +76,13 @@
       // A per-item note wins over the per-kind one: a street outside the city
       // has to name WHICH place it is in, and that differs per street.
       var why = it.why || SUGGESTION_WHY[it.kind] || '';
-      return '<button type="button" class="ac-item' +
-        (it.kind === 'outside' ? ' is-outside' : '') +
-        '" role="option" data-i="' + i + '">' +
+      return '<button type="button" class="ac-item" role="option" data-i="' + i + '">' +
         '<span class="ac-pin">' + PIN_SVG + '</span>' +
         (it.number != null ? '<span class="num">' + it.number + '</span>' : '') +
         '<span class="st">' + esc(cased(it.street)) + '</span>' +
         (why ? '<span class="why">' + why + '</span>' : '') +
         (it.where && it.where.length
-          ? '<span class="ac-where">in ' + esc(it.where.join(' or ')) + '</span>'
+          ? '<span class="ac-where">' + esc(it.where.join(' or ')) + '</span>'
           : '') + '</button>';
     }
 

@@ -297,12 +297,12 @@
     suggestions.forEach((suggestion, i) => {
       // Every row names its jurisdiction, not only the ones from outside: a
       // list where some rows are labelled and some are bare leaves the reader
-      // to work out that bare means answerable. "city" is load-bearing --
+      // to work out that bare means answerable. "City" is load-bearing --
       // Grand Rapids Township is a real, different place next door. Same rule
-      // as the map page's type-ahead.
+      // and same colour for every row as the map page's type-ahead.
       const option = el("li", null, suggestion.text,
-        el("span", suggestion.outside ? "opt-where opt-outside" : "opt-where",
-           ` in ${suggestion.outside ? placeList(suggestion.outside) : GR_CITY}`));
+        el("span", "opt-where",
+           ` ${(suggestion.outside || []).length ? placeList(suggestion.outside.map(placeLabel)) : GR_CITY}`));
       option.id = `opt-${i}`;
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", i === active ? "true" : "false");
@@ -352,7 +352,9 @@
       }));
   };
 
-  const GR_CITY = "Grand Rapids city";
+  const GR_CITY = "Grand Rapids City";
+  // The state says "Township" when it means one and nothing for a city.
+  const placeLabel = (name) => /Township$/i.test(name) ? name : `${name} City`;
 
   const placeList = (where) =>
     where.length === 1 ? where[0]
@@ -362,7 +364,7 @@
   // and where to go instead. The address stays in the box, because it is
   // right.
   function renderOutside(picked) {
-    const where = placeList(picked.outside);
+    const where = placeList((picked.outside || []).map(placeLabel));
     clearResult();
     resultBox.append(el("div", "card", el("div", "card-body",
       el("div", "lead", "Address: ", el("span", "addr-quote", cased(picked.text))),
