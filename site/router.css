@@ -416,16 +416,15 @@ body {
 /* The phone's section bar. Three pills under the search box, in the sticky
    bar, so "there are directions further down" is always on screen. */
 .section-nav { display: none; }
-/* The per-card Directions button: phones only. */
-.dir-btn { display: none; }
+/* The chevron on the right of a place card: phones only. */
+.dir-cue { display: none; }
 @media (max-width: 700px) {
-  .dir-btn {
-    display: inline-block; margin-top: 12px; font: inherit; font-size: .87rem;
-    font-weight: 600; color: var(--accent); background: none;
-    border: 1px solid var(--accent); border-radius: 999px; padding: 6px 14px;
-    cursor: pointer;
+  .vi-grid .vi-where { position: relative; }
+  .dir-cue {
+    display: block; position: absolute; right: 12px; top: 50%;
+    transform: translateY(-50%); font-size: 1.9rem; line-height: 1;
+    color: var(--accent); pointer-events: none;
   }
-  .dir-btn + .box-open, .box-open + .dir-btn { margin-left: 8px; }
 }
 @media (max-width: 700px) {
   #col.has-result .section-nav:not([hidden]) {
@@ -573,12 +572,12 @@ body {
   /* Stacked there is no rail to run down, and a vertical pair would burn
      height a phone does not have, so Ward and Precinct sit side by side. */
   .vi-rail { flex-direction: row; gap: 48px; }
-  /* Stacked, these are not columns any more, so the panels come off: a
-     beveled slab per row is chrome without a job. */
-  .vi-grid .vi-where,
-  .vi-grid .vi-when {
-    background: none; padding: 0; box-shadow: none;
-  }
+  /* Stacked, the panels STAY. Each place is a tappable card on a phone --
+     tap it for directions -- and a raised, beveled slab is what says so;
+     flattened to bare text it read as a list of facts. The when-cells come
+     off, so the place reads as the card and its dates as the note under it. */
+  .vi-grid .vi-when { background: none; padding: 0 2px; box-shadow: none; }
+  .vi-grid .vi-where { padding-right: 2.4rem; }
   .vi-grid .pp-place:hover { background: var(--raise); }
 }
 /* One line, not the days-and-times grid early voting needs: the 7 AM to 8 PM
