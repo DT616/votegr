@@ -936,6 +936,72 @@
   // what it is waiting for and how far along it is.
   var IDLE_PLACEHOLDER = '300 Monroe Ave NW';
 
+  // ?debug on the URL: a panel for driving the engine with any two addresses
+  // in the county -- geocode each end, route both ways, dump every number,
+  // draw it. The panel is a separate file that loads only when asked for,
+  // and it reaches the engine through this one object, so nothing else in
+  // the page has to know it exists.
+  var DEBUG = /[?&]debug\b/.test(location.search);
+
+  function mountDebug() {
+    var s = document.createElement('script');
+    s.src = 'debug.js';
+    s.onload = function () {
+      if (!window.VoteGRDebug) return;
+      window.VoteGRDebug.mount({
+        graph: graph, precincts: P, polygons: precincts, cameras: cameras, map: map,
+        resolve: resolveEnd, computeRoutes: computeRoutes, draw: drawDebugRoutes
+      });
+    };
+    document.body.appendChild(s);
+  }
+
+  // "602 Alexander St SE" or "42.9276,-85.6353" -> everything the engine can
+  // say about that end: how it parsed, where it geocoded, what precinct that
+  // point is in, and the road it snaps to.
+  function resolveEnd(text) {
+    var out = { input: text };
+    var ll = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(text || '');
+    var t0 = performance.now();
+    if (ll) {
+      out.lat = Number(ll[1]); out.lng = Number(ll[2]); out.how = 'coordinates';
+    } else {
+      var parsed = P.parseTyped(text);
+      out.parsed = parsed;
+      var hit = graph.geocode(parsed.number, parsed.rest);
+      if (!hit) {
+        var lk = P.lookup(text);
+        out.lookup = lk.error ? { error: lk.error } : { street: lk.street };
+        if (!lk.error) hit = graph.geocode(lk.number, lk.street);
+      }
+      if (!hit) { out.error = 'could not geocode'; return out; }
+      out.lat = hit.lat; out.lng = hit.lng;
+      out.geocode = { street: hit.street, exact: hit.exact, edge: hit.edge };
+      out.how = hit.exact ? 'centreline, exact range' : 'centreline, interpolated';
+    }
+    var pr = P.precinctAt(out.lat, out.lng, precincts);
+    out.precinct = pr ? { code: pr.code, jurisdiction: pr.jurisdiction, ward: pr.ward,
+                          precinct: pr.precinct } : null;
+    var snap = graph.snapToRoad(out.lat, out.lng);
+    out.snap = { node: snap.node, edge: snap.edge, metres: Math.round(snap.meters),
+                 street: snap.edge != null ? graph.edgeName(snap.edge) : null };
+    out.ms = Math.round(performance.now() - t0);
+    return out;
+  }
+
+  // Put a computed pair on the map through the page's own drawing, so what
+  // the debug panel shows is exactly what a reader would see.
+  function drawDebugRoutes(origin, place, computed) {
+    $('col').classList.add('has-result');
+    document.body.classList.add('has-result');
+    revealMap();
+    routes = Object.assign(computed, {
+      opts: [], origin: origin, place: place, destSub: 'Debug destination'
+    });
+    selected = 'avoid';
+    renderAll(true);
+  }
+
   function loadData() {
     var input = $('addr');
     input.disabled = true;
@@ -1004,6 +1070,7 @@
       graph.warm();
       drawCameras();
       input.disabled = false;
+      if (DEBUG) mountDebug();
       input.placeholder = IDLE_PLACEHOLDER;
       setHint('');
       // Autofocus on a phone pops the keyboard over the map before the person
@@ -2220,12 +2287,44 @@
     // graph exactly as it was found, so the drawable geometry and the step
     // list have to be materialized BEFORE that happens: afterwards the
     // temporary edges they refer to no longer exist.
+    var computed = computeRoutes(origin, place);
+    if (!computed) {
+      $('routeBlock').hidden = false;
+      $('routes').innerHTML = '<div class="err">No drivable route between your address ' +
+        'and ' + esc(place.name) + ' on this road network.</div>';
+      $('steps').innerHTML = ''; $('unavoid').innerHTML = '';
+      map.fitBounds(L.latLngBounds([[origin.lat, origin.lng], [place.lat, place.lng]]).pad(.35), fitOpts());
+      return;
+    }
+
+    routes = Object.assign(computed, {
+      opts: opts, origin: origin, place: place,
+      destSub: destSub(pick, r)
+    });
+    var identical = routes.identical;
+    if (identical) selected = 'avoid';
+    // Default to the clean route, but do not fight a choice already made.
+    if (selected !== 'fast' && selected !== 'avoid') selected = 'avoid';
+    renderAll(true);
+  }
+
+  // Both routes between two points: the fastest, and the one that avoids the
+  // cameras. The whole engine in one call, with nothing about the page in
+  // it, so the debug panel can drive it with any two addresses. Returns null
+  // when the road network has no drivable path between them.
+  function computeRoutes(origin, place) {
+    // Split both ends into the graph so a route starts at the address and
+    // finishes at the door, rather than at whichever intersection happened to
+    // be nearest. Both splits are released in the finally block, leaving the
+    // graph exactly as it was found, so the drawable geometry and the step
+    // list have to be materialized BEFORE that happens: afterwards the
+    // temporary edges they refer to no longer exist.
     var oSplit = graph.splitAt(origin.lat, origin.lng);
     var dSplit = graph.splitAt(place.lat, place.lng);
     var originNode = oSplit ? oSplit.node : graph.snapToRoad(origin.lat, origin.lng).node;
     var destNode = dSplit ? dSplit.node : graph.snapToRoad(place.lat, place.lng).node;
 
-    var fast, avoid;
+    var fast, avoid, t0 = performance.now();
     try {
       var saved = graph._edgeCams;
       graph._edgeCams = null;
@@ -2243,15 +2342,7 @@
       if (dSplit) dSplit.release();
       if (oSplit) oSplit.release();
     }
-
-    if (!fast || !avoid) {
-      $('routeBlock').hidden = false;
-      $('routes').innerHTML = '<div class="err">No drivable route between your address ' +
-        'and ' + esc(place.name) + ' on this road network.</div>';
-      $('steps').innerHTML = ''; $('unavoid').innerHTML = '';
-      map.fitBounds(L.latLngBounds([[origin.lat, origin.lng], [place.lat, place.lng]]).pad(.35), fitOpts());
-      return;
-    }
+    if (!fast || !avoid) return null;
 
     // When the quickest way already passes nothing, the avoiding route is the
     // same road. Showing it twice implies a choice that does not exist, so the
@@ -2268,19 +2359,13 @@
       identical = true;
       fastDropped = true;
     }
-
-    routes = {
+    return {
       fast: fast, avoid: avoid, identical: identical, fastDropped: fastDropped,
-      fastExp: fastExp,
-      avoidExp: avoid.cameraCount,
-      flagged: fast.camsOnRoute,
-      opts: opts, origin: origin, place: place,
-      destSub: destSub(pick, r)
+      fastExp: fastExp, avoidExp: avoid.cameraCount, flagged: fast.camsOnRoute,
+      originNode: originNode, destNode: destNode,
+      originSplit: !!oSplit, destSplit: !!dSplit,
+      ms: Math.round(performance.now() - t0)
     };
-    if (identical) selected = 'avoid';
-    // Default to the clean route, but do not fight a choice already made.
-    if (selected !== 'fast' && selected !== 'avoid') selected = 'avoid';
-    renderAll(true);
   }
 
   function renderAll(fit) {

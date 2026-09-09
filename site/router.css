@@ -828,6 +828,38 @@ body {
 .here-h { font-size: 1.18rem; font-weight: 700; letter-spacing: -.015em; }
 .here-b { margin-top: 6px; color: var(--dim); line-height: 1.55; }
 
+/* ---- the ?debug panel ----
+   Dashed and amber so it can never be mistaken for part of the page. */
+.debug-panel {
+  margin: 14px 0 6px; padding: 12px 14px 14px;
+  border: 1px dashed var(--warn); border-radius: 10px; background: var(--raise);
+}
+.dbg-head { font-weight: 700; font-size: .95rem; margin-bottom: 8px; }
+.dbg-sub { font-weight: 400; font-size: .82rem; color: var(--dim); margin-left: 8px; }
+.dbg-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.dbg-row label { flex: 1 1 220px; font-size: .78rem; color: var(--dim);
+                 text-transform: uppercase; letter-spacing: .05em; }
+.dbg-row input {
+  display: block; width: 100%; margin-top: 3px; box-sizing: border-box;
+  background: var(--bg); color: var(--fg); border: 1.5px solid var(--line);
+  border-radius: 8px; padding: 9px 11px; font: inherit; font-size: .95rem;
+}
+.dbg-row input:focus { outline: none; border-color: var(--accent); }
+.dbg-actions { margin-top: 10px; align-items: center; }
+.dbg-actions button {
+  font: inherit; font-size: .87rem; font-weight: 600; color: var(--fg);
+  background: none; border: 1px solid var(--dim); border-radius: 999px;
+  padding: 6px 14px; cursor: pointer;
+}
+.dbg-actions button:hover { color: var(--accent); border-color: var(--accent); }
+.dbg-status { font-size: .85rem; color: var(--dim); }
+.dbg-out {
+  margin: 12px 0 0; padding: 10px 12px; max-height: 55vh; overflow: auto;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap; word-break: break-word; color: var(--fg);
+}
+
 /* ---- address type-ahead ---- */
 .field { position: relative; }
 .ac {

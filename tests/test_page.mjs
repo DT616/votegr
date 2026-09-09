@@ -333,6 +333,50 @@ for (const w of WIDTHS) {
   await ctx.close();
 }
 
+// --- the ?debug panel ---
+// Loaded only when the URL asks for it, and then it drives the same
+// resolve-and-route path the answer does, so one run with both ends
+// filled has to end in a JSON dump carrying a routed distance and a pair
+// drawn on the map. Without the parameter the panel must not exist at all.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto(URL_ + '?debug&from=602%20Alexander%20St%20SE&to=355%2048th%20St%20SE', { waitUntil: 'networkidle' });
+  let report = null;
+  try {
+    await page.waitForFunction(() => {
+      const o = document.getElementById('dbgOut');
+      return o && /"meters"/.test(o.textContent);
+    }, null, { timeout: 60000 });
+    report = JSON.parse(await page.evaluate(() => document.getElementById('dbgOut').textContent));
+  } catch (e) { errors.push('debug panel never produced a report: ' + e.message); }
+  ok('?debug mounts the panel', await page.$('#debugPanel') !== null);
+  ok('both ends resolve to a precinct', !!(report && report.from.precinct && report.to.precinct
+     && report.from.precinct.jurisdiction === 'Grand Rapids' && report.to.precinct.jurisdiction === 'Kentwood'));
+  ok('the report carries routed metres for both routes', !!(report && report.route
+     && report.route.fastest.meters > 1000 && report.route.avoiding.meters > 1000));
+  ok('the report lists the turn steps', !!(report && report.route.avoiding.steps.length > 3));
+  ok('the pair is drawn through the page renderer', await page.evaluate(() =>
+     document.body.classList.contains('has-result') && document.getElementById('steps').innerText.trim().length > 0));
+  ok('the address of a debug run is shareable', (await page.url()).includes('debug&from='));
+  ok('the debug run threw nothing', errors.length === 0);
+  if (errors.length) errors.forEach(e => console.log('       ' + e));
+  await ctx.close();
+}
+
+// Plain load, no panel.
+{
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto(URL_, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => !document.getElementById('addr').disabled, null, { timeout: 60000 });
+  ok('without ?debug no panel and no debug.js', await page.evaluate(() =>
+     !document.getElementById('debugPanel') && ![...document.scripts].some(s => /debug\.js/.test(s.src))));
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 
