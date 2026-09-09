@@ -719,7 +719,7 @@
         '<div class="layer-toggles" id="layerToggles">' +
         '<div class="lyr"><input type="checkbox" id="lyrPrecincts" checked><label for="lyrPrecincts">Precinct boundaries</label></div>' +
         '<div class="lyr"><input type="checkbox" id="lyrNumbers" checked><label for="lyrNumbers">Precinct numbers</label></div>' +
-        '<div class="lyr"><input type="checkbox" id="lyrWards" checked><label for="lyrWards">City &amp; township colors</label></div>' +
+        '<div class="lyr"><input type="checkbox" id="lyrWards" checked><label for="lyrWards">Your city or township</label></div>' +
         '<div class="lyr"><input type="checkbox" id="lyrPolling" checked><label for="lyrPolling">Polling places</label></div>' +
         '<div class="lyr"><input type="checkbox" id="lyrCameras" checked><label for="lyrCameras">License plate cameras</label></div>' +
         '</div>' +
@@ -1123,6 +1123,7 @@
     disarmPin();
     ownBase.setRouteStreets([], null);
     ownBase.setActivePrecinct(null);
+    ownBase.setScope(null);
     drawPollingPlaces();
     drawCameras();
     map.setView(GR, 13);
@@ -2300,6 +2301,7 @@
     }
 
     ownBase.setActivePrecinct(current && (current.code || current.precinct));
+    ownBase.setScope(current && current.mcd);
     drawPollingPlaces(current && current.precinct);
     // Tell the basemap which streets this route uses so it names them first.
     ownBase.setRouteStreets(

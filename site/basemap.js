@@ -65,6 +65,7 @@
       label:  '#c3ccd8', labelHalo: '#12161d', labelRoute: '#ffffff',
       wardHue: { '1': 265, '2': 190, '3': 32 },
       wardSat: 54, wardL: 50, wardLStep: 10, wardAlpha: .26,
+      scopeHue: 210, scopeBorder: '#ffd76a',
       precinct: '#b5a6f0', precinctActive: '#ffffff',
       precinctHalo: 'rgba(10,13,18,.8)',
       precinctFill: 'rgba(139,131,176,.12)',
@@ -82,6 +83,7 @@
       label:  '#4a4640', labelHalo: '#ffffff', labelRoute: '#1d1b17',
       wardHue: { '1': 265, '2': 190, '3': 32 },
       wardSat: 60, wardL: 46, wardLStep: 11, wardAlpha: .22,
+      scopeHue: 210, scopeBorder: '#8a5b00',
       precinct: '#6d4fa8', precinctActive: '#3f1f86',
       precinctHalo: 'rgba(255,255,255,.85)',
       precinctFill: 'rgba(124,108,168,.08)',
@@ -188,23 +190,46 @@
     // anything, not only after a lookup.
     setPrecincts: function (list) {
       this._precincts = list || null;
-      // One hue per city or township, spread by the golden angle so that
-      // whichever thirty come out of the file, neighbours in the list -- and
-      // therefore, mostly, on the ground -- sit far apart on the wheel. The
-      // three ward hues used to do this job for a map that only ever showed
-      // one city; with thirty jurisdictions on it, the jurisdiction is the
-      // area a reader needs to tell from the one beside it.
-      var mcds = {}, order = [];
-      for (var i = 0; list && i < list.length; i++) {
-        var m = list[i].mcd;
-        if (m != null && !mcds[m]) { mcds[m] = 1; order.push(String(m)); }
+      this._redraw();
+    },
+
+    // The jurisdiction the current answer is in, by MCD code. Only its
+    // precincts are tinted and only its outer border is drawn: an address
+    // in Solon Township lights Solon Township, and the rest of the county
+    // stays plain land with faint precinct lines for context. Nothing is
+    // tinted until there is an answer. This replaced a scheme that coloured
+    // all thirty jurisdictions at once, which made everything outside the
+    // one you were looking at read as a darker, busier region rather than
+    // as not-in-scope.
+    setScope: function (mcd) {
+      this._scopeMcd = mcd == null ? null : String(mcd);
+      this._scopeBorder = null;
+      if (this._scopeMcd && this._precincts) {
+        // The outer border of a jurisdiction is every boundary segment its
+        // precincts do not share with each other. The precinct polygons
+        // come from one state file and share their vertices exactly, so a
+        // segment seen once is on the outside and one seen twice is
+        // between two precincts. Checked on Kentwood, Grand Rapids and
+        // Solon: no segment is seen more than twice.
+        var count = {}, segs = {};
+        for (var i = 0; i < this._precincts.length; i++) {
+          var pr = this._precincts[i];
+          if (String(pr.mcd) !== this._scopeMcd) continue;
+          for (var r = 0; r < pr.rings.length; r++) {
+            var ring = pr.rings[r];
+            for (var k = 0; k < ring.length; k++) {
+              var a = ring[k], b = ring[(k + 1) % ring.length];
+              var ka = a[0] + ',' + a[1], kb = b[0] + ',' + b[1];
+              var key = ka < kb ? ka + '|' + kb : kb + '|' + ka;
+              count[key] = (count[key] || 0) + 1;
+              segs[key] = [a, b];
+            }
+          }
+        }
+        var out = [];
+        for (var s in count) if (count[s] === 1) out.push(segs[s]);
+        this._scopeBorder = out;
       }
-      order.sort();
-      this._hueByMcd = {};
-      for (var k = 0; k < order.length; k++) {
-        this._hueByMcd[order[k]] = Math.round((265 + k * 137.508) % 360);
-      }
-      this._hueOrder = order;
       this._redraw();
     },
 
@@ -382,15 +407,13 @@
       try {
         var rs = document.documentElement.style;
         rs.setProperty('--lg-precinct', P.precinct);
-        // Six of the jurisdiction hues for the legend swatch: enough to say
-        // "these areas are different colours" without pretending a swatch
-        // could key thirty.
-        var order = this._hueOrder || [];
-        for (var lk = 0; lk < 6; lk++) {
-          var mh = order[lk] != null ? this._hueByMcd[order[lk]] : P.wardHue[String(lk % 3 + 1)];
-          rs.setProperty('--lg-jur' + (lk + 1),
-            'hsl(' + mh + ',' + P.wardSat + '%,' + P.wardL + '%)');
+        for (var wk in P.wardHue) {
+          if (!Object.prototype.hasOwnProperty.call(P.wardHue, wk)) continue;
+          rs.setProperty('--lg-ward' + wk,
+            'hsl(' + P.wardHue[wk] + ',' + P.wardSat + '%,' + P.wardL + '%)');
         }
+        rs.setProperty('--lg-scope', 'hsl(' + P.scopeHue + ',' + P.wardSat + '%,' + P.wardL + '%)');
+        rs.setProperty('--lg-border', P.scopeBorder);
       } catch (e) {}
 
       // Project [lat,lng] -> canvas px with a precomputed linear transform.
@@ -473,17 +496,21 @@
         // consecutive numbers tend to sit next to each other. Stepping by
         // number is therefore what makes NEIGHBOURS differ, which is the whole
         // point.
-        if (O.wards) {
+        // Tints, for the jurisdiction in scope only. A city with wards keeps
+        // a hue per ward, as Grand Rapids always had; a township, having
+        // none, takes one hue. Precincts step in lightness by number within
+        // it so neighbours differ while the area still reads as one.
+        var scope = this._scopeMcd;
+        var inScope = function (p) {
+          return !scope ? p.mcd == null : String(p.mcd) === scope;
+        };
+        if (O.wards && (scope || !this._precincts.some(function (p) { return p.mcd != null; }))) {
           for (var wi = 0; wi < this._precincts.length; wi++) {
             var wp = this._precincts[wi];
-            // Hue by jurisdiction. Within it, precincts step in lightness
-            // by number so neighbours differ, and a ward, where the city has
-            // them, nudges the step so the wards still read as bands.
-            var hue = this._hueByMcd && wp.mcd != null ? this._hueByMcd[String(wp.mcd)]
-                    : P.wardHue[String(wp.ward)];
-            if (hue == null) hue = P.wardHue['1'];
-            var wardNudge = wp.ward ? (Number(wp.ward) - 1) * 4 : 0;
-            var lift = (Number(wp.precinct) % 4) * P.wardLStep + wardNudge;
+            if (!inScope(wp)) continue;
+            var hue = wp.ward ? P.wardHue[String(wp.ward)] : P.scopeHue;
+            if (hue == null) hue = P.scopeHue;
+            var lift = (Number(wp.precinct) % 5) * P.wardLStep;
             this._fillRings(ctx, wp.rings,
               'hsla(' + hue + ',' + P.wardSat + '%,' + (P.wardL + lift) + '%,' +
               P.wardAlpha + ')', pt);
@@ -504,16 +531,42 @@
         ctx.lineCap = 'butt';
         for (var pj = 0; O.precincts !== false && pj < this._precincts.length; pj++) {
           var isAct = act && this._pid(this._precincts[pj]) === act;
-          ctx.globalAlpha = 0.9;
-          ctx.strokeStyle = P.precinctHalo;
-          ctx.lineWidth = (isAct ? 4.5 : 3.4);
-          this._strokeRings(ctx, this._precincts[pj].rings, pt);
-          ctx.globalAlpha = isAct ? 1 : 0.92;
+          // Outside the jurisdiction in scope the lines stay, faint, so the
+          // county still reads as precincts; inside it they are drawn to be
+          // seen. With no scope yet, everything is drawn to be seen.
+          var dim = scope && !inScope(this._precincts[pj]);
+          if (!dim) {
+            ctx.globalAlpha = 0.9;
+            ctx.strokeStyle = P.precinctHalo;
+            ctx.lineWidth = (isAct ? 4.5 : 3.4);
+            this._strokeRings(ctx, this._precincts[pj].rings, pt);
+          }
+          ctx.globalAlpha = dim ? 0.3 : isAct ? 1 : 0.92;
           ctx.strokeStyle = P.precinct;
-          ctx.lineWidth = isAct ? 2.6 : 1.7;
+          ctx.lineWidth = dim ? 1 : isAct ? 2.6 : 1.7;
           this._strokeRings(ctx, this._precincts[pj].rings, pt);
         }
         ctx.restore();
+
+        // The jurisdiction's own border, solid, over everything else in
+        // this pass: the line that says "this is the city or township your
+        // address is in", which is what a reader asked when they typed it.
+        if (this._scopeBorder && this._scopeBorder.length) {
+          ctx.save();
+          ctx.setLineDash([]);
+          ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          ctx.globalAlpha = 0.95;
+          ctx.strokeStyle = P.precinctHalo; ctx.lineWidth = 5.5;
+          ctx.beginPath();
+          for (var bs = 0; bs < this._scopeBorder.length; bs++) {
+            var sa = pt(this._scopeBorder[bs][0]), sb = pt(this._scopeBorder[bs][1]);
+            ctx.moveTo(sa[0], sa[1]); ctx.lineTo(sb[0], sb[1]);
+          }
+          ctx.stroke();
+          ctx.strokeStyle = P.scopeBorder; ctx.lineWidth = 2.8;
+          ctx.stroke();
+          ctx.restore();
+        }
       }
 
       // What the precinct pass actually drew, in screen pixels, for _labels
