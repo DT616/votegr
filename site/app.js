@@ -569,16 +569,14 @@
     return body ? '<div class="pp-meta">' + body + '</div>' : '';
   }
 
-  // True of every street box, so it is said once about all of them under the
-  // dates rather than eleven times down a column. The video monitoring is not
-  // our claim: MCL 168.761d requires the clerk to monitor each box. Worth
-  // saying either way -- someone routing around plate readers is entitled to
-  // know the destination is watched.
-  // Monitoring is true of every box: MCL 168.761d requires the clerk to
-  // monitor each one. Access is NOT -- the box in the City Hall lobby is open
-  // weekdays, 8 to 5, and somebody driving there on a Saturday with a ballot
-  // finds a locked building. So the sentence claims only what holds for all of
-  // them, and the rows carry hours wherever they differ.
+  // Said once under the dates rather than eleven times down a column.
+  // Monitoring is true of every box and is not our claim: MCL 168.761d
+  // requires the clerk to monitor each one, and someone routing around plate
+  // readers is entitled to know the destination is watched. Access is NOT
+  // true of every box -- the one in the City Hall lobby is open weekdays, 8
+  // to 5, and somebody driving there on a Saturday with a ballot finds a
+  // locked building. So the sentence claims only what holds for all of them,
+  // and the rows carry hours wherever they differ.
   function boxAccess() {
     var list = boxesFor(current);
     if (officeOnly(list)) {
@@ -590,8 +588,7 @@
     var odd = list.filter(function (b) {
       return !ALWAYS_OPEN.test(b.hours || '');
     }).length;
-    return 'Drop boxes are monitored by video surveillance, which Michigan law ' +
-      'requires.' +
+    return 'Drop boxes are monitored, as Michigan law requires.' +
       (odd ? ' Most are accessible 24/7; ' + (odd === 1 ? 'one is not, and its'
                                                         : odd + ' are not, and their') +
              ' hours are on the list.'
