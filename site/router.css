@@ -905,6 +905,11 @@ body {
    switch still lands in the bottom-left corner of the screen. */
 @media (max-width: 640px) {
   #siteFooter { grid-template-columns: auto 1fr; padding: 12px 18px 14px; }
+  /* With an answer up, a phone's column ends at the directions. The footer
+     -- calendar, theme switch, About -- is for the page before a search, and
+     under the step list it was one more screen to scroll past. It returns
+     with the reset button. */
+  body.has-result #siteFooter { display: none; }
   #siteFooter #electionFoot { grid-column: 1 / -1; grid-row: 1; justify-self: center; }
   #siteFooter .theme-switch { grid-column: 1; grid-row: 2; justify-self: start; }
   #siteFooter .sf-links { grid-column: 2; grid-row: 2; justify-self: end; }
