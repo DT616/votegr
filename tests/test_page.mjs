@@ -396,9 +396,12 @@ for (const w of WIDTHS) {
   ok('the About panel is full of links', linkColours.about > 4);
   ok('and no link is left the browser default blue or purple', linkColours.bad.length === 0);
   if (linkColours.bad.length) linkColours.bad.forEach(b => console.log('       ' + b));
-  ok('the About panel says plainly that this is a proof of concept',
-     await page.evaluate(() => /proof of concept/i.test(document.getElementById('aboutModal').innerText) &&
-       /estimate, not a record/i.test(document.getElementById('aboutModal').innerText)));
+  ok('the About panel says what the tool is and what it is for',
+     await page.evaluate(() => {
+       const t = document.getElementById('aboutModal').innerText;
+       return /What this is/i.test(t) && /maximizes your anonymity/i.test(t) &&
+              /proof of concept/i.test(t);
+     }));
   await page.evaluate(() => document.querySelector('#aboutModal .modal-x').click());
 
   ok('nothing failed to load and nothing threw', errors.length === 0);
