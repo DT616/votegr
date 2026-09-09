@@ -132,7 +132,11 @@ li[role=option][aria-selected=true] { background: var(--line); }
    and sit a step quieter. */
 .place { font-size: 1.15rem; font-weight: 700; color: var(--fg); }
 .ev-site .place { font-size: 1rem; font-weight: 600; }
-.note { margin-top: .3rem; font-style: italic; }   /* entrance instructions */
+/* Where to go once you are there. Body-white under the grey address, set
+   apart from it, with the label weighted -- the same treatment as the map
+   page's cards, so a reader who checks both recognises the second. */
+.note { margin-top: .45rem; color: var(--fg); }
+.note-l { font-weight: 600; }
 
 /* Warnings: election banner, boundary and consolidation advisories */
 

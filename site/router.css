@@ -572,6 +572,14 @@ body {
   letter-spacing: -.022em; margin-top: 2px;
 }
 .pp-addr { font-size: .93rem; color: var(--dim); line-height: 1.55; margin-top: 4px; }
+/* Under the address, set apart from it: where to go once you are there, and
+   when. The address is grey because it is the part you already know; these
+   are the parts you read on arrival, so they are body-white, and the label
+   is weighted so "Location:" is found before the eye reads the rest. */
+.pp-meta { margin-top: 8px; font-size: .93rem; line-height: 1.55; color: var(--fg); }
+.pp-meta > div + div { margin-top: 2px; }
+.pp-loc { color: var(--fg); }
+.pp-loc-l { font-weight: 600; }
 .pp-note {
   font-size: .87rem; margin-top: 12px; padding-top: 12px;
   border-top: 1px solid var(--line); color: var(--dim); line-height: 1.5;
@@ -621,7 +629,8 @@ body {
    should not read one as the other. */
 .bx-dist { font-weight: 400; font-size: .82rem; color: var(--dim);
            white-space: nowrap; }
-.bx-addr, .bx-where { color: var(--dim); font-size: .87rem; }
+.bx-addr { color: var(--dim); font-size: .87rem; }
+.bx-where { color: var(--fg); font-size: .87rem; margin-top: 3px; }
 /* Every box says when it can be used. The ordinary case is plain; the one
    that is not 24/7 is amber, so the exception reads as one against a column
    of white. */
