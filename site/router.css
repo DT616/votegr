@@ -1365,7 +1365,10 @@ ol.steps li .glyph {
 .map-legend .k.wardk {
   height: 15px; border-radius: 3px; border: 1px solid var(--line);
   background: linear-gradient(90deg,
-    var(--lg-ward1, hsl(265,54%,50%)) 0 33%,
-    var(--lg-ward2, hsl(190,54%,50%)) 33% 66%,
-    var(--lg-ward3, hsl(32,54%,50%)) 66%);
+    var(--lg-jur1, hsl(265,54%,50%)) 0 17%,
+    var(--lg-jur2, hsl(42,54%,50%)) 17% 34%,
+    var(--lg-jur3, hsl(180,54%,50%)) 34% 50%,
+    var(--lg-jur4, hsl(317,54%,50%)) 50% 67%,
+    var(--lg-jur5, hsl(95,54%,50%)) 67% 84%,
+    var(--lg-jur6, hsl(232,54%,50%)) 84%);
 }

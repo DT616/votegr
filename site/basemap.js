@@ -21,7 +21,13 @@
     3: { name: 'arterial', w: [0.7, 1.4, 2.8, 4.2], minZ: 11, casing: 1.1 },
     4: { name: 'collector',w: [0.5, 1.0, 2.2, 3.4], minZ: 12, casing: 1.0 },
     5: { name: 'local',    w: [0,   0.6, 1.6, 2.6], minZ: 13, casing: 0.9 },
-    6: { name: 'private',  w: [0,   0,   0.9, 1.6], minZ: 15, casing: 0    }
+    // Class 6 is "private" in the city, where it is a driveway or an alley
+    // and can wait for z15. In the townships it is 30% of every road there
+    // is -- gravel section roads carry the same class -- and drawn at zero
+    // width until z15 they left whole townships looking empty. So it gets a
+    // width from z13, thinner than a local street, and a casing so it reads
+    // as a road rather than a scratch on the land.
+    6: { name: 'private',  w: [0,   0.5, 1.2, 1.9], minZ: 13, casing: 0.6  }
   };
 
   // Street names the label pass skips. Alleys are not worth naming; ramps
@@ -52,8 +58,10 @@
       green:  '#1e2a24',
       rail:   '#333a45',
       casing: '#161a21',
+      // Local and private lifted off the land: at #2e343e on #20242c a local
+      // street was a rumour, and in a township that is most of the map.
       road: { motorway: '#4a5361', primary: '#3e4652', arterial: '#373e49',
-              collector: '#333944', local: '#2e343e', private: '#282d36' },
+              collector: '#353c48', local: '#38404d', private: '#333a46' },
       label:  '#c3ccd8', labelHalo: '#12161d', labelRoute: '#ffffff',
       wardHue: { '1': 265, '2': 190, '3': 32 },
       wardSat: 54, wardL: 50, wardLStep: 10, wardAlpha: .26,
@@ -70,7 +78,7 @@
       rail:   '#c9c5bc',
       casing: '#d5d1c7',
       road: { motorway: '#f0c97a', primary: '#fdf6e6', arterial: '#ffffff',
-              collector: '#ffffff', local: '#ffffff', private: '#f0ede6' },
+              collector: '#ffffff', local: '#ffffff', private: '#f9f7f2' },
       label:  '#4a4640', labelHalo: '#ffffff', labelRoute: '#1d1b17',
       wardHue: { '1': 265, '2': 190, '3': 32 },
       wardSat: 60, wardL: 46, wardLStep: 11, wardAlpha: .22,
@@ -180,7 +188,33 @@
     // anything, not only after a lookup.
     setPrecincts: function (list) {
       this._precincts = list || null;
+      // One hue per city or township, spread by the golden angle so that
+      // whichever thirty come out of the file, neighbours in the list -- and
+      // therefore, mostly, on the ground -- sit far apart on the wheel. The
+      // three ward hues used to do this job for a map that only ever showed
+      // one city; with thirty jurisdictions on it, the jurisdiction is the
+      // area a reader needs to tell from the one beside it.
+      var mcds = {}, order = [];
+      for (var i = 0; list && i < list.length; i++) {
+        var m = list[i].mcd;
+        if (m != null && !mcds[m]) { mcds[m] = 1; order.push(String(m)); }
+      }
+      order.sort();
+      this._hueByMcd = {};
+      for (var k = 0; k < order.length; k++) {
+        this._hueByMcd[order[k]] = Math.round((265 + k * 137.508) % 360);
+      }
+      this._hueOrder = order;
       this._redraw();
+    },
+
+    // What identifies a precinct: the state's 13-digit code where the list
+    // carries one, the bare number for the city-only files that do not. On
+    // a county map the number alone matched "Precinct 2" in every
+    // jurisdiction at once, and the fill that means "this one is yours" lit
+    // up all over the county.
+    _pid: function (pr) {
+      return pr.code != null ? String(pr.code) : String(pr.precinct);
     },
 
     // Which of the precinct overlays are drawn. Three wards of twenty-ish
@@ -348,10 +382,14 @@
       try {
         var rs = document.documentElement.style;
         rs.setProperty('--lg-precinct', P.precinct);
-        for (var wk in P.wardHue) {
-          if (!Object.prototype.hasOwnProperty.call(P.wardHue, wk)) continue;
-          rs.setProperty('--lg-ward' + wk,
-            'hsl(' + P.wardHue[wk] + ',' + P.wardSat + '%,' + P.wardL + '%)');
+        // Six of the jurisdiction hues for the legend swatch: enough to say
+        // "these areas are different colours" without pretending a swatch
+        // could key thirty.
+        var order = this._hueOrder || [];
+        for (var lk = 0; lk < 6; lk++) {
+          var mh = order[lk] != null ? this._hueByMcd[order[lk]] : P.wardHue[String(lk % 3 + 1)];
+          rs.setProperty('--lg-jur' + (lk + 1),
+            'hsl(' + mh + ',' + P.wardSat + '%,' + P.wardL + '%)');
         }
       } catch (e) {}
 
@@ -438,9 +476,14 @@
         if (O.wards) {
           for (var wi = 0; wi < this._precincts.length; wi++) {
             var wp = this._precincts[wi];
-            var hue = P.wardHue[String(wp.ward)];
+            // Hue by jurisdiction. Within it, precincts step in lightness
+            // by number so neighbours differ, and a ward, where the city has
+            // them, nudges the step so the wards still read as bands.
+            var hue = this._hueByMcd && wp.mcd != null ? this._hueByMcd[String(wp.mcd)]
+                    : P.wardHue[String(wp.ward)];
             if (hue == null) hue = P.wardHue['1'];
-            var lift = (Number(wp.precinct) % 5) * P.wardLStep;
+            var wardNudge = wp.ward ? (Number(wp.ward) - 1) * 4 : 0;
+            var lift = (Number(wp.precinct) % 4) * P.wardLStep + wardNudge;
             this._fillRings(ctx, wp.rings,
               'hsla(' + hue + ',' + P.wardSat + '%,' + (P.wardL + lift) + '%,' +
               P.wardAlpha + ')', pt);
@@ -448,7 +491,7 @@
         }
         if (act) {
           for (var pi = 0; pi < this._precincts.length; pi++) {
-            if (String(this._precincts[pi].precinct) !== act) continue;
+            if (this._pid(this._precincts[pi]) !== act) continue;
             this._fillRings(ctx, this._precincts[pi].rings, P.precinctFill, pt);
           }
         }
@@ -460,7 +503,7 @@
         ctx.setLineDash([7, 5]);
         ctx.lineCap = 'butt';
         for (var pj = 0; O.precincts !== false && pj < this._precincts.length; pj++) {
-          var isAct = act && String(this._precincts[pj].precinct) === act;
+          var isAct = act && this._pid(this._precincts[pj]) === act;
           ctx.globalAlpha = 0.9;
           ctx.strokeStyle = P.precinctHalo;
           ctx.lineWidth = (isAct ? 4.5 : 3.4);
@@ -498,7 +541,7 @@
           if (!pr.label) continue;
           var lp = pt(pr.label);
           if (lp[0] < 12 || lp[0] > cw - 12 || lp[1] < 12 || lp[1] > ch - 12) continue;
-          var isA = actP && String(pr.precinct) === actP;
+          var isA = actP && this._pid(pr) === actP;
           // The word, not just the digit: a bare "15" floating on a map
           // could be anything; "Precinct 15" says what it is. Smaller than
           // the digits were, since the word carries more ink. From z14 the
