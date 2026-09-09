@@ -256,6 +256,27 @@ for (const w of WIDTHS) {
   // innerText carries the CSS uppercasing, so compare case-insensitively.
   ok('300 Monroe Ave NW is Ward 2, Precinct 40',
      /ward\s*2\b/i.test(result.precinct) && /precinct\s*40\b/i.test(result.precinct));
+  ok('and says it is in Grand Rapids', /Grand Rapids/.test(result.precinct));
+
+  // Outside the city. The Kentwood Activities Center is a polling place,
+  // so its address is a fixture that names nobody's house. Kentwood has
+  // wards; a township would show none, and neither may show a blank one.
+  await page.fill('#addr', '355 48th St SE');
+  await page.press('#addr', 'Enter');
+  await page.waitForFunction(() =>
+    /Kentwood/.test(document.getElementById('precinctInfo').innerText), null,
+    { timeout: 15000 });
+  const kw = await page.evaluate(() => ({
+    info: document.getElementById('precinctInfo').innerText.replace(/\s+/g, ' '),
+    steps: document.getElementById('steps').innerText.trim().length,
+    routes: document.getElementById('routes').innerText,
+  }));
+  ok('a Kentwood address resolves, and says Kentwood', /Kentwood/.test(kw.info));
+  ok('with a precinct number', /Precinct\s*\d+/i.test(kw.info));
+  ok('and a polling place with a name', /Election day polling place/i.test(kw.info) &&
+     !/No polling place on file/i.test(kw.info));
+  ok('and directions to it', kw.steps > 0 || /already here/i.test(kw.routes));
+  ok('never a blank ward', !/Ward\s*(Precinct|$)/i.test(kw.info));
   ok('the map is drawn', result.mapShown && result.mapDrawn);
   // The answer carries its own Election day row; the column belongs to it.
   ok('the countdown stands down for the answer', result.countdownGone);

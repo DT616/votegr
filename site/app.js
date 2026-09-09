@@ -266,9 +266,19 @@
   // the view centre or the cursor, so the two cannot word one spot
   // differently.
   function scopeText(lat, lng) {
-    if (!insideCity(lat, lng)) return 'Outside the city';
     var pr = precinctAt(lat, lng);
-    return pr ? 'Ward ' + pr.ward + ' \u00b7 Precinct ' + pr.precinct : '';
+    return pr ? placeLine(pr) : 'Outside Kent County';
+  }
+
+  // "Grand Rapids \u00b7 Ward 2 \u00b7 Precinct 40", or "Kentwood \u00b7 Ward 1
+  // \u00b7 Precinct 3", or "Ada Township \u00b7 Precinct 4". The ward only where the
+  // jurisdiction has them: 99 of the county's 202 precincts do not, and a
+  // "Ward" with nothing after it would read as a gap in the data rather than
+  // a fact about the township.
+  function placeLine(pr) {
+    return (pr.jurisdiction ? esc(pr.jurisdiction) + ' \u00b7 ' : '') +
+      (pr.ward != null && pr.ward !== '' ? 'Ward ' + esc(pr.ward) + ' \u00b7 ' : '') +
+      'Precinct ' + esc(pr.precinct);
   }
 
   // One builder for "what precinct is this", fed by both input worlds:
@@ -291,10 +301,14 @@
   // Picking sets the choice for that kind, which the card then shows and the
   // router then drives to. The two used to disagree: the map went to the
   // library you picked while the card still named the nearest.
-  var LIST_TITLES = {
-    dropbox: 'Ballot drop boxes in Grand Rapids city',
-    early: 'Early voting sites in Grand Rapids city',
-  };
+  // Named at the moment the panel opens, not when the page loads: the
+  // jurisdiction is whichever one the current answer is in, and at load
+  // there is no answer yet. (Built as a constant, this read "Ballot drop
+  // boxes in " with nothing after it.)
+  function listTitle(kind) {
+    var where = (current && current.jurisdiction) || 'Grand Rapids';
+    return (kind === 'dropbox' ? 'Ballot drop boxes in ' : 'Early voting sites in ') + where;
+  }
 
   function wirePlaceLists(r) {
     var wrap = $('placeModal'), body = $('placeModalBody'), title = $('placeTitle');
@@ -311,7 +325,7 @@
       var opt = opts.filter(function (o) { return o.kind === kind; })[0];
       if (!btn || !opt) return;
       btn.onclick = function () {
-        title.textContent = LIST_TITLES[kind];
+        title.textContent = listTitle(kind);
         body.innerHTML = placeListHtml(kind, opt);
         wrap.hidden = false;
         var x = wrap.querySelector('.modal-x');
@@ -361,7 +375,7 @@
     });
     // The City Hall boxes are real and cannot be driven to as an address, so
     // they are listed and plainly not offered as a destination.
-    if (kind === 'dropbox') {
+    if (kind === 'dropbox' && inGrandRapids(current)) {
       ((clerk && clerk.unrouted) || []).forEach(function (b) {
         html += '<li class="bx-noroute"><span class="bx-name">' +
           esc(boxLabel(b)) + '</span><span class="bx-where">' +
@@ -492,7 +506,7 @@
   // finds a locked building. So the sentence claims only what holds for all of
   // them, and the rows carry hours wherever they differ.
   function boxAccess() {
-    var odd = ((clerk && clerk.boxes) || []).filter(function (b) {
+    var odd = boxesFor(current).filter(function (b) {
       return !ALWAYS_OPEN.test(b.hours || '');
     }).length;
     return 'Drop boxes are monitored by video surveillance, which Michigan law ' +
@@ -514,9 +528,9 @@
   }
 
   function precinctInfoHtml(pr) {
-    var place = P && P.pollingPlace(pr.precinct);
+    var place = P && P.pollingPlace(P.idOf(pr));
     return '<div class="destpop">' +
-      '<div class="dt">Ward ' + esc(pr.ward) + ' \u00b7 Precinct ' + esc(pr.precinct) + '</div>' +
+      '<div class="dt">' + placeLine(pr) + '</div>' +
       (place ? '<div class="dn">' + esc(displayCase(place.name)) + '</div>' +
                '<div class="da">' + esc(addressForDisplay(place.address)) + '</div>' +
                (place.entrance_note ? '<div class="de">' + esc(place.entrance_note) + '</div>' : '')
@@ -638,7 +652,7 @@
       // card under the map that the markers use, with the same dismissals
       // (close button, Escape, a tap outside the city). Marker clicks do not
       // bubble here, so their own detail is never overridden.
-      var pr = insideCity(e.latlng.lat, e.latlng.lng) && precinctAt(e.latlng.lat, e.latlng.lng);
+      var pr = precinctAt(e.latlng.lat, e.latlng.lng);
       if (pr) showDetail(precinctInfoHtml(pr));
       else hideDetail();
     });
@@ -790,30 +804,64 @@
     });
   }
 
+  // The address index for every jurisdiction in the county, and where each
+  // precinct votes. precincts.json is read first because it says which
+  // jurisdictions exist; then one address file and one polling file per
+  // jurisdiction, all at once -- they are small, 2.8 MiB for the whole county
+  // before compression, and unlike the graph they are consumed as they are.
+  // Grand Rapids' polling.json rides along as the source of record for the
+  // city: hand-transcribed, with entrance notes and the one consolidation the
+  // county's page does not carry.
+  function loadCountyIndex() {
+    return loadJson('precincts').then(function (index) {
+      var mcds = (index.jurisdictions || []).map(function (j) { return j.mcd; });
+      return Promise.all([
+        Promise.all(mcds.map(function (m) { return loadJson('addresses/' + m); })),
+        Promise.all(mcds.map(function (m) { return loadJson('polling/' + m, true); })),
+        loadJson('polling', true)
+      ]).then(function (parts) {
+        return {
+          index: index,
+          P: Precincts.county({
+            index: index,
+            addresses: parts[0],
+            polling: parts[1].filter(Boolean),
+            cityPolling: parts[2],
+            cityMcd: GR_MCD
+          })
+        };
+      });
+    });
+  }
+
   function loadData() {
     var input = $('addr');
     input.disabled = true;
     Promise.all([
-      loadCountyGraph(), loadJson('cameras'), loadJson('addresses'), loadJson('polling'),
+      loadCountyGraph(), loadJson('cameras'), loadCountyIndex(),
       loadJson('boundary', true), loadJson('elections', true), loadJson('landcover', true),
-      loadJson('neighbors', true), loadJson('precincts', true),
+      loadJson('neighbors', true),
       loadJson('gr-clerk', true), loadJson('sources', true)
     ]).then(function (res) {
-      var cameraData = res[1], addresses = res[2], polling = res[3];
-      var boundary = res[4], calendar = res[5], landcover = res[6];
-      var neighborData = res[7], precinctData = res[8], clerkData = res[9];
-      var sourceData = res[10];
+      var cameraData = res[1], county = res[2];
+      var boundary = res[3], calendar = res[4], landcover = res[5];
+      var neighborData = res[6], clerkData = res[7];
+      var sourceData = res[8];
 
       graph = res[0];
       cachedCameras = cameraData.cameras;
-      P = new Precincts(addresses, polling);
+      P = county.P;
+      var precinctData = county.index;
       drawPollingPlaces();
       if (boundary && boundary.rings) {
         // boundary.json stores [lng, lat]; everything here wants [lat, lng].
+        // The city limits are no longer drawn as a veil -- the lookup covers
+        // the whole county, so a veil at the city line would mark the wrong
+        // edge -- but they still decide which jurisdiction's own clerk data
+        // applies, which only Grand Rapids has.
         cityRings = boundary.rings.map(function (ring) {
           return ring.map(function (p) { return [p[1], p[0]]; });
         });
-        drawBoundary();
       }
       neighbors = (neighborData && neighborData.streets) || null;
       precincts = (precinctData && precinctData.precincts) || null;
@@ -883,12 +931,12 @@
     }).addTo(boundaryLayer);
   }
 
-  // Inside the city limits? Decides which cameras are shown and counted, and
-  // whether a tapped spot can be answered at all. The same ray cast as the
-  // precinct lookup, so the veil, the markers and the answer always agree.
-  // With no boundary file loaded, everything counts as inside.
+  // Inside the city limits? Only one thing still turns on this: whether the
+  // city clerk's own data applies to a dropped pin. Coverage is decided by
+  // the precinct polygons now, which reach every jurisdiction in the county.
+  // With no boundary file loaded, nothing counts as inside the city.
   function insideCity(lat, lng) {
-    return !cityRings || Precincts.pointInRings(lat, lng, cityRings);
+    return !!cityRings && Precincts.pointInRings(lat, lng, cityRings);
   }
 
   // Every polling place in the city, shown from the start. This is a voting
@@ -1104,6 +1152,16 @@
   // city street is what this tool can answer, and one that matches should
   // never be pushed down the list by a neighbour.
   var GR_CITY = 'Grand Rapids city';
+  var GR_MCD = '34000';      // the state's MCD code for the City of Grand Rapids
+
+  // Whether a result is in the one jurisdiction whose own clerk data this
+  // page carries. The city clerk's file has the early voting sites and drop
+  // boxes for Grand Rapids and nothing else; every other jurisdiction's drop
+  // boxes come from the county's page, and its early voting sites are not
+  // shown at all, because the county's list is for the wrong election.
+  function inGrandRapids(r) {
+    return !!(r && r.mcd === GR_MCD);
+  }
 
   function suggestWithNeighbours(text, limit) {
     var out = P.suggest(text, limit) || [];
@@ -1142,11 +1200,10 @@
            esc(item.where[item.where.length - 1]))
       : 'another jurisdiction';
     setHint('');
-    showError('That address is in ' + where + ', not the City of Grand ' +
-      'Rapids, so this tool cannot say where you vote. A Grand Rapids mailing ' +
-      'address does not always mean you live in the city. Your clerk is the ' +
-      'one for ' + where + ', and the Michigan Voter Information Center at ' +
-      'mvic.sos.state.mi.us will have your polling place.');
+    showError('That address is in ' + where + ', which this tool does not ' +
+      'have an address index for, so it cannot say where you vote. The ' +
+      'Michigan Voter Information Center at mvic.sos.state.mi.us will have ' +
+      'your polling place.');
   }
 
   // Most of the "Grand Rapids" postal area is not the City of Grand Rapids.
@@ -1163,16 +1220,13 @@
     if (hit && hit.length) {
       var where = hit.length === 1 ? esc(hit[0])
         : esc(hit.slice(0, -1).join(', ')) + ' or ' + esc(hit[hit.length - 1]);
-      return 'That street is in ' + where + ', not the City of Grand Rapids. ' +
-        'A Grand Rapids mailing address does not always mean you live in the ' +
-        'city, and this tool only covers the city. Your clerk is the one for ' +
-        where + '.';
+      return 'That street is in ' + where + ', which this tool does not have ' +
+        'an address index for. Your clerk is the one for ' + where + '.';
     }
-    return 'No City of Grand Rapids street matches that. Check the spelling, ' +
-      'or type just the street name to see the options. Note that many ' +
-      'Grand Rapids mailing addresses are outside the city limits, in ' +
-      'Wyoming, Kentwood, Walker, East Grand Rapids or one of the townships, ' +
-      'and those are not covered here.';
+    return 'No Kent County street matches that. Check the spelling, or type ' +
+      'just the street name to see the options. This tool covers Kent ' +
+      'County, Michigan; an address in Ottawa, Allegan, Barry, Ionia, ' +
+      'Montcalm or Newaygo County is not in it.';
   }
 
   // ---- dropped pin -----------------------------------------------------
@@ -1214,25 +1268,22 @@
 
   function pinLookup(lat, lng) {
     if (!graph || !P) return;
-    if (!insideCity(lat, lng)) {
-      $('addr').value = ''; ac.close();
-      showError('That spot is outside the City of Grand Rapids, and this ' +
-        'tool covers the city only. Precincts and polling places out there ' +
-        'belong to another clerk.');
-      return;
-    }
     resetChoices();
     var pr = precinctAt(lat, lng);
     if (!pr) {
-      showError('Could not place that spot in a precinct. Try dropping the ' +
+      $('addr').value = ''; ac.close();
+      showError('That spot is outside Kent County, or not in any precinct ' +
+        'we have. This tool covers Kent County, Michigan. Try dropping the ' +
         'pin on a street, or type the address instead.');
       return;
     }
-    var place = P.pollingPlace(pr.precinct);
+    var who = P.describe(P.idOf(pr));
+    var place = P.pollingPlace(who.code);
     $('addr').value = ''; ac.close();
     setHint('Routing from your dropped pin. Type an address to switch back.');
-    show({ pin: true, lat: lat, lng: lng,
-           precinct: pr.precinct, ward: pr.ward, place: place });
+    show({ pin: true, lat: lat, lng: lng, code: who.code,
+           precinct: who.precinct, ward: who.ward,
+           jurisdiction: who.jurisdiction, mcd: who.mcd, place: place });
   }
 
   // ---- the answer ------------------------------------------------------
@@ -1263,8 +1314,13 @@
     // than a row of their own: that is what keeps both place names starting
     // at the same x. The identity names the whole answer, not its first row.
     var html = '<div class="vi-rows"><div class="vi-grid"><div class="vi-rail">' +
-      (r.ward ? '<div><div class="vi-lbl">Ward</div>' +
-                '<div class="vi-num">' + esc(r.ward) + '</div></div>' : '') +
+      // The jurisdiction first: it is what a precinct number means anything
+      // relative to, now that there is a Precinct 1 in twenty-nine places.
+      (r.jurisdiction ? '<div><div class="vi-lbl">Where you vote</div>' +
+                        '<div class="vi-name">' + esc(r.jurisdiction) + '</div></div>' : '') +
+      (r.ward != null && r.ward !== ''
+        ? '<div><div class="vi-lbl">Ward</div>' +
+          '<div class="vi-num">' + esc(r.ward) + '</div></div>' : '') +
       '<div><div class="vi-lbl">Precinct</div>' +
       '<div class="vi-num">' + esc(r.precinct) + '</div></div></div>';
 
@@ -1320,7 +1376,12 @@
       var ev = evState.site
         ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
         : null;
-      evHtml += '<div class="vi-where vi-ev-site' + (ev ? customClass('early') : ' vi-full') + '"' +
+      // Always a two-column row, whether or not a site is named. With no
+      // site this cell used to span both columns and push the dates onto a
+      // line of their own, so "upcoming" read as a different shape from
+      // "open"; a row that says "No site published yet" beside its dates is
+      // the same row with one fact missing, and should look like it.
+      evHtml += '<div class="vi-where vi-ev-site' + (ev ? customClass('early') : '') + '"' +
         (ev ? ' data-kind="early"' : '') + '>' +
         '<div class="vi-lbl">' +
         esc(placeLabel('early', 'Early voting site nearest to you')) + '</div>' +
@@ -1621,10 +1682,11 @@
         return { label: 'Early voting upcoming',
                  status: Elections.dayMonth(window.early_voting_from) +
                          ' to ' + Elections.dayMonth(to),
-                 site: clerkForThisElection() };
+                 site: inGrandRapids(current) && clerkForThisElection() };
       default:
         return { label: 'Early voting open',
-                 status: 'Through ' + Elections.dayMonth(to), site: true };
+                 status: 'Through ' + Elections.dayMonth(to),
+                 site: inGrandRapids(current) };
     }
   }
 
@@ -1810,6 +1872,32 @@
 
   var ARRIVED_M = 150;
 
+  // The drop boxes that apply to this result. Grand Rapids: the city clerk's
+  // file, the source of record. Anywhere else: the county's page for that
+  // jurisdiction, geocoded at build time; only the ones that were placed can
+  // be offered as somewhere to drive.
+  function boxesFor(r) {
+    if (!r) return [];
+    if (inGrandRapids(r)) return (clerk && clerk.boxes) || [];
+    return (P ? P.dropBoxes(r.mcd) : []).filter(function (b) {
+      return b.lat && b.lng;
+    }).map(normaliseHours);
+  }
+
+  // The county writes "24 hours a day, 7 days a week" where the city clerk
+  // writes "24/7", and the page tells the two apart by the short form: an
+  // hours string that is not "24/7" is shown in amber as an exception, and
+  // counted in "N are not accessible 24/7". Left as written, every box in
+  // Kentwood was an exception. The scrape stays the record of what the page
+  // said; this is the reading of it.
+  var ROUND_THE_CLOCK = /24\s*hours?\s*(a|per)\s*day.*7\s*days/i;
+  function normaliseHours(b) {
+    if (b.hours && ROUND_THE_CLOCK.test(b.hours)) {
+      return Object.assign({}, b, { hours: '24/7', hours_as_written: b.hours });
+    }
+    return b;
+  }
+
   // What the finish flag calls itself.
   function destSub(pick, r) {
     return pick.kind === 'early' ? 'Early voting site'
@@ -1822,8 +1910,12 @@
     var origin = r.pin ? { lat: r.lat, lng: r.lng }
                        : graph.geocode(r.number, r.street);
 
-    // The clerk's own sites when we have them, the calendar's otherwise.
-    var sites = (clerkForThisElection() && clerk.sites.length) ? clerk.sites
+    // The clerk's own sites when we have them, the calendar's otherwise --
+    // and only for Grand Rapids. Both lists are the city's; offering them to
+    // a Kentwood voter would send them to the wrong clerk's early voting
+    // site, and the county's own list is for the August primary.
+    var sites = !inGrandRapids(r) ? []
+              : (clerkForThisElection() && clerk.sites.length) ? clerk.sites
               : Elections.sites(activeEl).filter(function (s) { return s.lat && s.lng; });
     var evState = Elections.windowState(evWindow());
     var ranked = nearest(origin, sites);
@@ -1837,7 +1929,7 @@
       out.push({ kind: 'polling', label: 'Election day', place: r.place });
     }
 
-    var boxes = nearest(origin, clerk && clerk.boxes);
+    var boxes = nearest(origin, boxesFor(r));
     if (boxes) {
       out.push({ kind: 'dropbox', label: 'Drop box',
                  place: boxes[chosen.dropbox] || boxes[0],
