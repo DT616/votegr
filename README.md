@@ -143,6 +143,16 @@ since the two datasets share no keys, and a restriction whose geometry does not
 match cleanly is dropped rather than guessed, because a wrong restriction
 silently forbids a legal turn.
 
+**Testing the engine on any pair of addresses.** Add `?debug` to the page
+URL and a panel appears under the search box with a From and a To field,
+each taking a street address or a `lat,lng` pair. The run goes through the
+same parse, geocode, precinct and snap steps the answer does, computes both
+routes with the same code, draws them on the map, and dumps every number the
+engine has as JSON: where each end landed and why, how far it snapped, the
+metres, seconds and camera count of each route, and the turn list. The
+result URL is shareable, so `?debug&from=…&to=…` reproduces a case in one
+click. Nothing about the panel is loaded unless the parameter is present.
+
 
 ## Checking the data
 
