@@ -533,6 +533,10 @@
   var ALWAYS_OPEN = /^24\/7$/;
 
   function boxLabel(box) {
+    // An office name is composed here, already cased, with an apostrophe
+    // displayCase would capitalise after ("Clerk'S"). Everything else comes
+    // from a file in whatever case it was typed and needs the treatment.
+    if (box.office) return box.name;
     return displayCase(box.name || box.address || 'Drop box');
   }
 
@@ -1538,12 +1542,21 @@
     // that were only ever made there, what the tool is not and the reminder
     // that a route is not permission to ignore a sign, lead and close this
     // note instead.
+    // Whose clerk to double-check with is the jurisdiction's own. The city
+    // has a page to link; a township has the phone number the county
+    // publishes for its clerk, which is the same thing said the way a
+    // township says it.
+    var office = !inGrandRapids(r) && P && r.mcd ? P.clerkOf(r.mcd) : null;
+    var whom = inGrandRapids(r) || !r.jurisdiction
+      ? '<a href="https://www.grandrapidsmi.gov/departments/clerks-office/" ' +
+        'target="_blank" rel="noopener">Grand Rapids City Clerk</a>'
+      : 'the ' + esc(r.jurisdiction) + ' clerk' +
+        (office && office.phone ? ' (' + esc(office.phone) + ')' : '');
     var adv = ['<strong>Not an official government tool.</strong> Your voting ' +
       'location is based on the address where you registered to vote, not ' +
       'what you enter here. If you are not sure the entered address is the ' +
-      'same, double-check with the ' +
-      '<a href="https://www.grandrapidsmi.gov/departments/clerks-office/" ' +
-      'target="_blank" rel="noopener">Grand Rapids City Clerk</a> or the ' +
+      'same, double-check with ' + (inGrandRapids(r) || !r.jurisdiction ? 'the ' : '') +
+      whom + ' or the ' +
       '<a href="https://mvic.sos.state.mi.us/" target="_blank" ' +
       'rel="noopener">Michigan Voter Information Center</a>.'];
     if (r.rivals) adv.push('This address sits on a precinct line and could be in ' +
