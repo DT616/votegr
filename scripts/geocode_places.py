@@ -462,6 +462,17 @@ def main():
         # "4900 Breton Avenue SE"). So take whichever field parses as an
         # address rather than trusting either name. Reading only `name` said
         # thirteen boxes had no address at all when all thirteen do.
+        # The clerk's own office. Twenty-four of the thirty jurisdictions
+        # publish no drop box at all, and an absentee ballot has to go to the
+        # voter's OWN clerk under MCL 168.764a, so for those the office is the
+        # place to return it -- and the page can only offer it as somewhere to
+        # drive if it has a coordinate. The address often trails a P.O. Box
+        # and a second mailing line; split_address takes the first part that
+        # starts with a number, which is the street address.
+        if document.get("clerk") and document["clerk"].get("address"):
+            stamp(document["clerk"], document["clerk"]["address"], index, stats,
+                  misses, f"{where} clerk's office", bbox,
+                  pending, f"c:{mcd}", mcd)
         for slot, box in enumerate(document.get("drop_boxes") or []):
             written = next((v for v in (box.get("address"), box.get("name"))
                             if split_address(v)), box.get("name"))

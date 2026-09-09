@@ -307,6 +307,9 @@
   // boxes in " with nothing after it.)
   function listTitle(kind) {
     var where = (current && current.jurisdiction) || 'Grand Rapids';
+    if (kind === 'dropbox' && officeOnly(boxesFor(current))) {
+      return 'Returning an absentee ballot in ' + where;
+    }
     return (kind === 'dropbox' ? 'Ballot drop boxes in ' : 'Early voting sites in ') + where;
   }
 
@@ -365,7 +368,10 @@
         // "Open 24/7" is a whole sentence; a bare "Mon-Fri, 8am to 5pm" is not,
         // and next to an address it can be read as the hours of the building
         // rather than of the box. The label says which.
-        (b.hours
+        (b.office
+          ? '<span class="bx-hours-odd">Office hours' +
+            (b.phone ? ' \u00b7 ' + esc(b.phone) : '') + '</span>'
+          : b.hours
           ? '<span class="' + (ALWAYS_OPEN.test(b.hours) ? 'bx-hours' : 'bx-hours-odd') +
             '">' + (ALWAYS_OPEN.test(b.hours) ? 'Open 24/7'
                                               : 'Open hours: ' + esc(b.hours)) + '</span>'
@@ -456,8 +462,8 @@
     if (today < from) {
       return { label: 'Absentee voting upcoming', status: range, live: true,
                note: 'Absentee ballots are mailed from ' +
-                     Elections.monthDay(from) + '. Boxes accept them from then '
-                     + 'until the polls close on election day. ' + boxAccess() };
+                     Elections.monthDay(from) + '. They can be returned from '
+                     + 'then until the polls close on election day. ' + boxAccess() };
     }
     if (today > activeEl.date) {
       return { label: 'Absentee voting closed', status: range };
@@ -506,7 +512,14 @@
   // finds a locked building. So the sentence claims only what holds for all of
   // them, and the rows carry hours wherever they differ.
   function boxAccess() {
-    var odd = boxesFor(current).filter(function (b) {
+    var list = boxesFor(current);
+    if (officeOnly(list)) {
+      return 'No ballot drop box is published for ' +
+        esc((current && current.jurisdiction) || 'this jurisdiction') +
+        '. An absentee ballot has to be returned to your own clerk, so the ' +
+        'clerk\u2019s office is where it goes, during office hours.';
+    }
+    var odd = list.filter(function (b) {
       return !ALWAYS_OPEN.test(b.hours || '');
     }).length;
     return 'Drop boxes are monitored by video surveillance, which Michigan law ' +
@@ -1346,20 +1359,27 @@
       boxHtml += '<div class="vi-where vi-dropbox' + customClass('dropbox') +
         '" data-kind="dropbox">' +
         '<div class="vi-lbl">' +
-        esc(placeLabel('dropbox', 'Ballot drop box nearest to you')) + '</div>' +
+        esc(placeLabel('dropbox', box.place.office
+                                    ? 'Where to return an absentee ballot'
+                                    : 'Ballot drop box nearest to you')) + '</div>' +
         '<div class="pp-name">' + esc(boxLabel(box.place)) + '</div>' +
         '<div class="pp-addr">' + esc(addressForDisplay(box.place.address)) +
         (box.place.note
           ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') +
-        (box.place.hours
+        (box.place.office
+          ? '<br><strong class="bx-hours-odd">Office hours' +
+            (box.place.phone ? ' \u00b7 ' + esc(box.place.phone) : '') + '</strong>'
+          : box.place.hours
           ? (ALWAYS_OPEN.test(box.place.hours)
               ? '<br>Open 24/7'
               : '<br><strong class="bx-hours-odd">Open hours: ' +
                 esc(box.place.hours) + '</strong>')
           : '') +
         '</div>' +
-        '<button type="button" class="box-open" id="boxListBtn">' +
-        'Show all drop box locations</button>';
+        // One office is not a list to show all of.
+        (box.place.office ? '' :
+          '<button type="button" class="box-open" id="boxListBtn">' +
+          'Show all drop box locations</button>');
       boxHtml += '</div>';
 
       boxHtml += whenCell('dropbox', absenteeState(), '');
@@ -1879,9 +1899,29 @@
   function boxesFor(r) {
     if (!r) return [];
     if (inGrandRapids(r)) return (clerk && clerk.boxes) || [];
-    return (P ? P.dropBoxes(r.mcd) : []).filter(function (b) {
+    var boxes = (P ? P.dropBoxes(r.mcd) : []).filter(function (b) {
       return b.lat && b.lng;
     }).map(normaliseHours);
+    if (boxes.length) return boxes;
+    // No box published -- true of 24 of the 30 jurisdictions. The ballot
+    // still has to go somewhere, and the law says where: the voter's own
+    // clerk. So the clerk's office is offered as the place to return it,
+    // marked as an office so nothing downstream calls it a box, gives it
+    // hours it does not keep, or says it is watched.
+    var office = P ? P.clerkOf(r.mcd) : null;
+    if (!office || !office.lat || !office.lng) return [];
+    return [{
+      name: (r.jurisdiction || 'Your') + ' Clerk\u2019s Office',
+      address: String(office.address || '').split(',')[0],
+      phone: office.phone || null,
+      lat: office.lat, lng: office.lng,
+      hours: null, office: true
+    }];
+  }
+
+  // The drop-off list is the clerk's office rather than any box.
+  function officeOnly(list) {
+    return !!(list && list.length && list[0].office);
   }
 
   // The county writes "24 hours a day, 7 days a week" where the city clerk

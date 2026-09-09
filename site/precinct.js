@@ -37,6 +37,7 @@
     this.polling = (polling && polling.precincts) || {};
     this.byCode = null;
     this.boxes = {};
+    this.clerks = {};
   }
 
   // opts: { index: precincts.json, addresses: [chunk...], polling: [chunk...],
@@ -48,6 +49,7 @@
     P.streets = {};
     P.polling = {};
     P.boxes = {};
+    P.clerks = {};
     P.byCode = {};
     P.jurisdictions = {};
     var i, j, code;
@@ -105,6 +107,7 @@
         if (Object.prototype.hasOwnProperty.call(recs, code)) P.polling[code] = recs[code];
       }
       if (pd.mcd && pd.drop_boxes) P.boxes[pd.mcd] = pd.drop_boxes;
+      if (pd.mcd && pd.clerk) P.clerks[pd.mcd] = pd.clerk;
     }
     var cityMcd = opts.cityMcd || '34000';
     var cityRecs = (opts.cityPolling && opts.cityPolling.precincts) || {};
@@ -165,6 +168,14 @@
   // come from the city clerk's file instead and are not here.
   Precincts.prototype.dropBoxes = function (mcd) {
     return (this.boxes && this.boxes[mcd]) || [];
+  };
+
+  // The jurisdiction's own clerk: address, phone, and a coordinate where the
+  // build could place it. Where no drop box is published this is where an
+  // absentee ballot goes, because under MCL 168.764a it has to reach the
+  // voter's own clerk and nobody else's.
+  Precincts.prototype.clerkOf = function (mcd) {
+    return (this.clerks && this.clerks[mcd]) || null;
   };
 
   // "250 Monroe Ave. NW" -> { number: 250, rest: "MONROE AVE NW" }

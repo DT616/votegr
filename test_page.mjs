@@ -277,6 +277,32 @@ for (const w of WIDTHS) {
      !/No polling place on file/i.test(kw.info));
   ok('and directions to it', kw.steps > 0 || /already here/i.test(kw.routes));
   ok('never a blank ward', !/Ward\s*(Precinct|$)/i.test(kw.info));
+
+  // A township with no published drop box. Ada Township is one of the 24;
+  // the fixture is a polling place there. The answer has to name the
+  // clerk's office as where an absentee ballot goes -- never a neighbouring
+  // jurisdiction's box, which by law cannot take it -- and must not describe
+  // an office as open 24/7 or under video monitoring.
+  await page.fill('#addr', '6330 Ada Dr SE');
+  await page.press('#addr', 'Enter');
+  await page.waitForFunction(() =>
+    /Ada Township/.test(document.getElementById('precinctInfo').innerText), null,
+    { timeout: 15000 });
+  const ada = await page.evaluate(() => ({
+    info: document.getElementById('precinctInfo').innerText.replace(/\s+/g, ' '),
+    box: (document.querySelector('.vi-dropbox') || {}).innerText || '',
+    note: (document.querySelector('.vi-when-dropbox') || {}).innerText || '',
+    ward: !!document.querySelector('.vi-rail .vi-num + .vi-lbl'),
+  }));
+  ok('a township with no drop box names its clerk\'s office instead',
+     /Clerk.s Office/i.test(ada.box));
+  ok('and labels it as where to return a ballot, not as a box',
+     /return an absentee ballot/i.test(ada.box));
+  ok('and says plainly that no box is published',
+     /No ballot drop box is published for Ada Township/.test(ada.note));
+  ok('and never claims 24\/7 or video monitoring for an office',
+     !/24\/7/.test(ada.box) && !/surveillance/.test(ada.note));
+  ok('a township shows no Ward at all', !/\bWard\b/.test(ada.info));
   ok('the map is drawn', result.mapShown && result.mapDrawn);
   // The answer carries its own Election day row; the column belongs to it.
   ok('the countdown stands down for the answer', result.countdownGone);
