@@ -399,6 +399,28 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
      noBox.every((j) => { const c = C.clerkOf(j.mcd); return c && c.lat && c.lng && c.phone; }));
 }
 
+// --- the polls clock ------------------------------------------------------
+// On election day the banner stops counting to the day and counts the polls:
+// to 7 AM, then to 8 PM, then says they have closed. The phase is decided
+// from a fixed instant here so it can be checked at times that are not now.
+{
+  const E = require('./site/elections.js');
+  const hours = { open: '7:00 AM', close: '8:00 PM' };
+  const el = { date: '2026-11-03', name: 'General Election' };
+  const at = (h, m) => new Date(2026, 10, 3, h, m || 0);   // local time
+  ok('polls: 7:00 AM parses to 07:00 local', E.atTime('2026-11-03', '7:00 AM').getHours() === 7);
+  ok('polls: 8:00 PM parses to 20:00 local', E.atTime('2026-11-03', '8:00 PM').getHours() === 20);
+  ok('polls: 12:00 AM is midnight, not noon', E.atTime('2026-11-03', '12:00 AM').getHours() === 0);
+  ok('polls: unreadable hours give null, not a guess', E.atTime('2026-11-03', 'dawn') === null);
+  ok('polls: the day before is not a phase', E.pollsPhase(el, hours, new Date(2026, 10, 2, 23, 59)) === null);
+  ok('polls: 6:59 AM is before', E.pollsPhase(el, hours, at(6, 59)) === 'before');
+  ok('polls: 7:00 AM is open', E.pollsPhase(el, hours, at(7)) === 'open');
+  ok('polls: 7:59 PM is still open', E.pollsPhase(el, hours, at(19, 59)) === 'open');
+  ok('polls: 8:00 PM is closed', E.pollsPhase(el, hours, at(20)) === 'closed');
+  ok('polls: 11:59 PM is still closed, not the next election', E.pollsPhase(el, hours, at(23, 59)) === 'closed');
+  ok('polls: no hours means no phase', E.pollsPhase(el, null, at(12)) === null);
+}
+
 // --- inferred addresses must defer to the precinct boundary --------------
 // 401 Ionia Ave SW is not in the parcel index. Its only nearby rows are 400,
 // 404 and 408, which sit across the street on the far side of a boundary that

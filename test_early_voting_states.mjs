@@ -162,6 +162,41 @@ for (const [name, data, want, routedWant] of ORDER_CASES) {
     return on ? on.textContent.trim() : null;
   });
 
+  // On the day, the banner counts the polls rather than the day: one of
+  // three labels, hours-minutes-seconds with no Days unit, and the sentence
+  // under it names a poll time rather than a date. Which of the three
+  // depends on the clock this runs at, so all three are accepted and the
+  // old "Election Day is In:" is not.
+  const banner = await page.evaluate(() => ({
+    label: document.getElementById('cdLabel').textContent.trim(),
+    units: [...document.querySelectorAll('#cdClock .cd-lab')].map((e) => e.textContent),
+    said: document.getElementById('cdSaid').textContent,
+  }));
+  if (want[0] === 'polling') {
+    ok(`${name}: the banner counts the polls (${banner.label})`,
+       /^Polls (Open In|Close In|Have Closed):$/.test(banner.label));
+    ok(`${name}: with no Days unit`, !banner.units.includes('Days'));
+    ok(`${name}: and says when the polls open, close, or that they have`,
+       /7 AM|8 PM|in line/.test(banner.said));
+  } else {
+    ok(`${name}: away from the day it counts to the day`,
+       banner.label === 'Election Day is In:' && banner.units[0] === 'Days');
+  }
+
+  // /simple reads the same calendar and the same hours, and must say the
+  // same thing about the polls on the day, in its own single line.
+  const simple = await browser.newPage();
+  await simple.goto(URL_.replace('/index.html', '/simple/index.html'), { waitUntil: 'networkidle' });
+  await simple.waitForFunction(() => !document.getElementById('election').hidden, null, { timeout: 15000 });
+  const line = await simple.evaluate(() => document.getElementById('election').textContent);
+  await simple.close();
+  if (want[0] === 'polling') {
+    ok(`${name}: /simple counts the polls too (${line.slice(0, 22).trim()})`,
+       /^Polls (open in \d+:\d\d:\d\d|close in \d+:\d\d:\d\d|have closed)/.test(line));
+  } else {
+    ok(`${name}: /simple names the next election away from the day`, /^Next election:/.test(line));
+  }
+
   console.log(`\n[${name}] order=${JSON.stringify(order)} routed=${JSON.stringify(routed)}`);
   ok(`${name}: card order`, JSON.stringify(order) === JSON.stringify(want));
   if (routedWant) {

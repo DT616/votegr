@@ -20,6 +20,7 @@
   let wards = {};       // { "32": 2 }
   let polling = {};     // { "43": { name, address, lat, lng, ... } }
   let election = null;  // the next election, or null once every date has passed
+  let calendarElections = [];   // the whole calendar, for the day the line rolls over
   let suggestions = [];
   let active = -1;      // highlighted suggestion, -1 for none
 
@@ -447,9 +448,55 @@
   // went on offering an early voting site for a day after the other had
   // stopped. Only the wording below is this page's own.
 
-  function showNextElection(next) {
+  // On election day itself the line stops naming the date and counts the
+  // polls instead, the way the map page's banner does: to 7 AM, then to
+  // 8 PM, then that they have closed. Same Elections.pollsPhase, same
+  // statutory hours, so the two pages cannot disagree about the polls.
+  let pollsTimer = null;
+
+  function showPolls(next, hours) {
+    const banner = $("election");
+    const tick = () => {
+      const now = new Date();
+      const phase = Elections.pollsPhase(next, hours, now);
+      if (!phase) {
+        // Midnight has passed: the calendar moves on and this line with it.
+        clearInterval(pollsTimer); pollsTimer = null;
+        banner.textContent = "";
+        showNextElection(Elections.next(calendarElections), hours);
+        return;
+      }
+      const hms = (ms) => {
+        let s = Math.max(0, Math.floor(ms / 1000));
+        const h = Math.floor(s / 3600); s -= h * 3600;
+        const m = Math.floor(s / 60); s -= m * 60;
+        return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      };
+      banner.textContent = "";
+      if (phase === "before") {
+        banner.append(el("strong", null,
+          `Polls open in ${hms(Elections.atTime(next.date, hours.open) - now)}`),
+          el("span", "ev", `Today is the ${next.name}. Polls open at ${Elections.shortTime(hours.open)}.`));
+      } else if (phase === "open") {
+        banner.append(el("strong", null,
+          `Polls close in ${hms(Elections.atTime(next.date, hours.close) - now)}`),
+          el("span", "ev", `Today is the ${next.name}. Polls are open until ${Elections.shortTime(hours.close)}.`));
+      } else {
+        banner.append(el("strong", null, `Polls have closed`),
+          el("span", "ev", hours.in_line_note ||
+            "Everyone in line when the polls closed must be allowed to vote."));
+      }
+      banner.hidden = false;
+    };
+    tick();
+    if (!pollsTimer) pollsTimer = setInterval(tick, 1000);
+  }
+
+  function showNextElection(next, hours) {
     const banner = $("election");
     if (!banner || !next) return;
+
+    if (hours && Elections.pollsPhase(next, hours)) { showPolls(next, hours); return; }
 
     banner.append("Next election: ", el("strong", null, `${next.name}, ${Elections.withWeekday(next.date)}`));
 
@@ -628,7 +675,8 @@
       wards = addresses.wards;
       polling = places.precincts;
       election = Elections.next(calendar.elections);
-      showNextElection(election);
+      calendarElections = calendar.elections;
+      showNextElection(election, calendar.election_day_hours || null);
 
       input.disabled = false;
       say("");
