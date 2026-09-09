@@ -137,6 +137,16 @@ a, a:visited {
 }
 a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--accent); }
 
+/* No browser tap flash on anything we style ourselves. Chrome and Safari
+   paint a translucent box over the whole element on touch, which on a card
+   the size of these lands as a full-width wash a moment before our own
+   :active does something quieter. Every one of these has a press or open
+   state of its own, so nothing is being taken away. */
+summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
+.section-nav button, .ac-item, ol.steps li {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* ---------------------------------------------------------------------
    One centred column, the width of a paragraph, the same shape on a phone
    as on a desktop. An earlier version gave the map half the screen at all
@@ -505,9 +515,21 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
 }
 /* The identity rail spans every row, so it reads as naming the whole answer
    rather than the first line of it, and both place names start at the same
-   x. auto, so it takes exactly the width of the longer label. */
+   x. auto, so it takes exactly the width of the longer label.
+
+   Every row in it is a word with a value under it, and a value reads as
+   belonging to its word when it is centred on it: ranged left, a "3" sat
+   under the W of WARD with the rest of the label hanging off to its right.
+   Two rules do that, and both are needed. align-items shrinks each row to
+   its own content and puts them on one axis, so the rail reads as a
+   centred column rather than three blocks of different widths flush to a
+   left edge -- which is what a vertical stack wants. text-align then
+   centres the value against its own label rather than against the rail,
+   which is as wide as the longest of the three. Centring alone would have
+   put "3" under the middle of "Grand Rapids". */
 .vi-rail { grid-column: 1; grid-row: 1 / -1; display: flex;
-           flex-direction: column; gap: 18px; }
+           flex-direction: column; gap: 18px; align-items: center; }
+.vi-rail > div { text-align: center; }
 .vi-where { grid-column: 2; }
 .vi-when { grid-column: 3; }
 /* A row with no place spans the two content columns, never the rail: the
@@ -527,8 +549,17 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
 }
 /* The polling place is still the show-on-map control, and it now sits ON the
    tint rather than on the page, so its hover has to move away from the tint
-   rather than toward the old page-level --raise. */
-.vi-grid .pp-place:hover { background: var(--tint-hover); }
+   rather than toward the old page-level --raise.
+
+   Every hover in the answer is gated on a real pointer from here down. A
+   phone has none, so a tap SETS :hover and leaves it set: the tapped card
+   kept the lift and its name kept the accent long after the finger was
+   gone, which reads as a selection the page never made. The states that
+   mean something -- .is-dest, .is-custom, :focus-visible -- are not gated
+   and still show on a phone. */
+@media (hover: hover) {
+  .vi-grid .pp-place:hover { background: var(--tint-hover); }
+}
 
 /* While early voting is open there are two addresses on screen and only one
    of them is the one being routed to. The cells are the toggle: hover lifts
@@ -542,12 +573,14 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
    so "this is a control" is unmistakable -- and it is thinner than the 2px
    ring on .is-dest, so hovering one card while another is selected still
    reads as two different states rather than two selections. */
-.vi-dest:hover {
-  background: var(--tint-hover);
-  box-shadow: inset 0 0 0 1.5px var(--accent),
-              inset 0 1px 0 var(--bevel-hi), inset 0 -1px 0 var(--bevel-lo);
+@media (hover: hover) {
+  .vi-dest:hover {
+    background: var(--tint-hover);
+    box-shadow: inset 0 0 0 1.5px var(--accent),
+                inset 0 1px 0 var(--bevel-hi), inset 0 -1px 0 var(--bevel-lo);
+  }
+  .vi-dest:hover .pp-name { color: var(--accent); }
 }
-.vi-dest:hover .pp-name { color: var(--accent); }
 .vi-dest:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vi-dest.is-dest,
 .vi-dest.is-dest:hover {
@@ -567,7 +600,9 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
 
 /* Inside a selected cell the place block must not paint over the ring's
    inner edge on hover. */
-.vi-dest.is-dest .pp-place:hover { background: var(--tint-hover); }
+@media (hover: hover) {
+  .vi-dest.is-dest .pp-place:hover { background: var(--tint-hover); }
+}
 
 /* Hours are a labelled sub-field, not another column header, so they sit
    below the header scale rather than on it. */
@@ -598,11 +633,11 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
   .vi-grid .vi-full, .vi-grid .vi-rail { grid-column: auto; grid-row: auto; }
   /* Stacked there is no rail to run down, and a vertical pair would burn
      height a phone does not have, so Ward and Precinct sit side by side.
-     Each value is centred under its own label rather than left-aligned in a
-     cell the label is wider than: a "1" hanging off the left of WARD reads
-     as belonging to whatever is left of it. */
-  .vi-rail { flex-direction: row; gap: 32px; }
-  .vi-rail > div { text-align: center; }
+     Each value stays centred under its own label, which is the same rule the
+     column uses. align-items goes BACK to stretch: in a row it means
+     vertical, and centring three blocks of unequal height there would take
+     the three labels off the line they share. */
+  .vi-rail { flex-direction: row; gap: 32px; align-items: stretch; }
   /* Stacked, the panels STAY. Each place is a tappable card on a phone --
      tap it for directions -- and a raised, beveled slab is what says so;
      flattened to bare text it read as a list of facts. The when-cell is
@@ -635,21 +670,34 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
   }
   .vi-fold > summary::-webkit-details-marker { display: none; }
   .vi-fold > summary > .vi-when { flex: 1; min-width: 0; }
+  /* The whole head is the tap target and always was -- this is the MARK that
+     says so, and it was 6px by 24px, which is a hairline at arm's length. A
+     44px box with a 2.1rem glyph in it, sized to the target that was already
+     there rather than to itself. Grey at rest, not accent: a bigger blue
+     arrow is more blue on a card that had too much of it, and it leaves the
+     accent chevron on the right of a place card meaning the one thing it
+     meant, which is "tap here for directions". */
   .vi-fold > summary::after {
-    content: '\203a'; flex: 0 0 auto; margin: 0 14px 0 10px;
-    font-size: 1.5rem; line-height: 1; color: var(--accent);
-    transform: rotate(90deg); transition: transform .15s ease;
+    content: '\203a'; flex: 0 0 auto; margin-left: 6px;
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.1rem; line-height: 1; color: var(--dim);
+    transform: rotate(90deg); transition: transform .15s ease, color .15s ease;
   }
-  .vi-fold[open] > summary::after { transform: rotate(-90deg); }
-  /* Open is a selected state and should look like one: the card lifts to a
-     faint accent wash with an accent edge down its left, so a glance says
-     which sections you have opened. The head takes a press highlight, so a
-     tap is answered before the card has finished opening. */
+  .vi-fold[open] > summary::after { transform: rotate(-90deg); color: var(--fg); }
+  /* Open is a lift, in the same panel language the wide layout uses: the
+     card goes to --tint-hover, which is the colour a card takes under a
+     pointer there, and keeps the bevel. It was a blue wash with a blue edge
+     down its left, a treatment the wide layout has nothing like -- and with
+     the accent labels, the accent chevron and the accent ring on the chosen
+     place, the phone was reading as four different blues at once. The head
+     takes a press highlight, so a tap is answered before the card has
+     finished opening. */
   .vi-card, .vi-fold { transition: background-color .16s ease, box-shadow .16s ease; }
   .vi-fold[open] {
     display: block; border-radius: 8px;
-    background: color-mix(in srgb, var(--accent) 11%, transparent);
-    box-shadow: inset 3px 0 0 var(--accent);
+    background: var(--tint-hover);
+    box-shadow: inset 0 1px 0 var(--bevel-hi), inset 0 -1px 0 var(--bevel-lo);
   }
   .vi-fold > summary:active { background: color-mix(in srgb, var(--fg) 9%, transparent); }
   .vi-fold[open] > summary { border-bottom: 1px solid var(--line); }
@@ -657,7 +705,9 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
      from what it revealed. The rule belongs to the opening, not the head. */
   .vi-fold-body > .pp-note, .vi-fold-body > .ev-hours { margin: 0 14px 12px; }
   .vi-fold-body > .pp-note { padding-top: 10px; border-top: 1px solid var(--line); }
-  .vi-grid .pp-place:hover { background: var(--raise); }
+  @media (hover: hover) {
+    .vi-grid .pp-place:hover { background: var(--raise); }
+  }
 }
 /* One line, not the days-and-times grid early voting needs: the 7 AM to 8 PM
    window is set by state law and is the same every day and every election, so
@@ -676,8 +726,10 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
 /* The polling place block doubles as the show-on-map control. It should
    read as clickable without dressing up as a hyperlink. */
 .pp-place { cursor: pointer; border-radius: 8px; margin: 0 -8px; padding: 2px 8px; }
-.pp-place:hover { background: var(--raise); }
-.pp-place:hover .pp-name { color: var(--accent); }
+@media (hover: hover) {
+  .pp-place:hover { background: var(--raise); }
+  .pp-place:hover .pp-name { color: var(--accent); }
+}
 .pp-place:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .pp-name {
@@ -713,7 +765,9 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
    of the background when the mouse happens to pass over it. A control that
    only looks like one on hover is invisible to anyone not already hunting
    for it -- and to everyone on a touchscreen, where there is no hover at all. */
-.box-open:hover { color: var(--accent); border-color: var(--accent); }
+@media (hover: hover) {
+  .box-open:hover { color: var(--accent); border-color: var(--accent); }
+}
 .box-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* The list inside the panel. Each row routes to that box: the nearest one
@@ -730,8 +784,10 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
    had a hover state. Both lists use this: drop boxes and early voting sites
    are the same widget with different contents. */
 .box-list li[data-pick] { cursor: pointer; transition: background .12s; }
-.box-list li[data-pick]:hover { background: var(--raise); }
-.box-list li[data-pick]:hover .bx-name { color: var(--accent); }
+@media (hover: hover) {
+  .box-list li[data-pick]:hover { background: var(--raise); }
+  .box-list li[data-pick]:hover .bx-name { color: var(--accent); }
+}
 .box-list li[data-pick]:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 1px;
 }

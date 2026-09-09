@@ -1765,10 +1765,12 @@
       // relative to, now that there is a Precinct 1 in twenty-nine places.
       (r.jurisdiction ? '<div><div class="vi-lbl">Where you vote</div>' +
                         '<div class="vi-name">' + esc(r.jurisdiction) + '</div></div>' : '') +
+      // .vi-idn: a label with a number under it, which is a different shape
+      // from the jurisdiction above and is centred rather than ranged left.
       (r.ward != null && r.ward !== ''
-        ? '<div><div class="vi-lbl">Ward</div>' +
+        ? '<div class="vi-idn"><div class="vi-lbl">Ward</div>' +
           '<div class="vi-num">' + esc(r.ward) + '</div></div>' : '') +
-      '<div><div class="vi-lbl">Precinct</div>' +
+      '<div class="vi-idn"><div class="vi-lbl">Precinct</div>' +
       '<div class="vi-num">' + esc(r.precinct) + '</div></div></div>';
 
     // Three ways to cast a ballot, in the order a voter can act on them:
