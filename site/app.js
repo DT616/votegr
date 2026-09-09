@@ -807,7 +807,7 @@
   // larger. Each document is dropped as soon as it is folded in.
   var CHUNK_LOOKAHEAD = 4;
 
-  function loadCountyGraph() {
+  function loadCountyGraph(onProgress) {
     return loadJson('graph/index').then(function (index) {
       var g = ALPRRouter.Graph.streaming(index);
       var chunks = index.chunks, inFlight = [];
@@ -830,6 +830,7 @@
           g.addChunk(doc);
           doc = null;
           inFlight[at - 1] = null;      // release the settled promise's value
+          if (onProgress) onProgress(at, chunks.length);
           return next();
         });
       }
@@ -867,12 +868,39 @@
     });
   }
 
+  // What the page says while the county loads. Not a splash screen: the
+  // page is already useful -- the countdown and the calendar need one small
+  // file and appear as soon as it lands -- so the loading state lives in the
+  // one control that genuinely cannot work yet, the search box, and says
+  // what it is waiting for and how far along it is.
+  var IDLE_PLACEHOLDER = '300 Monroe Ave NW';
+
   function loadData() {
     var input = $('addr');
     input.disabled = true;
+    input.placeholder = 'Loading Kent County\u2026';
+    setHint('Loading the county\u2019s roads and addresses. This happens once.');
+
+    // The calendar first and on its own. It is 5 KB, and the countdown and
+    // the election line depend on nothing else; waiting for the 60 MB of
+    // roads and addresses behind them left the banner blank for seconds on
+    // every load, which read as the page failing.
+    var calendarP = loadJson('elections', true).then(function (calendar) {
+      electionDayHours = (calendar && calendar.election_day_hours) || null;
+      electionList = (calendar && calendar.elections) || [];
+      activeEl = Elections.next(electionList);
+      renderElectionBanner();
+      startCountdown();
+      return calendar;
+    });
+
     Promise.all([
-      loadCountyGraph(), loadJson('cameras'), loadCountyIndex(),
-      loadJson('boundary', true), loadJson('elections', true), loadJson('landcover', true),
+      loadCountyGraph(function (done, total) {
+        setHint('Loading the county\u2019s roads, ' + done + ' of ' + total +
+                ' jurisdictions. This happens once.');
+      }),
+      loadJson('cameras'), loadCountyIndex(),
+      loadJson('boundary', true), calendarP, loadJson('landcover', true),
       loadJson('neighbors', true),
       loadJson('gr-clerk', true), loadJson('sources', true)
     ]).then(function (res) {
@@ -925,6 +953,8 @@
       graph.warm();
       drawCameras();
       input.disabled = false;
+      input.placeholder = IDLE_PLACEHOLDER;
+      setHint('');
       // Autofocus on a phone pops the keyboard over the map before the person
       // has seen anything, so it is desktop-only.
       if (!isPhone()) input.focus();
