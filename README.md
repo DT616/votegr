@@ -26,10 +26,18 @@ full:
 
    > The information collected on this form is only what is needed to complete your transaction as authorized by MCL 168.509ii, MCL 168.759, MCL 168.759a, and MCL 168.764c. As a public body, MDOS is subject to the Michigan Freedom of Information Act (FOIA), MCL 15.231 et seq., and information such as a name or address may be disclosed in response to a FOIA request.
 
-   **This site is a proof of concept that none of that information needs to
-   be collected to show you where you vote.** Every answer comes from public
-   records already on your device. There is no form, no transaction, and
-   nothing for a FOIA request to disclose, because nothing was ever collected.
+   **This site is a proof of concept that none of that has to happen.**
+   Nothing about your registration needs to be processed on the state's
+   servers to show you where you vote, and the state does not need to learn
+   that you looked. Your voter record is already a public record, disclosable
+   under FOIA whether or not you ever agree to that notice -- so the notice is
+   not protecting the record. It is asking you to consent to a *new* one: that
+   you, from this address, on this day, looked up your own information. Why
+   should finding out where you vote create another data point about you, one
+   you have to agree to share before the tool will work? Every answer here
+   comes from public records already on your device. There is no form to agree
+   to, and no record of the lookup exists anywhere, because it never left your
+   hands.
 
 2. **Driving to perform a constitutionally protected activity shouldn't be surveilled.**
 Kent County has automated license plate readers on traffic signals and utility poles, in Grand Rapids and well beyond it. They photograph
