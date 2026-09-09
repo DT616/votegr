@@ -2,9 +2,14 @@
 
 Live at [votegr.org](https://votegr.org).
 
-Type a Grand Rapids address, or drop a pin, and get your ward, your precinct,
-where you vote, and a driving route there that avoids the license plate
-readers we know about.
+Type any Kent County address, or drop a pin, and get your precinct, your ward
+where your city has them, where you vote, where to return an absentee ballot,
+and a driving route there that avoids the license plate readers we know about.
+
+It covers every city and township in the county: 30 jurisdictions, 202
+precincts, and 234 known plate readers, all loaded once and held in the
+browser, so a lookup or a route anywhere in the county needs nothing further
+from the network.
 
 **Nothing you type leaves your browser.** Everything is rendered on your device.
 
@@ -25,7 +30,7 @@ Their privacy notice you have to agree to states information such as a name or a
 Information Act request. The records of your searches or the fact you looked them up could be subject to FOIA, and that didn't sit right with me.
 
 2. **Driving to perform a constitutionally protected activity shouldn't be surveilled.**
-Grand Rapids has automated license plate readers on traffic signals and utility poles. They photograph
+Kent County has automated license plate readers on traffic signals and utility poles, in Grand Rapids and well beyond it. They photograph
 every passing vehicle, perform OCR, and store it with the time and place, whether or not anyone suspects
 you of anything, and can alert officers in realtime of a flagged vehicle. The records are also searchable
 later, and many systems let agencies search across each other's networks. 
@@ -35,53 +40,87 @@ later, and many systems let agencies search across each other's networks.
 Copy the `site` folder to any web host and it works.
 
 ```
-site/index.html            the page
-site/router.css            its styles
-site/router.js             routing, geocoding, turn restrictions
-site/basemap.js            draws the map on a canvas, no tiles
-site/precinct.js           address -> ward, precinct, polling place
-site/display-case.js       title-cases the ALL CAPS street and place names for display
-site/app.js                the interface
-site/data/graph.json       street network, one-ways, speeds, turn restrictions
-site/data/cameras.json     known plate readers
-site/data/precincts.json   the 59 precinct boundaries
-site/data/landcover.json   water, parks and rail, so the map reads as a map
-site/data/boundary.json    the city limits
-site/data/neighbors.json   street names in surrounding jurisdictions
-site/data/addresses.json   every city address and its precinct
-site/data/polling.json     the 59 polling places
-site/data/elections.json   election days and early voting
+site/index.html              the page
+site/router.css              its styles
+site/router.js               routing, geocoding, turn restrictions
+site/basemap.js              draws the map on a canvas, no tiles
+site/precinct.js             address -> jurisdiction, ward, precinct, polling place
+site/display-case.js         title-cases the ALL CAPS street and place names for display
+site/app.js                  the interface
+site/data/graph/index.json   which road-network chunks exist and how big each is
+site/data/graph/<mcd>.json   the street network, one file per jurisdiction, with a
+                             150 m overlap so routes cross the line
+site/data/addresses/<mcd>.json  every parcel address in that jurisdiction and its precinct
+site/data/polling/<mcd>.json    its polling places, drop boxes and clerk's office
+site/data/precincts.json     the 202 precinct boundaries and the 30 jurisdictions
+site/data/polling.json       Grand Rapids' 59 polling places, hand-transcribed from
+                             the City Clerk's directory: the source of record for the city
+site/data/gr-clerk.json      the City Clerk's early voting sites and drop boxes
+site/data/early-voting.json  the County Clerk's early voting sites (see Limits)
+site/data/cameras.json       known plate readers, county-wide
+site/data/sources.json       every upstream this site reads, by id, with licence and archive
+site/data/landcover.json     water, parks and rail, so the map reads as a map
+site/data/boundary.json      the Grand Rapids city limits, which decide only whether
+                             the City Clerk's own data applies
+site/data/neighbors.json     street names just outside the city, kept for /simple
+site/data/addresses.json     every city address and its precinct, kept for /simple
+site/data/graph.json         the city-only road network, kept for the router tests
+site/data/elections.json     election days and early voting
 site/data/precincts.geojson  full precinct polygons, the source scripts/build_precincts.py slims
-site/simple/               the light version, no map, at /simple/
+site/simple/                 the light version, no map, at /simple/ (Grand Rapids only, for now)
 ```
+
+The `<mcd>` in a filename is the state's five-digit code for the city or
+township -- `34000` is Grand Rapids, `42820` Kentwood -- and every precinct is
+identified by the state's 13-digit code, of which that is the middle. A bare
+precinct number is no identity in a county with a Precinct 1 in twenty-nine
+places.
 
 Included are the scripts that generated those files. `BUILD.md` has the order:
 
 ```
 scripts/
-  refresh_centerlines.py  city street centerlines
-  refresh_osm_roads.py    OpenStreetMap ways and turn restrictions
-  refresh_cameras.py      plate readers from OpenStreetMap
-  refresh_landcover.py    water, parks, rail
-  refresh_boundary.py     city limits
-  refresh_neighbors.py    street names in neighboring jurisdictions
-  refresh_addresses.py    city addresses and their precincts
-  refresh_precincts.py    precinct polygons from the State of Michigan
-  build_graph.py          compiles the routing graph, from the city centerlines
-  build_graph_osm.py      the same graph from OpenStreetMap instead, for comparison
-  build_restrictions.py   merges turn restrictions into it
-  build_precincts.py      slims the precinct polygons for in-browser use
+  refresh_centerlines.py   county street centerlines
+  refresh_osm_roads.py     OpenStreetMap ways and turn restrictions
+  refresh_osm_via_nodes.py the via nodes those restrictions turn at
+  refresh_cameras.py       plate readers from OpenStreetMap, county-wide
+  refresh_landcover.py     water, parks, rail
+  refresh_boundary.py      the Grand Rapids city limits
+  refresh_neighbors.py     street names in neighboring jurisdictions
+  refresh_addresses.py     every parcel address in the county and its precinct, per jurisdiction
+  refresh_precincts.py     precinct polygons from the State of Michigan, county-wide
+  refresh_polling.py       polling places and drop boxes from the County Clerk, per jurisdiction
+  refresh_early_voting.py  early voting sites from the County Clerk
+  refresh_gr_clerk.py      early voting and drop boxes from the Grand Rapids City Clerk
+  geocode_places.py        coordinates for every polling place, drop box and clerk's office
+  centreline_geocode.mjs   its second pass, run by node against the same router the page uses
+  build_graph.py           compiles the county routing graph, from the centerlines
+  build_graph_osm.py       the same graph from OpenStreetMap instead, for comparison
+  build_restrictions.py    merges turn restrictions into it
+  build_graph_chunks.py    cuts it into one file per jurisdiction, plus the index
+  build_precincts.py       slims the precinct polygons for in-browser use
+  archive.py, sources.py   Wayback captures and the master registry of sources
 ```
 
-The shipped `graph.json` is the centerline build. `scripts/build_graph_osm.py` exists
-to check it against OpenStreetMap, not to replace it.
+The shipped graph is the centerline build, cut into thirty chunks.
+`scripts/build_graph_osm.py` exists to check it against OpenStreetMap, not to
+replace it.
 
 ## How the routing works
 
-Streets, one-way directions and posted speed limits come from the **City of
-Grand Rapids street centerlines**, which is the authoritative local record and
-is more complete than OpenStreetMap. 99.8% of segments are named and
-every one carries address ranges.
+Streets, one-way directions and posted speed limits come from the **Kent
+County (REGIS) street centerlines**, the authoritative local record and more
+complete than OpenStreetMap. Nearly every segment is named and carries address
+ranges, which is what lets the road network double as the geocoder.
+
+**The whole county is resident at once.** The page reads a small index, then
+streams the thirty chunks in one at a time, packing each into flat typed
+arrays before fetching the next: every coordinate in the county is one
+`Int32Array` of microdegrees. Held as ordinary objects the same network costs
+about 70 MiB; packed it is about 13, less than the city alone used to cost,
+and a route from a Wyoming address to a polling place two blocks inside
+Kentwood needs no second fetch, because the chunks overlap by 150 m at every
+border and are merged into one connected graph.
 
 **Freeways are excluded outright:** A trip to a polling place is a
 neighborhood trip, the highway saves a minute at best, and surface streets
@@ -110,9 +149,9 @@ search returns the one passing the fewest cameras, with each unavoidable camera 
 
 ```bash
 node test_display_case.mjs         # display casing: vectors, then two invariants over the real corpus
-node test_router.mjs               # 76 assertions: routing, restrictions, addresses
+node test_router.mjs               # 111 assertions: routing, chunks, restrictions, addresses, the county index
 node audit_routes.mjs              # drives hundreds of real trips, checks every route
-npm ci && node test_page.mjs       # 93 assertions: the page itself, in a browser
+npm ci && node test_page.mjs       # 174 assertions: the page itself, in a browser, city and county
 node test_early_voting_states.mjs  # the four early voting states, from a dated fixture
 node test_check_links.mjs          # what the link checker makes of a response
 node compare_osrm.mjs 30           # differential test against OSRM, the OSM reference
@@ -147,14 +186,35 @@ This tool is an estimate, and these are the ways it is wrong.
 map.** Addresses near a precinct boundary are genuinely ambiguous and the page
 says so, as it does for a number it had to infer from its neighbors.
 
-**Coverage is parcel addresses**, meaning a brand new build may be missing
-entirely. More than half of all Grand Rapids mailing addresses are outside the
-city limits, in Wyoming, Kentwood, Walker, East Grand Rapids or one of the
-townships; the page detects those and says which jurisdiction you are in, but
-it cannot route there.
+**Coverage is Kent County, and it is parcel addresses**, so a brand new build
+may be missing entirely, and an address across the county line in Ottawa,
+Allegan, Barry, Ionia, Montcalm or Newaygo County is not in the index. The
+page says so rather than guessing.
+
+**Wards exist in five of the thirty jurisdictions** -- Grand Rapids, Wyoming,
+Kentwood, Walker and East Grand Rapids -- and the page shows one only there.
+The other 99 precincts have none, and that is a fact about the township, not a
+gap in the data.
 
 **Polling places change every election**, and consolidations appear only in
-the footnotes of the clerk's directory.
+the footnotes of the clerk's directory. Outside Grand Rapids the polling
+places come from the County Clerk's pages and were placed on the map from
+the county parcel layer, or where a church or township hall is missing from
+that layer, from the street centreline, so a marker may sit on the road
+outside the building rather than on it. One, given by the county only as
+"North Complex", could not be placed at all.
+
+**Drop boxes are published by six jurisdictions**, and the page shows those
+23. The other 24 publish none, and it does not send you to a neighbour's box,
+because under MCL 168.764a an absentee ballot is returned only to the clerk of
+the city or township where you are registered: there, it names your own
+clerk's office as the place to return it, with the phone number, and never
+describes an office as open around the clock or under video monitoring.
+
+**Early voting sites outside Grand Rapids are not shown yet.** The City Clerk
+has published the city's four for November; the County Clerk's page still
+describes the August primary, and a site for the wrong election is worse than
+none. The dates are shown; the row says no site is published.
 
 ## Privacy
 
@@ -181,12 +241,14 @@ Code is public domain under the [Unlicense](UNLICENSE). Copy, host, revise, and
 change it without asking, with or without credit.
 
 The data is not ours to license. Streets and address ranges are public
-records of the City of Grand Rapids and Kent County; precinct boundaries are a
-public record of the State of Michigan; polling places come from the Grand
-Rapids City Clerk. **Camera locations, turn restrictions, water and parks come
-from OpenStreetMap and are ODbL**, so `graph.json`, `cameras.json` and
-`landcover.json` carry that obligation: keep the attribution and share
-derivatives alike. Much of the camera mapping is the work of the
+records of Kent County and the City of Grand Rapids; precinct boundaries are a
+public record of the State of Michigan; polling places, drop boxes and clerks'
+offices come from the Kent County Clerk and, for the city, the Grand Rapids
+City Clerk. Every file says where it came from, and `sources.json` is the
+registry those pointers resolve through. **Camera locations, turn
+restrictions, water and parks come from OpenStreetMap and are ODbL**, so the
+graph chunks, `cameras.json` and `landcover.json` carry that obligation: keep
+the attribution and share derivatives alike. Much of the camera mapping is the work of the
 [DeFlock](https://deflock.org/) community, where you can also contribute to the
 plate reader database and read more about the project.
 
@@ -194,5 +256,6 @@ The light version is still here, at
 [votegr.org/simple/](https://votegr.org/simple/): the same lookup with no map
 and no directions, so it stays the better choice on an old phone, a slow
 connection, or a screen reader. It is deliberately unlisted, carrying a
-noindex and linked from nowhere on the site. Both pages read the same address,
-polling place and election data from `site/data`.
+noindex and linked from nowhere on the site. It still reads the Grand Rapids
+files and answers for the city only; widening it to the county is the next
+piece of work.
