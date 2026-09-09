@@ -149,6 +149,14 @@ for (const width of [1280, 390, 320]) {
      at('ev-boxes') > -1 && at('ev-early') > at('ev-boxes') &&
      order.findIndex(c => c === 'loc') > at('ev-early'));
 
+  // --- a street on its own is not an address -----------------------------
+  await page.fill('#addr, input[type="text"]', '');
+  await page.type('#addr, input[type="text"]', 'Monroe', { delay: 5 });
+  await page.waitForTimeout(200);
+  ok('a bare street name gets no suggestions', (await page.$$('#opts li')).length === 0);
+  ok('and the hint asks for the house number', await page.evaluate(() =>
+     /start with the house number/i.test(document.body.innerText)));
+
   // --- a street outside the city ----------------------------------------
   const options = await pick(page, '100 ' + outsideStreet);
   ok('a street outside the city is offered, not refused',

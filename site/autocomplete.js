@@ -18,7 +18,7 @@
   // why it is being offered. Keyed by the `kind` precinct.js assigns.
   var SUGGESTION_WHY = {
     inferred: 'estimated', quadrant: 'did you mean',
-    near: 'nearest on this street', street: 'pick a number'
+    near: 'nearest on this street'
   };
 
   var LIMIT = 8;
@@ -93,10 +93,7 @@
       if (!items.length) { close(); return; }
 
       var el = element();
-      // With no house number typed yet, every row is a street, so the list
-      // says what it is asking for rather than looking like a failed match.
-      var head = opts.hasNumber(text) ? '' : '<div class="ac-head">Choose a street</div>';
-      el.innerHTML = head + items.map(itemHtml).join('');
+      el.innerHTML = items.map(itemHtml).join('');
       Array.prototype.forEach.call(el.querySelectorAll('.ac-item'), function (button) {
         // mousedown, not click: the input's blur would otherwise close the
         // list before the click could land on it.
@@ -134,14 +131,13 @@
     }
 
     // Enter with nothing highlighted still has to do something useful: take
-    // the best suggestion when it is a full address, complete the street when
-    // it is only a street, and otherwise hand the text to the page to explain.
+    // the best suggestion when there is one, and otherwise hand the text to
+    // the page to explain.
     function enter() {
       if (!element().hidden && index >= 0) { opts.onChoose(items[index]); return; }
       var text = input.value.trim();
       var best = opts.suggest(text, 1) || [];
-      if (best.length && best[0].number != null) { opts.onChoose(best[0]); return; }
-      if (best.length) { input.value = best[0].street + ' '; refresh(); return; }
+      if (best.length) { opts.onChoose(best[0]); return; }
       opts.onMiss(text);
     }
 

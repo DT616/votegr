@@ -319,15 +319,17 @@
     const { number, rest } = parseTyped(text);
     const matches = matchingStreets(rest);
 
-    // With a number, offer the full address, but only where we can actually
-    // answer it. Without one, offer street names to finish first.
-    suggestions = number === null
-      ? matches.slice(0, MAX_SUGGESTIONS).map((street) => ({ text: street, street }))
+    // Nothing until the text starts with a house number: a street on its own
+    // is not an address. With one, offer the full address, but only where we
+    // can actually answer it.
+    suggestions = number === null ? []
       : matches.filter((street) => resolve(street, number))
                .slice(0, MAX_SUGGESTIONS)
                .map((street) => ({ text: `${number} ${street}`, street, number }));
-    suggestions = suggestions.concat(outsideMatches(rest, number, suggestions))
-                             .slice(0, MAX_SUGGESTIONS);
+    if (number !== null) {
+      suggestions = suggestions.concat(outsideMatches(rest, number, suggestions))
+                               .slice(0, MAX_SUGGESTIONS);
+    }
 
     active = -1;
     renderList();
@@ -377,7 +379,7 @@
   }
 
   const notFoundHint = (number, streetHits) => {
-    if (number === null) return "No street found. Try the street name, like Monroe Ave NW.";
+    if (number === null) return "Start with the house number, like 300 Monroe Ave NW.";
     if (streetHits) return `We have no number ${number} on that street. Check the number, ` +
                            "or look it up at the Michigan Voter Information Center.";
     return "No address found. Try the number and the direction, like 300 Monroe Ave NW. " +
@@ -394,15 +396,6 @@
       return;
     }
 
-    // A street on its own is half an address: put it in the box and wait.
-    if (picked.number == null) {
-      input.value = `${cased(picked.street)} `;
-      closeList();
-      say("Now add the house number.");
-      input.focus();
-      return;
-    }
-
     input.value = cased(picked.text);
     closeList();
     clearResult();
@@ -410,8 +403,7 @@
     if (!found) return failed("We do not have that address.");
     say("");
     // The answer is what matters now, not the box. Dismiss the soft keyboard
-    // so the result is not hidden behind it. The street-only branch above
-    // keeps focus on purpose, since a house number still has to be typed.
+    // so the result is not hidden behind it.
     input.blur();
     render(found, picked.text);
   }

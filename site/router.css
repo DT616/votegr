@@ -912,11 +912,6 @@ body {
     flex: 0 0 100%; margin: 3px 0 0 var(--ac-indent, 24px); white-space: normal;
   }
 }
-.ac-head {
-  padding: 8px 13px; font-size: .76rem; letter-spacing: .08em;
-  text-transform: uppercase; color: var(--dim); background: var(--raise);
-  border-bottom: 1px solid var(--line);
-}
 
 /* ---- camera detail popup ---- */
 /* Marker detail, shown under the map rather than in a popup over it. See
