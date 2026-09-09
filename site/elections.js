@@ -80,6 +80,33 @@
 
   function sites(e) { return (e && e.early_voting_sites) || []; }
 
+  // "7:00 AM" / "8:00 PM" -> the instant on that date, local time. The
+  // statutory hours are written the way the Secretary of State writes them,
+  // so this reads that form and nothing else; anything it cannot read is
+  // null, and the caller falls back to knowing only that it is election day.
+  var CLOCK = /^\s*(\d{1,2})(?::(\d{2}))?\s*([AP])\.?M\.?\s*$/i;
+  function atTime(iso, clock) {
+    var day = dayStart(iso), m = CLOCK.exec(String(clock || ''));
+    if (!day || !m) return null;
+    var h = Number(m[1]) % 12 + (m[3].toUpperCase() === 'P' ? 12 : 0);
+    day.setHours(h, Number(m[2] || 0), 0, 0);
+    return day;
+  }
+
+  // Where election day stands right now: 'before' the polls open, 'open',
+  // or 'closed'. null on any other day, or when the hours cannot be read.
+  // Takes the instant as an argument so it can be tested at fixed times.
+  function pollsPhase(e, hours, now) {
+    if (!e || !hours) return null;
+    var open = atTime(e.date, hours.open), close = atTime(e.date, hours.close);
+    if (!open || !close) return null;
+    var t = now || new Date();
+    if (t < dayStart(e.date)) return null;
+    if (t < open) return 'before';
+    if (t < close) return 'open';
+    return 'closed';
+  }
+
   // The four states of the early voting window, decided once.
   //
   //   'none'    the clerk has published nothing, or only half a window. A
@@ -108,6 +135,7 @@
   }
 
   var Elections = {
+    atTime: atTime, pollsPhase: pollsPhase,
     MONTHS: MONTHS, WEEKDAYS: WEEKDAYS, DAY_ABBR: DAY_ABBR,
     todayISO: todayISO, todayAbbr: todayAbbr, dayStart: dayStart,
     monthDay: monthDay, withWeekday: withWeekday, dayMonth: dayMonth,

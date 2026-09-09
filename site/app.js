@@ -1785,28 +1785,6 @@
     if (!target) { box.hidden = true; return; }
     var left = target.getTime() - Date.now();
 
-    if (left <= 0) {
-      // Election day itself. The clock has nothing left to count, and saying
-      // "0 days 0 hours" on the one day it matters would read as an error.
-      // "Election day is in: today" is not a sentence anyone says, so the label
-      // gives up its preposition for the one day it does not need it.
-      box.classList.add('is-today');
-      if (label) label.textContent = 'Election Day:';
-      clock.innerHTML = '<span class="cd-today">Today</span>';
-      if (note) note.innerHTML = noteLine();
-      if (said) said.textContent = 'The ' + activeEl.name + ' is today, ' +
-        Elections.withWeekday(activeEl.date) + '.';
-      box.hidden = false;
-      return;
-    }
-
-    box.classList.remove('is-today');
-    if (label) label.textContent = 'Election Day is In:';
-    var s = Math.floor(left / 1000);
-    var days = Math.floor(s / 86400); s -= days * 86400;
-    var hrs = Math.floor(s / 3600); s -= hrs * 3600;
-    var mins = Math.floor(s / 60); s -= mins * 60;
-
     // Days unpadded because it is the figure being read; the rest padded so the
     // row keeps its width and nothing shifts as the seconds run.
     var unit = function (n, name, pad) {
@@ -1814,6 +1792,66 @@
         (pad ? String(n).padStart(2, '0') : String(n)) +
         '</b><span class="cd-lab">' + name + '</span></span>';
     };
+    var hms = function (ms) {
+      var s = Math.max(0, Math.floor(ms / 1000));
+      var hrs = Math.floor(s / 3600); s -= hrs * 3600;
+      var mins = Math.floor(s / 60); s -= mins * 60;
+      return unit(hrs, 'Hours', true) + unit(mins, 'Minutes', true) +
+             unit(s, 'Seconds', true);
+    };
+
+    if (left <= 0) {
+      // Election day itself. The day has arrived, so the thing left to count
+      // is the polls: to their opening before 7 AM, to their closing while
+      // they are open, and then the fact that they have closed -- until
+      // midnight, when the calendar rolls to the next election and this
+      // becomes a countdown again. The statutory hours come from the same
+      // field the answer's Election day row shows, so the two cannot
+      // disagree; without them the banner can only say it is today.
+      var now = new Date();
+      var phase = Elections.pollsPhase(activeEl, electionDayHours, now);
+      box.classList.add('is-today');
+      box.classList.toggle('polls-open', phase === 'open');
+      box.classList.toggle('polls-closed', phase === 'closed');
+      if (phase === 'before') {
+        if (label) label.textContent = 'Polls Open In:';
+        clock.innerHTML = hms(Elections.atTime(activeEl.date, electionDayHours.open) - now);
+        if (said) said.textContent = 'Polls open at ' +
+          Elections.shortTime(electionDayHours.open) + ' today for the ' +
+          activeEl.name + '.';
+      } else if (phase === 'open') {
+        if (label) label.textContent = 'Polls Close In:';
+        clock.innerHTML = hms(Elections.atTime(activeEl.date, electionDayHours.close) - now);
+        if (said) said.textContent = 'Polls are open until ' +
+          Elections.shortTime(electionDayHours.close) + ' today for the ' +
+          activeEl.name + '.';
+      } else if (phase === 'closed') {
+        if (label) label.textContent = 'Polls Have Closed:';
+        clock.innerHTML = '<span class="cd-today">' +
+          esc(Elections.shortTime(electionDayHours.close)) + '</span>';
+        // The one thing a voter reading this after 8 PM needs to know.
+        if (said) said.textContent = (electionDayHours.in_line_note ||
+          'Everyone in line when the polls closed must be allowed to vote.');
+      } else {
+        // "Election day is in: today" is not a sentence anyone says, so the
+        // label gives up its preposition for the one day it does not need it.
+        if (label) label.textContent = 'Election Day:';
+        clock.innerHTML = '<span class="cd-today">Today</span>';
+        if (said) said.textContent = 'The ' + activeEl.name + ' is today, ' +
+          Elections.withWeekday(activeEl.date) + '.';
+      }
+      if (note) note.innerHTML = noteLine();
+      box.hidden = false;
+      return;
+    }
+
+    box.classList.remove('is-today', 'polls-open', 'polls-closed');
+    if (label) label.textContent = 'Election Day is In:';
+    var s = Math.floor(left / 1000);
+    var days = Math.floor(s / 86400); s -= days * 86400;
+    var hrs = Math.floor(s / 3600); s -= hrs * 3600;
+    var mins = Math.floor(s / 60); s -= mins * 60;
+
     clock.innerHTML =
       unit(days, 'Days', false) + unit(hrs, 'Hours', true) +
       unit(mins, 'Minutes', true) + unit(s, 'Seconds', true);
