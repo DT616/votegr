@@ -2,38 +2,30 @@
 
 Live at [votegr.org](https://votegr.org).
 
-Type any Kent County address, or drop a pin, and get your precinct, your ward
-where your city has them, where you vote, where to return an absentee ballot,
-and a driving route there that avoids the license plate readers we know about.
+Type any address in Kent County Michigan (which includes the City of Grand Rapids), or drop a pin, and get your precinct, your ward
+(if applicable), where you vote, where to return an absentee ballot, and a driving route there that avoids the license plate readers we know about.
 
-It covers every city and township in the county: 30 jurisdictions, 202
-precincts, and 234 known plate readers, all loaded once and held in the
-browser, so a lookup or a route anywhere in the county needs nothing further
-from the network.
+It covers every city and township in the county: 30 jurisdictions, 202 precincts, and 234 known plate readers, all loaded once and held in the
+browser, so a lookup or a route anywhere in the county needs nothing further from the network.
 
 **Nothing you type leaves your browser.** Everything is rendered on your device.
 
-This project is independent and unofficial, offered with no guarantee of
-accuracy. It is not affiliated with the City of Grand Rapids, Kent County, or
-the State of Michigan. The Michigan Voter Information Center is the official
-source of record; always verify there, or with the Clerk.
+This project is independent and unofficial, offered with no guarantee of accuracy. It is not affiliated with the City of Grand Rapids, Kent County, or
+the State of Michigan. The Michigan Voter Information Center is still the official source of record; always verify there, or with the Clerk.
 
 ## Why
 
 Two reasons:
 
 1. **Finding out where you vote should not require identifying yourself.** The
-state's Michigan Voter Information Center is accurate and it is the official
-source, but it asks for your name, your birth month and year, and your
+state's Michigan Voter Information Center is accurate and it is the official source, but it asks for your name, your birth month and year, and your
 registration ZIP before it will tell your ward and precinct number. To find where to vote, you either have to give them your address or the personal info.
 Their privacy notice you have to agree to states information such as a name or address may be released under a Freedom of
 Information Act request. The records of your searches or the fact you looked them up could be subject to FOIA, and that didn't sit right with me.
 
 2. **Driving to perform a constitutionally protected activity shouldn't be surveilled.**
 Kent County has automated license plate readers on traffic signals and utility poles, in Grand Rapids and well beyond it. They photograph
-every passing vehicle, perform OCR, and store it with the time and place, whether or not anyone suspects
-you of anything, and can alert officers in realtime of a flagged vehicle. The records are also searchable
-later, and many systems let agencies search across each other's networks. 
+every passing vehicle, perform OCR, and store it with the time and place, whether or not anyone suspects you of anything, and can alert officers in realtime of a flagged vehicle. The records are also searchable later, and many systems let agencies search across each other's networks. 
 
 ## Inventory
 
