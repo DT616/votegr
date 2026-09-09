@@ -152,6 +152,12 @@ body {
    you came to use below the fold. */
 #col:not(.has-result) { padding-top: clamp(1.25rem, 8vh, 4.5rem); }
 #col.has-result { padding-top: 1rem; }
+/* 8vh of headroom is a nice breath on a laptop and 67px of nothing on a
+   phone, where the header, the countdown and the search box should share
+   the first screen. */
+@media (max-width: 700px) {
+  #col:not(.has-result) { padding-top: .9rem; }
+}
 
 /* The map sits inside the route section now, directly under the choice it
    illustrates, so it takes no rule of its own. */
