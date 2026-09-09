@@ -14,12 +14,158 @@
 (function (root) {
   'use strict';
 
+  // Two ways to build one.
+  //
+  // The original: addresses.json and polling.json, the Grand Rapids files,
+  // where a precinct is identified by its bare number ("52") and every row is
+  // [house number, "52", metres from the precinct edge]. /simple and the
+  // tests still build this way, and it keeps working unchanged.
+  //
+  // Precincts.county(): all thirty jurisdictions at once. There a bare number
+  // is no identity at all -- there is a Precinct 1 in twenty-nine places --
+  // so every precinct is identified by the state's 13-digit code
+  // ("0814282001001": county 081, Kentwood 42820, ward 01, precinct 001),
+  // and the display number, the ward if the jurisdiction has wards, and the
+  // jurisdiction's name are looked up from that code. Both modes store rows
+  // the same way, [number, id, edge metres, rivals], so every method below
+  // works on an `id` and does not know which kind it is holding.
   function Precincts(addresses, polling) {
+    this.county = false;
     this.wards = addresses.wards || {};
     this.streets = addresses.streets || {};
     this.streetNames = Object.keys(this.streets);
     this.polling = (polling && polling.precincts) || {};
+    this.byCode = null;
+    this.boxes = {};
   }
+
+  // opts: { index: precincts.json, addresses: [chunk...], polling: [chunk...],
+  //         cityPolling: polling.json, cityMcd: '34000' }
+  Precincts.county = function (opts) {
+    var P = Object.create(Precincts.prototype);
+    P.county = true;
+    P.wards = {};
+    P.streets = {};
+    P.polling = {};
+    P.boxes = {};
+    P.byCode = {};
+    P.jurisdictions = {};
+    var i, j, code;
+
+    // Identity, from the precinct index: what each code means.
+    var list = (opts.index && opts.index.precincts) || [];
+    for (i = 0; i < list.length; i++) {
+      var pr = list[i];
+      P.byCode[pr.code] = { mcd: pr.mcd, jurisdiction: pr.jurisdiction,
+                            ward: pr.ward == null ? null : pr.ward,
+                            precinct: pr.precinct, name: pr.name };
+      P.jurisdictions[pr.mcd] = pr.jurisdiction;
+    }
+
+    // Addresses. A chunk stores its precincts as a list and each row points
+    // at a position in it, so 227,000 rows do not repeat a 13-digit string;
+    // here the position becomes the code. Streets that run through more than
+    // one jurisdiction -- 28th St SE is in three -- merge into one list,
+    // sorted by number, and the rows carry which side of the line they are on.
+    var docs = opts.addresses || [];
+    var dirty = {};
+    for (i = 0; i < docs.length; i++) {
+      var doc = docs[i], codes = doc.precincts || [];
+      var streets = doc.streets || {};
+      for (var name in streets) {
+        if (!Object.prototype.hasOwnProperty.call(streets, name)) continue;
+        var rows = streets[name];
+        var into = P.streets[name] || (P.streets[name] = []);
+        if (into.length) dirty[name] = 1;
+        for (j = 0; j < rows.length; j++) {
+          var r = rows[j];
+          var out = [r[0], codes[r[1]], r[2]];
+          if (r[3]) {
+            out.push(r[3].map(function (k) { return codes[k]; }));
+          }
+          into.push(out);
+        }
+      }
+    }
+    for (var d in dirty) {
+      if (Object.prototype.hasOwnProperty.call(dirty, d)) {
+        P.streets[d].sort(function (a, b) { return a[0] - b[0]; });
+      }
+    }
+    P.streetNames = Object.keys(P.streets);
+
+    // Polling places, keyed by code. The county's scrape supplies every
+    // jurisdiction; Grand Rapids is then overwritten from polling.json, the
+    // hand transcription with coordinates, entrance notes and the one
+    // consolidation the county page does not know about.
+    var pdocs = opts.polling || [];
+    for (i = 0; i < pdocs.length; i++) {
+      var pd = pdocs[i], recs = pd.precincts || {};
+      for (code in recs) {
+        if (Object.prototype.hasOwnProperty.call(recs, code)) P.polling[code] = recs[code];
+      }
+      if (pd.mcd && pd.drop_boxes) P.boxes[pd.mcd] = pd.drop_boxes;
+    }
+    var cityMcd = opts.cityMcd || '34000';
+    var cityRecs = (opts.cityPolling && opts.cityPolling.precincts) || {};
+    var numberToCode = {};
+    for (code in P.byCode) {
+      if (Object.prototype.hasOwnProperty.call(P.byCode, code) &&
+          P.byCode[code].mcd === cityMcd) {
+        numberToCode[String(P.byCode[code].precinct)] = code;
+      }
+    }
+    for (var num in cityRecs) {
+      if (!Object.prototype.hasOwnProperty.call(cityRecs, num)) continue;
+      var target = numberToCode[num];
+      if (!target) continue;
+      var rec = cityRecs[num], copy = {};
+      for (var k in rec) if (Object.prototype.hasOwnProperty.call(rec, k)) copy[k] = rec[k];
+      if (copy.consolidated_with != null) {
+        copy.consolidated_with = numberToCode[String(copy.consolidated_with)] ||
+                                 copy.consolidated_with;
+      }
+      P.polling[target] = copy;
+    }
+    return P;
+  };
+
+  // What an id means for display. In the city files the id IS the number.
+  Precincts.prototype.describe = function (id) {
+    if (this.byCode) {
+      var d = this.byCode[id];
+      return d ? { code: id, precinct: d.precinct, ward: d.ward,
+                   jurisdiction: d.jurisdiction, mcd: d.mcd }
+               : { code: id, precinct: id, ward: null, jurisdiction: null, mcd: null };
+    }
+    return { code: String(id), precinct: id, ward: this.wards[id] || null,
+             jurisdiction: null, mcd: null };
+  };
+
+  // The id a polygon carries, in whichever mode this index is in.
+  Precincts.prototype.idOf = function (polygon) {
+    return this.byCode ? polygon.code : String(polygon.precinct);
+  };
+
+  // Which jurisdictions a street's rows fall in. Cached: the type-ahead asks
+  // for every suggestion on every keystroke.
+  Precincts.prototype.whereIs = function (street) {
+    if (!this.byCode) return null;
+    this._where = this._where || {};
+    if (this._where[street]) return this._where[street];
+    var rows = this.streets[street] || [], seen = {}, names = [];
+    for (var i = 0; i < rows.length; i++) {
+      var d = this.byCode[rows[i][1]];
+      if (d && !seen[d.jurisdiction]) { seen[d.jurisdiction] = 1; names.push(d.jurisdiction); }
+    }
+    return (this._where[street] = names);
+  };
+
+  // A jurisdiction's drop boxes, from the county's page. Grand Rapids' own
+  // come from the city clerk's file instead and are not here.
+  Precincts.prototype.dropBoxes = function (mcd) {
+    return (this.boxes && this.boxes[mcd]) || [];
+  };
 
   // "250 Monroe Ave. NW" -> { number: 250, rest: "MONROE AVE NW" }
   Precincts.prototype.parseTyped = function (text) {
@@ -102,7 +248,7 @@
              entrance_note: p.entrance_note };
   };
 
-  Precincts.prototype.ward = function (precinct) { return this.wards[precinct] || null; };
+  Precincts.prototype.ward = function (id) { return this.describe(id).ward; };
 
   // Suggestions for the type-ahead. Returns real addresses that exist in the
   // index, so the person picks a known answer instead of being told after the
@@ -115,13 +261,19 @@
     if (!streets.length) return [];
 
     // No number yet: offer streets, so the next keystroke has somewhere to go.
+    var self = this;
+    var tag = function (o) {
+      var w = self.whereIs(o.street);
+      if (w && w.length) o.where = w;
+      return o;
+    };
     if (t.number == null) {
       return streets.slice(0, limit).map(function (s) {
-        return { street: s, number: null, kind: 'street' };
+        return tag({ street: s, number: null, kind: 'street' });
       });
     }
 
-    var out = [], self = this;
+    var out = [];
     // Exact hits first, across every matching street.
     streets.forEach(function (s) {
       var rows = self.streets[s] || [];
@@ -142,7 +294,7 @@
     // typed matches nothing anywhere. Listing a street's other addresses
     // beside a perfectly good answer just makes the reader pick their own
     // address out of a lineup of their neighbors'.
-    if (out.length) return out.slice(0, limit);
+    if (out.length) return out.slice(0, limit).map(tag);
 
     // Before falling back to neighbors, try the SAME number on the same
     // street in another quadrant. Grand Rapids numbers radiate from Fulton
@@ -164,7 +316,7 @@
           }
         }
       });
-      if (out.length) return out.slice(0, limit);
+      if (out.length) return out.slice(0, limit).map(tag);
     }
 
     streets.slice(0, 3).forEach(function (s) {
@@ -190,11 +342,12 @@
       if (seen[k]) return;
       seen[k] = 1; uniq.push(o);
     });
-    return uniq.slice(0, limit);
+    return uniq.slice(0, limit).map(tag);
   };
 
   // Full lookup: typed text -> everything the page needs, or a reason it can't.
   Precincts.prototype.lookup = function (text) {
+    var self = this;
     var t = this.parseTyped(text);
     if (t.number == null) return { error: 'no_number', rest: t.rest,
                                    suggestions: this.matchingStreets(t.rest).slice(0, 6) };
@@ -206,10 +359,18 @@
     if (!res) return { error: 'no_number_on_street', street: street,
                        number: t.number, ambiguous: candidates.slice(0, 6) };
     var place = this.pollingPlace(res.precinct);
+    var who = this.describe(res.precinct);
     return {
-      number: t.number, street: street, precinct: res.precinct,
-      ward: this.ward(res.precinct), place: place,
-      inferred: res.inferred, rivals: res.rivals, edgeMetres: res.edgeMetres,
+      number: t.number, street: street,
+      // `precinct` is the number a voter recognises; `code` is the identity.
+      // In the city files they are the same string.
+      code: who.code, precinct: who.precinct, ward: who.ward,
+      jurisdiction: who.jurisdiction, mcd: who.mcd, place: place,
+      // Rivals as display numbers, since that is what the reader is shown.
+      rivals: res.rivals ? res.rivals.map(function (id) {
+        return self.describe(id).precinct;
+      }) : null,
+      inferred: res.inferred, edgeMetres: res.edgeMetres,
       ambiguousStreet: candidates.length > 1 && candidates.indexOf(t.rest) < 0
         ? candidates.slice(0, 6) : null
     };
@@ -263,11 +424,14 @@
     var pt = geocodeFn(r.number, r.street);
     if (!pt) return r;
     var hit = this.precinctAt(pt.lat, pt.lng, polygons);
-    if (!hit || String(hit.precinct) === String(r.precinct)) return r;
-    var was = String(r.precinct);
-    r.precinct = String(hit.precinct);
-    r.ward = hit.ward;
-    r.place = this.pollingPlace(r.precinct);
+    if (!hit) return r;
+    var id = this.idOf(hit);
+    if (id === String(r.code)) return r;
+    var was = r.precinct;
+    var who = this.describe(id);
+    r.code = who.code; r.precinct = who.precinct; r.ward = who.ward;
+    r.jurisdiction = who.jurisdiction; r.mcd = who.mcd;
+    r.place = this.pollingPlace(id);
     r.rivals = [r.precinct, was];
     r.refined = true;
     return r;

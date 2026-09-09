@@ -13,8 +13,16 @@ import { readFile } from 'fs/promises';
 import { join, extname, normalize } from 'path';
 
 const ROOT = join(process.cwd(), 'site');
-const iso = d => { const x = new Date(); x.setDate(x.getDate() + d);
-  return x.toISOString().slice(0, 10); };
+// LOCAL date, the way Elections.todayISO() reckons it. toISOString() is UTC,
+// and after 8pm Eastern that is already tomorrow: the "election day" case,
+// which needs today exactly, then served a fixture dated a day ahead of the
+// page and failed every evening. The other cases have days of slack and
+// never noticed.
+const iso = d => {
+  const x = new Date(); x.setDate(x.getDate() + d);
+  const pad = n => String(n).padStart(2, '0');
+  return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+};
 
 const SITES = JSON.parse(await readFile(join(ROOT, 'data/elections.json'), 'utf8'))
   .elections[0].early_voting_sites;

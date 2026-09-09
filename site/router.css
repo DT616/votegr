@@ -418,6 +418,12 @@ body {
 /* Early voting is the only group that is true right now, so it is the only
    one that takes the accent. */
 .vi-lbl.live { color: var(--accent); }
+/* The jurisdiction, above the ward and precinct numbers. A name, not a
+   number, so it takes a text size rather than the numeral size: "Plainfield
+   Township" at 1.42rem would be the widest thing in the rail. */
+.vi-name {
+  font-size: 1.05rem; font-weight: 700; letter-spacing: -.012em; line-height: 1.25;
+}
 .vi-num {
   font-size: 1.42rem; font-weight: 700; letter-spacing: -.022em;
   line-height: 1.22;
@@ -570,12 +576,10 @@ body {
   font-size: .87rem; margin-top: 12px; padding-top: 12px;
   border-top: 1px solid var(--line); color: var(--dim); line-height: 1.5;
 }
-/* The early voting row holds when AND where, so the site sits under the dates
-   rather than in a panel of its own beside them. A rule above it separates
-   the two without a second box. */
-.vi-ev-site {
-  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
-}
+/* .vi-ev-site once sat INSIDE the dates panel, separated from them by a
+   rule and a 12px margin. It is a grid cell of its own now, beside the dates,
+   and that margin was pushing it 12px below the cell it shares a row with --
+   the two panels never lined up. No rule needed: the grid does the placing. */
 
 /* The button that opens the full list. Quiet: the row already answers the
    question, and this is for the reader who wants the other ten. */

@@ -341,6 +341,57 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
   ok('no restriction bans a turn onto itself', rs.every(r => r.f !== r.t));
 }
 
+// --- the county index --------------------------------------------------
+// Precincts.county() holds all thirty jurisdictions at once, identified by
+// the state's 13-digit code, because a bare number is no identity when there
+// is a Precinct 1 in twenty-nine places. Grand Rapids must come out exactly
+// as it did from the city files, and a township must come out with no ward
+// rather than a blank one.
+{
+  const index = JSON.parse(fs.readFileSync('./site/data/precincts.json', 'utf8'));
+  const mcds = index.jurisdictions.map((j) => j.mcd);
+  const C = Precincts.county({
+    index,
+    addresses: mcds.map((m) => JSON.parse(fs.readFileSync(`./site/data/addresses/${m}.json`, 'utf8'))),
+    polling: mcds.map((m) => JSON.parse(fs.readFileSync(`./site/data/polling/${m}.json`, 'utf8'))),
+    cityPolling: JSON.parse(fs.readFileSync('./site/data/polling.json', 'utf8')),
+    cityMcd: '34000',
+  });
+  ok('county: every jurisdiction contributes streets', C.streetNames.length > 8000);
+
+  const gr = C.lookup('300 Monroe Ave NW');
+  ok('county: a city address still resolves', !gr.error);
+  ok('county: to the same ward and precinct as the city files',
+     gr.ward === 2 && String(gr.precinct) === '40');
+  ok('county: carrying the state code and the jurisdiction',
+     gr.code === '0813400002040' && gr.jurisdiction === 'Grand Rapids' && gr.mcd === '34000');
+  ok('county: the city keeps polling.json, with its entrance notes',
+     Object.values(C.polling).filter((r) => r.entrance_note).length >= 15);
+
+  // The Kentwood Activities Center is a polling place, so its own address
+  // is a fair fixture. Kentwood has wards; Ada Township does not.
+  const kw = C.lookup('355 48th St SE');
+  ok('county: a Kentwood address resolves', !kw.error && kw.jurisdiction === 'Kentwood');
+  ok('county: with a ward, because Kentwood has them', kw.ward === 1 || kw.ward === 2);
+  ok('county: to a polling place with coordinates',
+     kw.place && kw.place.lat && kw.place.name);
+
+  const ada = C.lookup('6330 Ada Dr SE');   // as the type-ahead writes it
+  ok('county: a township address resolves', !ada.error && ada.jurisdiction === 'Ada Township');
+  ok('county: with NO ward, not a blank one', ada.ward === null);
+
+  // 28th St SE runs through Grand Rapids, Kentwood and Wyoming. The street
+  // is one list; the house number picks the jurisdiction.
+  const where = C.whereIs('28TH ST SE');
+  ok('county: a street through three cities lists all three',
+     where.length >= 3 && where.includes('Kentwood'));
+  ok('county: suggestions say where each street is',
+     C.suggest('28th St', 8).every((o) => o.where && o.where.length));
+
+  ok('county: drop boxes come per jurisdiction',
+     C.dropBoxes('42820').length === 3 && C.dropBoxes('34000').length === 10);
+}
+
 // --- inferred addresses must defer to the precinct boundary --------------
 // 401 Ionia Ave SW is not in the parcel index. Its only nearby rows are 400,
 // 404 and 408, which sit across the street on the far side of a boundary that
