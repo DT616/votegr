@@ -374,6 +374,11 @@
       close();
       // Redraw the card with the chosen place, then drive to it.
       show(current, li.dataset.kind);
+      // Same landing as tapping the card. Picking "Main Library" out of the
+      // list is the same intent as tapping the card that names it, and the
+      // two arriving in different places was the tell that they were wired
+      // separately. One helper, both callers.
+      if (isPhone()) scrollToDirections();
     };
     body.onkeydown = function (e) {
       var li = e.target.closest && e.target.closest('li[data-pick]');
@@ -509,14 +514,14 @@
       return { label: 'Absentee voting upcoming', status: range, live: true,
                note: 'Absentee ballots are mailed from ' +
                      Elections.monthDay(from) + '. They can be returned from '
-                     + 'then until the polls close on election day. ' + boxAccess() };
+                     + 'then until the polls close on election day.' + boxAccess() };
     }
     if (today > activeEl.date) {
       return { label: 'Absentee voting closed', status: range };
     }
     return { label: 'Absentee voting open', status: range, live: true,
              note: 'A returned ballot has to be in the clerk\'s hands by the '
-                   + 'time the polls close on election day. ' + boxAccess() };
+                   + 'time the polls close on election day.' + boxAccess() };
   }
 
   // Today IS the day. The three ways to vote stop being a menu at that point:
@@ -560,9 +565,9 @@
   }
   // The cue on the right of each card, on a phone: a chevron, the way a
   // list row says "tap for more". The whole card is the tap target there --
-  // tapping a place routes to it and scrolls down to the directions -- and
-  // the chevron is what says so. Wider screens hide it: the cell is the
-  // control and the destination tabs are in view beside the map.
+  // tapping a place routes to it and scrolls down to the Directions heading
+  // -- and the chevron is what says so. Wider screens hide it: the cell is
+  // the control and the destination buttons are in view beside the map.
   function dirButton(kind) {
     return '<span class="dir-cue" aria-hidden="true">\u203a</span>';
   }
@@ -603,22 +608,25 @@
   // to 5, and somebody driving there on a Saturday with a ballot finds a
   // locked building. So the sentence claims only what holds for all of them,
   // and the rows carry hours wherever they differ.
+  // Returns a LEADING space with whatever it has to say, or the empty
+  // string, because it is glued to the end of a sentence that has to read
+  // right when it says nothing.
   function boxAccess() {
     var list = boxesFor(current);
     if (officeOnly(list)) {
-      return 'No ballot drop box is published for ' +
+      return ' No ballot drop box is published for ' +
         esc((current && current.jurisdiction) || 'this jurisdiction') +
         '. An absentee ballot has to be returned to your own clerk, so the ' +
         'clerk\u2019s office is where it goes, during office hours.';
     }
-    var odd = list.filter(function (b) {
-      return !ALWAYS_OPEN.test(b.hours || '');
-    }).length;
-    return 'Drop boxes are monitored, as Michigan law requires.' +
-      (odd ? ' Most are accessible 24/7; ' + (odd === 1 ? 'one is not, and its'
-                                                        : odd + ' are not, and their') +
-             ' hours are on the list.'
-           : ' They are accessible 24/7.');
+    // Nothing at all, where there used to be two sentences: that the boxes are
+    // monitored, and which of them are not open around the clock. The card is
+    // a summary of WHEN you can return a ballot, and neither sentence
+    // answered that. The hours a particular box keeps are still on that box's
+    // own row and in the full list, which is where you look once you have
+    // picked one. The no-box-published case above is different in kind: it
+    // says the trip is somewhere else entirely, so it stays.
+    return '';
   }
 
   var ALWAYS_OPEN = /^24\/7$/;
@@ -727,6 +735,15 @@
       current = live[live.length - 1];
     }
     markSection(current);
+  }
+
+  // Where a chosen place lands you on a phone: the Directions heading, at the
+  // top of the route section, with the destination buttons under it. A frame
+  // is allowed to pass first because routeTo has just unhidden and filled that
+  // section, and measuring it before the layout settles scrolls to where the
+  // heading WAS.
+  function scrollToDirections() {
+    requestAnimationFrame(function () { scrollToResult('routeBlock'); });
   }
 
   function scrollToResult(id) {
@@ -1824,11 +1841,18 @@
       cell.onclick = function () {
         if (!current) return;
         routeTo(current, kind);
-        // No scroll on a phone, for either the search or this tap. Every
-        // anchor tried landed somewhere the reader had not asked to be --
-        // most recently past the destination tabs and onto the map. The
-        // answer stays where it appeared, under the box it was typed into,
-        // and the page is scrolled by the person reading it.
+        // On a phone, tapping a place now takes you to the directions for it.
+        // This block used to refuse to scroll at all, because every anchor
+        // tried landed somewhere nobody had asked to be, most often past the
+        // destination buttons and onto the map. The anchor is the thing that
+        // was missing rather than the scrolling: the route section had no
+        // heading, so there was nowhere to land except the middle of it.
+        // #dirHead is that heading, and scrollToResult puts it under the
+        // sticky bar rather than beneath it.
+        //
+        // The SEARCH still does not scroll. That answer appears under the box
+        // it was typed into and is read from there.
+        if (phone) scrollToDirections();
       };
       cell.onkeydown = function (e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cell.click(); }
