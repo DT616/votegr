@@ -196,7 +196,9 @@
       el("div", "loc-text",
         el("div", "place", cased(place.name)),
         el("div", "addr", cased(place.address)),
-        place.entrance_note ? el("div", "note", sentence(place.entrance_note)) : null));
+        place.entrance_note
+          ? el("div", "note", el("span", "note-l", "Location: "), sentence(place.entrance_note))
+          : null));
     if (place.address || (place.lat != null && place.lng != null)) {
       row.append(mapLink(place));
     }

@@ -363,7 +363,7 @@
           : '') + '</span>' +
         '<span class="bx-addr">' + esc(addressForDisplay(b.address)) + '</span>' +
         (b.entrance_note || b.note
-          ? '<span class="bx-where">Location: ' +
+          ? '<span class="bx-where"><span class="pp-loc-l">Location:</span> ' +
             esc(sentenceCase(b.entrance_note || b.note)) + '</span>' : '') +
         // "Open 24/7" is a whole sentence; a bare "Mon-Fri, 8am to 5pm" is not,
         // and next to an address it can be read as the hours of the building
@@ -500,6 +500,22 @@
   }
 
   function customClass(kind) { return chosen[kind] ? ' is-custom' : ''; }
+
+  // "Location: Building entrance". The address says where the building is;
+  // this says where to go once you are there, and it is the line a voter
+  // reads on arrival, so it is body-white rather than the address's grey and
+  // sits below the address with a little air, in its own block along with
+  // the hours. Empty when there is nothing to say, so no block is emitted.
+  function locLine(text) {
+    return text
+      ? '<div class="pp-loc"><span class="pp-loc-l">Location:</span> ' +
+        esc(sentenceCase(text)) + '</div>'
+      : '';
+  }
+  function metaBlock(lines) {
+    var body = lines.filter(Boolean).join('');
+    return body ? '<div class="pp-meta">' + body + '</div>' : '';
+  }
 
   // True of every street box, so it is said once about all of them under the
   // dates rather than eleven times down a column. The video monitoring is not
@@ -1369,18 +1385,18 @@
         '<div class="pp-name">' + esc(boxLabel(box.place)) + '</div>' +
         '<div class="pp-addr">' +
         (box.place.address ? esc(addressForDisplay(box.place.address)) : '') +
-        (box.place.note
-          ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') +
-        (box.place.office
-          ? '<br><strong class="bx-hours-odd">' + officeHours() + '</strong>' +
-            (box.place.phone ? '<br>' + esc(box.place.phone) : '')
-          : box.place.hours
-          ? (ALWAYS_OPEN.test(box.place.hours)
-              ? '<br>Open 24/7'
-              : '<br><strong class="bx-hours-odd">Open hours: ' +
-                esc(box.place.hours) + '</strong>')
-          : '') +
         '</div>' +
+        metaBlock([
+          locLine(box.place.note),
+          box.place.office
+            ? '<div class="bx-hours-odd">' + officeHours() + '</div>' +
+              (box.place.phone ? '<div>' + esc(box.place.phone) + '</div>' : '')
+            : box.place.hours
+            ? (ALWAYS_OPEN.test(box.place.hours)
+                ? '<div>Open 24/7</div>'
+                : '<div class="bx-hours-odd">Open hours: ' + esc(box.place.hours) + '</div>')
+            : ''
+        ]) +
         // One office is not a list to show all of.
         (box.place.office ? '' :
           '<button type="button" class="box-open" id="boxListBtn">' +
@@ -1412,10 +1428,8 @@
         esc(placeLabel('early', 'Early voting site nearest to you')) + '</div>' +
         (ev
           ? '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
-            '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) +
-            (ev.place.entrance_note
-              ? '<br>Location: ' + esc(sentenceCase(ev.place.entrance_note)) : '') +
-            '</div>' +
+            '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
+            metaBlock([locLine(ev.place.entrance_note)]) +
             (ev.all.length > 1
               ? '<div class="pp-note">Early voting is not tied to your ' +
                 'precinct. Any Grand Rapids voter may use any of these ' +
@@ -1443,9 +1457,8 @@
             ' title="Show it on the map"'
           : '') + '>' +
         '<div class="pp-name">' + esc(displayCase(place.name)) + '</div>' +
-        '<div class="pp-addr">' + esc(addressForDisplay(place.address)) +
-        (place.entrance_note
-          ? '<br>Location: ' + esc(sentenceCase(place.entrance_note)) : '') + '</div>' +
+        '<div class="pp-addr">' + esc(addressForDisplay(place.address)) + '</div>' +
+        metaBlock([locLine(place.entrance_note)]) +
         '</div>';
       if (place.consolidated_with) {
         pollHtml += '<div class="pp-note">Precinct ' + esc(r.precinct) + ' votes with precinct ' +
