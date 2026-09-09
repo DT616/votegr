@@ -288,6 +288,22 @@
   // jurisdiction has them: 99 of the county's 202 precincts do not, and a
   // "Ward" with nothing after it would read as a gap in the data rather than
   // a fact about the township.
+  // A precinct's number as a person reads it: "3-58" where the jurisdiction
+  // has wards, the city's own form, and the bare number where it does not.
+  // What the data is keyed by is the state's 13-digit code, which is an
+  // identity, not a label, and had been reaching the page as one.
+  //
+  // Pass the ward already on screen as `context` to drop it: on a card that
+  // says Ward 3 above it, "precinct 45" is the ward's own number, and only a
+  // number from some OTHER ward has to say so.
+  function precinctNumber(id, context) {
+    var d = P && P.describe ? P.describe(id) : null;
+    if (!d || d.precinct == null || String(d.precinct) === String(id)) return String(id);
+    var ward = d.ward == null || d.ward === '' || String(d.ward) === String(context)
+      ? '' : d.ward + '-';
+    return ward + d.precinct;
+  }
+
   function placeLine(pr) {
     return (pr.jurisdiction ? esc(pr.jurisdiction) + ' \u00b7 ' : '') +
       (pr.ward != null && pr.ward !== '' ? 'Ward ' + esc(pr.ward) + ' \u00b7 ' : '') +
@@ -1092,6 +1108,13 @@
     if (!P || !pollLayer) return;
     pollLayer.clearLayers();
     var seen = {};
+    // Which BUILDING the answer votes at, not which precinct: a consolidated
+    // precinct votes at its host's, and the marker there was made under the
+    // host's key, so comparing precincts left the voter's own polling place
+    // drawn small like every other.
+    var activePlace = activePrecinct && P.pollingPlace(activePrecinct);
+    var activeKey = activePlace && activePlace.lat != null
+      ? activePlace.lat.toFixed(5) + ',' + activePlace.lng.toFixed(5) : null;
     Object.keys(P.polling).forEach(function (pk) {
       var pl = P.pollingPlace(pk);
       if (!pl || pl.lat == null) return;
@@ -1101,7 +1124,7 @@
       var key = pl.lat.toFixed(5) + ',' + pl.lng.toFixed(5);
       if (seen[key]) { seen[key].push(pk); return; }
       var atThisSpot = seen[key] = [pk];
-      var isActive = activePrecinct && String(pk) === String(activePrecinct);
+      var isActive = !!activeKey && key === activeKey;
       // A hollow ring: present without competing. Fifty-nine filled marks
       // buried the precinct numbers and the route underneath them.
       var S = isActive ? 21 : 15;
@@ -1114,7 +1137,11 @@
         zIndexOffset: isActive ? 500 : 300, keyboard: false, riseOnHover: true
       }).addTo(pollLayer);
       bindDetail(m, function () {
-        var list = atThisSpot.slice().sort(function (a, b) { return a - b; });
+        // By ward then precinct, which is also how the numbers read.
+        var list = atThisSpot.slice().sort(function (a, b) {
+          var da = P.describe(a), db = P.describe(b);
+          return (da.ward || 0) - (db.ward || 0) || (da.precinct - db.precinct);
+        }).map(precinctNumber);
         return '<div class="destpop">' +
           '<div class="dt">Polling place</div>' +
           '<div class="dn">' + esc(displayCase(pl.name)) + '</div>' +
@@ -1567,7 +1594,7 @@
       (clickable ? dirButton('polling') : '');
     if (place.consolidated_with) {
       html += '<div class="pp-note">Precinct ' + esc(r.precinct) + ' votes with precinct ' +
-        esc(place.consolidated_with) + ' this election' +
+        esc(precinctNumber(place.consolidated_with, r.ward)) + ' this election' +
         (place.note ? ', because ' + esc(place.note).toLowerCase() : '') + '.</div>';
     }
   } else {
@@ -2486,7 +2513,9 @@
 
     ownBase.setActivePrecinct(current && (current.code || current.precinct));
     ownBase.setScope(current && current.mcd);
-    drawPollingPlaces(current && current.precinct);
+    // The polling places are keyed by code, so the active one has to be
+    // asked for by code: by number, nothing matched and no marker grew.
+    drawPollingPlaces(current && (current.code || current.precinct));
     // Tell the basemap which streets this route uses so it names them first.
     ownBase.setRouteStreets(
       (routes[selected].steps || []).map(function (st) { return st.street; })

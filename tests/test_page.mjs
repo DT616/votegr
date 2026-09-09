@@ -306,6 +306,20 @@ for (const w of WIDTHS) {
   ok('and never claims 24\/7 or monitoring for an office',
      !/24\/7/.test(ada.box) && !/monitor/i.test(ada.note));
   ok('a township shows no Ward at all', !/\bWard\b/.test(ada.info));
+  // The state's 13-digit precinct code is an identity, not a label: it had
+  // been reaching the polling-place marker and the consolidation note as
+  // one. A township has no ward, so its marker names bare numbers.
+  const adaPop = await page.evaluate(async () => {
+    const a = document.querySelector('.poll-ring.active');
+    if (!a) return '(no active marker)';
+    a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    await new Promise(r => setTimeout(r, 400));
+    const p = document.querySelector('.leaflet-popup-content'), d = document.getElementById('mapDetailBody');
+    return ((p && p.innerText) || (d && d.innerText) || '(empty)').replace(/\s+/g, ' ');
+  });
+  ok('the voter\'s own polling place is the marker drawn large', !/no active marker/.test(adaPop));
+  ok('and it names precincts, not 13-digit codes',
+     /Precinct/i.test(adaPop) && !/\b08\d{11}\b/.test(adaPop));
   ok('the map is drawn', result.mapShown && result.mapDrawn);
   // The answer carries its own Election day row; the column belongs to it.
   ok('the countdown stands down for the answer', result.countdownGone);
@@ -322,6 +336,26 @@ for (const w of WIDTHS) {
   ok('the City Clerk is linked', result.links.some(h => h.includes('grandrapidsmi.gov')));
   ok('a result does not make the page scroll sideways', result.pageOverflow <= 0);
   ok('a result does not make the footer scroll sideways', result.footOverflow <= 0);
+
+  // A consolidated Grand Rapids precinct: the note names the host precinct
+  // by its number, and a ward city's marker says which ward.
+  await page.fill('#addr', '995 36th St SE');
+  await page.press('#addr', 'Enter');
+  await page.waitForFunction(() => /Precinct 51/.test(document.getElementById('precinctInfo').innerText),
+    null, { timeout: 15000 });
+  const cons = await page.evaluate(async () => {
+    const note = [...document.querySelectorAll('.pp-note')]
+      .map(n => n.innerText.replace(/\s+/g, ' ')).filter(t => /votes with/.test(t))[0] || '';
+    const a = document.querySelector('.poll-ring.active');
+    if (a) a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    await new Promise(r => setTimeout(r, 400));
+    const p = document.querySelector('.leaflet-popup-content');
+    return { note, pop: p ? p.innerText.replace(/\s+/g, ' ') : '', body: document.body.innerText };
+  });
+  ok('a consolidated precinct names its host by number',
+     /Precinct 51 votes with precinct 45\b/.test(cons.note));
+  ok('a ward city\'s marker names the ward with the precinct', /Precincts 3-45, 3-51/i.test(cons.pop));
+  ok('no 13-digit precinct code is ever shown', !/\b08\d{11}\b/.test(cons.body));
 
   ok('nothing failed to load and nothing threw', errors.length === 0);
   // Asserted after a full lookup and a drawn route, so it covers the paths a
