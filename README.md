@@ -133,17 +133,6 @@ since the two datasets share no keys, and a restriction whose geometry does not
 match cleanly is dropped rather than guessed, because a wrong restriction
 silently forbids a legal turn.
 
-Grand Rapids also publishes a 44,892-row sign inventory, and this project used
-to infer bans from the posted MUTCD no-turn signs and merge them in, adding 45
-restrictions OSM did not have. That is gone. It covered one jurisdiction out of
-thirty and had been frozen upstream since March 2024, so keeping it meant one
-city carried restrictions its neighbours could never have, from a source nobody
-was refreshing. One source with one licence everywhere is worth more than 45
-bans in one place.
-
-**Cameras are a routing cost, not a filter.** A camera-free route always beats
-a faster route that passes one, and where no clean route exists the same
-search returns the one passing the fewest cameras, with each unavoidable camera named.
 
 ## Checking the data
 
@@ -191,11 +180,6 @@ may be missing entirely, and an address across the county line in Ottawa,
 Allegan, Barry, Ionia, Montcalm or Newaygo County is not in the index. The
 page says so rather than guessing.
 
-**Wards exist in five of the thirty jurisdictions** -- Grand Rapids, Wyoming,
-Kentwood, Walker and East Grand Rapids -- and the page shows one only there.
-The other 99 precincts have none, and that is a fact about the township, not a
-gap in the data.
-
 **Polling places change every election**, and consolidations appear only in
 the footnotes of the clerk's directory. Outside Grand Rapids the polling
 places come from the County Clerk's pages and were placed on the map from
@@ -208,8 +192,7 @@ outside the building rather than on it. One, given by the county only as
 23. The other 24 publish none, and it does not send you to a neighbour's box,
 because under MCL 168.764a an absentee ballot is returned only to the clerk of
 the city or township where you are registered: there, it names your own
-clerk's office as the place to return it, with the phone number, and never
-describes an office as open around the clock or under video monitoring.
+clerk's office as the place to return it, with the phone number.
 
 **Early voting sites outside Grand Rapids are not shown yet.** The City Clerk
 has published the city's four for November; the County Clerk's page still
@@ -219,8 +202,7 @@ none. The dates are shown; the row says no site is published.
 ## Privacy
 
 The page downloads its data once and does everything in the browser. It makes
-no third-party request at all, and there is none it can make: no geocoder, no
-routing service, no analytics, no tiles. You can watch that in the network
+no third-party request at all.  You can watch that in the network
 panel, and `test_page.mjs` asserts it, over a full session from load to drawn
 route.
 
