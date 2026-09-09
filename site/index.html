@@ -7,7 +7,7 @@
 <meta name="description" content="Find your precinct and polling place anywhere in Kent County, Michigan, and drive there avoiding known license plate cameras. Runs entirely in your browser.">
 <!-- justified inline: stamps the saved theme before first paint, so an
      explicitly chosen theme does not flash the other one on load. -->
-<script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<script>try{var t=localStorage.getItem('theme');if(t!=='system')document.documentElement.setAttribute('data-theme',(t==='light'||t==='dark')?t:'dark');}catch(e){document.documentElement.setAttribute('data-theme','dark');}</script>
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="router.css">
 </head>
@@ -108,7 +108,6 @@
   <section class="block" id="resultBlock" hidden>
     <h2>Your voting info:</h2>
     <div id="precinctInfo"></div>
-    <div id="advisory"></div>
   </section>
 
   <section class="block" id="routeBlock" hidden>
@@ -137,6 +136,11 @@
     </div>
 
     <div id="steps"></div>
+    <!-- The caveats, under the directions rather than over them. On a phone
+         the yellow block between the answer and the map was a screen of
+         warnings before anything useful; here it is read after the route,
+         which is what it is about. -->
+    <div id="advisory"></div>
   </section>
 
 </main>

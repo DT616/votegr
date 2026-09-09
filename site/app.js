@@ -56,11 +56,16 @@
   // localStorage, where the inline script in the head reads it before first
   // paint so an explicit choice never flashes the other scheme.
 
+  // Dark unless told otherwise. This page is read on a phone in a car and at
+  // a polling place after work; dark is the right default for it, and
+  // "match the system" was not reliably landing dark for people whose
+  // browsers were. Auto is still there for anyone who wants it, and choosing
+  // it is stored as a choice rather than as the absence of one.
   function themeChoice() {
     try {
       var t = localStorage.getItem('theme');
-      return (t === 'light' || t === 'dark') ? t : 'system';
-    } catch (e) { return 'system'; }
+      return (t === 'light' || t === 'dark' || t === 'system') ? t : 'dark';
+    } catch (e) { return 'dark'; }
   }
 
   // What is actually on screen, which is what the map has to match.
@@ -77,8 +82,7 @@
     if (choice === 'system') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', choice);
     try {
-      if (choice === 'system') localStorage.removeItem('theme');
-      else localStorage.setItem('theme', choice);
+      localStorage.setItem('theme', choice);
     } catch (e) { /* private mode: the page still works, it just forgets */ }
 
     var sw = $('themeSwitch');
@@ -521,6 +525,15 @@
         esc(sentenceCase(text)) + '</div>'
       : '';
   }
+  // "Directions" on each card. On a phone the cards are not obviously
+  // tappable and the destination tabs sit below the map, a screen away, so
+  // each place carries its own button; wider screens hide it (the cell is
+  // the control there, and the tabs are in view).
+  function dirButton(kind) {
+    return '<button type="button" class="dir-btn" data-dir="' + kind + '">' +
+      'Directions</button>';
+  }
+
   function metaBlock(lines) {
     var body = lines.filter(Boolean).join('');
     return body ? '<div class="pp-meta">' + body + '</div>' : '';
@@ -1371,7 +1384,8 @@
       // One office is not a list to show all of.
       (box.place.office ? '' :
         '<button type="button" class="box-open" id="boxListBtn">' +
-        'Show all drop box locations</button>');
+        'Show all drop box locations</button>') +
+      dirButton('dropbox');
     html += '</div>';
 
     html += whenCell('dropbox', absenteeState(), '');
@@ -1414,6 +1428,7 @@
               'Show all my early voting site options</button>'
             : '')
         : '<div class="pp-addr">No site published yet.</div>') +
+      (ev ? dirButton('early') : '') +
       '</div>';
     html += whenCell('early', { label: evState.label, status: evState.status,
                                   live: true },
@@ -1441,7 +1456,8 @@
       '<div class="pp-name">' + esc(displayCase(place.name)) + '</div>' +
       '<div class="pp-addr">' + esc(addressForDisplay(place.address)) + '</div>' +
       metaBlock([locLine(place.entrance_note)]) +
-      '</div>';
+      '</div>' +
+      (clickable ? dirButton('polling') : '');
     if (place.consolidated_with) {
       html += '<div class="pp-note">Precinct ' + esc(r.precinct) + ' votes with precinct ' +
         esc(place.consolidated_with) + ' this election' +
@@ -1528,6 +1544,18 @@
     // destination there is nothing to toggle, and the polling place keeps its
     // older job of framing itself on the map.
     wirePlaceLists(r);
+
+    Array.prototype.forEach.call($('precinctInfo').querySelectorAll('.dir-btn'), function (b) {
+      b.onclick = function (e) {
+        e.stopPropagation();          // the cell behind it routes too; once is enough
+        if (!current) return;
+        routeTo(current, b.dataset.dir);
+        // The route block, not the map: that keeps the destination tabs and
+        // the distance line above the map on screen, instead of just under
+        // the sticky bar.
+        scrollToResult('routeBlock');
+      };
+    });
 
     var destCells = $('precinctInfo').querySelectorAll('[data-kind]');
     var multi = destinations(r).length > 1;
@@ -1618,10 +1646,11 @@
 
     routeTo(r, focusKind);
     // After routeTo, because the blocks it fills are hidden until then and a
-    // hidden element has no offset to scroll to. On a phone the map is the
-    // thing to land on, with the directions right under it; on a wider
-    // screen the map sits beside the answer and the answer's top is right.
-    scrollToResult(isPhone() && !$('mapBlock').hidden ? 'mapBlock' : 'resultBlock');
+    // hidden element has no offset to scroll to. The top of the answer, on
+    // every screen: landing on the map put too much on a phone's screen at
+    // once, and the Directions button on each card and the section bar are
+    // how the map is reached from here.
+    scrollToResult('resultBlock');
   }
 
   // ---- election + destination -----------------------------------------
@@ -2232,12 +2261,6 @@
     // computed against the stale width centres everything ~200px off, which
     // is exactly the constant offset that kept showing up in verification.
     map.invalidateSize(false);
-    // On a phone, a new route brings the map to the top of the screen, under
-    // the sticky bar, with the directions following below it. The lookup had
-    // scrolled to the top of the answer, which on a phone put the map and
-    // the directions a screen and a half further down where nothing said
-    // they existed. The section bar takes you back up.
-    if (fit && isPhone()) scrollToResult('mapBlock');
 
     routeLayer.clearLayers();
     pinLayer.clearLayers();

@@ -416,6 +416,17 @@ body {
 /* The phone's section bar. Three pills under the search box, in the sticky
    bar, so "there are directions further down" is always on screen. */
 .section-nav { display: none; }
+/* The per-card Directions button: phones only. */
+.dir-btn { display: none; }
+@media (max-width: 700px) {
+  .dir-btn {
+    display: inline-block; margin-top: 12px; font: inherit; font-size: .87rem;
+    font-weight: 600; color: var(--accent); background: none;
+    border: 1px solid var(--accent); border-radius: 999px; padding: 6px 14px;
+    cursor: pointer;
+  }
+  .dir-btn + .box-open, .box-open + .dir-btn { margin-left: 8px; }
+}
 @media (max-width: 700px) {
   #col.has-result .section-nav:not([hidden]) {
     display: flex; gap: 8px; margin-top: 10px;
