@@ -294,6 +294,10 @@
       // route helping": it was hiding the thing you were reading.
       this._canvas = L.DomUtil.create('canvas', 'basemap-canvas');
       this._canvas.style.position = 'absolute';
+      // Top left, not the middle: _onZoom scales these, and setTransform
+      // writes only a transform. Left at the default the canvas would grow
+      // about its own centre and slide off the geography it is drawn on.
+      this._canvas.style.transformOrigin = '0 0';
       map.getPane('tilePane').appendChild(this._canvas);
 
       if (!map.getPane('basemapLabels')) {
@@ -303,6 +307,7 @@
       }
       this._labelCanvas = L.DomUtil.create('canvas', 'basemap-labels');
       this._labelCanvas.style.position = 'absolute';
+      this._labelCanvas.style.transformOrigin = '0 0';
       map.getPane('basemapLabels').appendChild(this._labelCanvas);
 
       // Only redraw when the map SETTLES, and at most once per animation
@@ -317,12 +322,16 @@
       this._schedule = this._schedule.bind(this);
       map.on('zoomend moveend viewreset resize', this._schedule, this);
       map.on('zoomanim', this._onZoomAnim, this);
+      // Every zoom, which in practice means every frame of a pinch. See
+      // _onZoom for why a pinch needs its own handling and a drag does not.
+      map.on('zoom', this._onZoom, this);
       this._redraw();
     },
 
     onRemove: function (map) {
       map.off('zoomend moveend viewreset resize', this._schedule, this);
       map.off('zoomanim', this._onZoomAnim, this);
+      map.off('zoom', this._onZoom, this);
       if (this._raf) cancelAnimationFrame(this._raf);
       [this._canvas, this._labelCanvas].forEach(function (c) {
         if (c && c.parentNode) c.parentNode.removeChild(c);
@@ -351,6 +360,34 @@
     _onZoomAnim: function () {
       if (this._canvas) this._canvas.style.opacity = '0';
       if (this._labelCanvas) this._labelCanvas.style.opacity = '0';
+    },
+
+    // A PINCH is not a zoom animation and gets no zoomanim. Leaflet runs it
+    // by calling _move on every frame with a fractional zoom: the pixel
+    // origin changes, so every layer that positions itself from it -- the
+    // markers, the route -- moves under the fingers, but nothing transforms
+    // the pane, so these canvases stayed exactly where they were. Measured
+    // over one pinch: the canvas transform never changed while a marker
+    // travelled 8,500px. The streets stood still and the pins flew off them.
+    //
+    // So the canvas has to follow the fractional zoom itself, which is what
+    // Leaflet's own tile layer does with its retained levels: scale the
+    // picture we already drew and let the redraw at zoomend replace it with
+    // a sharp one. The canvas was drawn centred on _drawnCenter at
+    // _drawnZoom, so under scale s its middle belongs at that latlng's
+    // current layer point.
+    //
+    // Zoom only. A drag translates the map pane, and these canvases are
+    // children of panes, so they come along for free -- reapplying a
+    // transform on move would fight that.
+    _onZoom: function () {
+      var map = this._map, cv = this._canvas, lc = this._labelCanvas;
+      if (!map || !cv || this._drawnCenter == null) return;
+      var s = map.getZoomScale(map.getZoom(), this._drawnZoom);
+      var mid = map.latLngToLayerPoint(this._drawnCenter);
+      var pos = L.point(mid.x - this._drawnW / 2 * s, mid.y - this._drawnH / 2 * s);
+      L.DomUtil.setTransform(cv, pos, s);
+      if (lc) L.DomUtil.setTransform(lc, pos, s);
     },
 
     _schedule: function () {
@@ -382,6 +419,8 @@
       });
       var tl = map.containerPointToLayerPoint([0, 0]);
       var origin = L.point(tl.x - padX, tl.y - padY);
+      // setPosition writes a transform with no scale, which is also how the
+      // scale a pinch left behind gets cleared.
       L.DomUtil.setPosition(cv, origin);
       if (lc) L.DomUtil.setPosition(lc, origin);
 
@@ -396,6 +435,13 @@
       }
 
       var P = palette(this._dark), z = map.getZoom();
+
+      // What _onZoom scales against: the centre, zoom and CSS size of the
+      // picture about to be drawn. The canvas is padded symmetrically, so
+      // its middle IS the map centre in layer coordinates.
+      this._drawnCenter = map.getCenter();
+      this._drawnZoom = z;
+      this._drawnW = cw; this._drawnH = ch;
 
       // Publish the swatch colours the legend needs, from the palette the map
       // is about to draw with. The legend used to hardcode them, which meant

@@ -535,6 +535,81 @@ for (const w of WIDTHS) {
   ok('the rail centres each value under its label', await page.evaluate(() =>
      [...document.querySelectorAll('.vi-rail > div')]
        .every(d => getComputedStyle(d).textAlign === 'center')));
+
+  // The head of a card has always been the tap target. The chevron is the
+  // mark that says so, and it was 6px by 24px: a hairline at arm's length,
+  // sized to the glyph rather than to the target under it.
+  const chev = await page.evaluate(() => {
+    const s = getComputedStyle(document.querySelector('.vi-fold > summary'), '::after');
+    return { w: parseFloat(s.width), h: parseFloat(s.height) };
+  });
+  ok('the expander mark is drawn at the size of its target',
+     chev.w >= 44 && chev.h >= 44);
+
+  // Open is a lift, not a wash of the accent. The accent is spoken for on
+  // this screen -- the labels, the cue chevron, the ring on the chosen place
+  // -- and a fourth use of it read as four selections at once. Checked by
+  // colour rather than by rule, so any route back to a blue card fails here.
+  const noBlue = await page.evaluate(() => {
+    const hex = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(', ');
+    const open = document.querySelector('.vi-card-dropbox .vi-fold');
+    const s = getComputedStyle(open);
+    return { rgb, paint: s.backgroundColor + ' ' + s.boxShadow };
+  });
+  ok('an open card is not painted in the accent', !noBlue.paint.includes(noBlue.rgb));
+  await ctx.close();
+}
+
+// --- the rail on a wide screen ---
+// Ward and Precinct are a label with a number under it, and the number belongs
+// under the label rather than at the left edge of a column the jurisdiction
+// name sets the width of. The trap is that centring alone does not do it: the
+// block is as wide as the rail, so "3" would centre under the middle of
+// "Grand Rapids". Each block has to shrink to its own label first, which is
+// what these two assertions are really checking -- the second is the one that
+// fails if the align-self goes.
+{
+  console.log('\nthe rail, wide');
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
+  const page = await ctx.newPage();
+  await page.goto(URL_, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => !document.getElementById('addr').disabled, null, { timeout: 60000 });
+  await page.fill('#addr', '602 Alexander St SE');
+  await page.press('#addr', 'Enter');
+  await page.waitForSelector('#resultBlock:not([hidden])', { timeout: 30000 });
+  const rail = await page.evaluate(() => {
+    const mid = el => { const r = el.getBoundingClientRect(); return r.left + r.width / 2; };
+    const rows = [...document.querySelectorAll('.vi-rail > div')].map(d => ({
+      idn: d.classList.contains('vi-idn'),
+      align: getComputedStyle(d).textAlign,
+      width: d.getBoundingClientRect().width,
+      block: mid(d),
+      lbl: mid(d.querySelector('.vi-lbl')),
+      val: mid(d.querySelector('.vi-num, .vi-name')),
+    }));
+    return { rows, railWidth: document.querySelector('.vi-rail').getBoundingClientRect().width };
+  });
+  // .every on an empty list is true, so each of these says how many it found
+  // as well as what it found. Without that, dropping the class the rows are
+  // selected by would turn both green rather than red.
+  const idn = rail.rows.filter(r => r.idn);
+  ok('the rail has both numbers', idn.length === 2);
+  ok('each number is centred on its own label',
+     idn.length === 2 && idn.every(r => Math.abs(r.lbl - r.val) < 0.6));
+  ok('and its block is narrower than the rail, so that centring means something',
+     idn.length === 2 && idn.every(r => r.width < rail.railWidth - 1));
+  // And the column as a whole reads as centred: three rows of different
+  // widths sharing one axis, rather than three blocks flush to a left edge.
+  // Jurisdiction included -- it is the widest, so it is the row that sets
+  // where that axis falls.
+  // The width clause is load bearing, not belt and braces: with align-items
+  // gone the rows stretch to the full rail and TRIVIALLY share a centre, so
+  // an axis check on its own goes green on the layout it is meant to catch.
+  ok('the rail is three rows on one centre axis',
+     rail.rows.length === 3 &&
+     rail.rows.every(r => Math.abs(r.block - rail.rows[0].block) < 0.6) &&
+     rail.rows.filter(r => r.width < rail.railWidth - 1).length === 2);
   await ctx.close();
 }
 
@@ -601,6 +676,65 @@ for (const w of WIDTHS) {
   ok('the next tap on a card is still a tap', later === 1);
   ok('the phone lookup threw nothing', errors.length === 0);
   if (errors.length) errors.forEach(e => console.log('       ' + e));
+  await ctx.close();
+}
+
+// --- a pinch takes the streets with it ---
+// Leaflet runs a pinch by calling _move on every frame with a fractional
+// zoom. Layers that position themselves from the pixel origin -- the markers,
+// the route -- follow the fingers; nothing transforms the pane. The basemap is
+// a canvas we draw ourselves, so it did neither, and a pinch slid every pin
+// off the streets it belonged to. Measured before the fix: a marker travelled
+// 8,500px while the canvas transform never changed once.
+//
+// The check needs no map object and no zoom reading. Two markers a fixed
+// distance apart on the ground are a ruler: how much further apart they get is
+// the scale the PINS are drawn at, and the canvas's own CSS scale is the scale
+// the STREETS are drawn at. On one map those are the same number.
+{
+  console.log('\na pinch');
+  const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+  const page = await ctx.newPage();
+  await page.goto(URL_, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => !document.getElementById('addr').disabled, null, { timeout: 60000 });
+  await page.fill('#addr', '602 Alexander St SE');
+  await page.press('#addr', 'Enter');
+  await page.waitForSelector('#resultBlock:not([hidden])', { timeout: 30000 });
+  await page.waitForSelector('.basemap-canvas', { timeout: 30000 });
+  await page.locator('#map').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(700);
+
+  const sample = () => page.evaluate(() => {
+    const at = el => { const m = new DOMMatrixReadOnly(getComputedStyle(el).transform); return m; };
+    const pins = [...document.querySelectorAll('.leaflet-marker-pane > *')].slice(0, 2).map(at);
+    const cv = at(document.querySelector('.basemap-canvas'));
+    return {
+      pins: pins.length,
+      spread: pins.length === 2 ? Math.hypot(pins[0].m41 - pins[1].m41, pins[0].m42 - pins[1].m42) : 0,
+      canvasScale: cv.a,
+    };
+  });
+
+  const box = await page.locator('#map').boundingBox();
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  const cdp = await ctx.newCDPSession(page);
+  const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', {
+    type, touchPoints: pts.map((p, i) => ({ x: p[0], y: p[1], id: i })),
+  });
+
+  const start = await sample();
+  ok('two pins to measure between', start.pins === 2 && start.spread > 20);
+  await touch('touchStart', [[cx - 60, cy], [cx + 60, cy]]);
+  for (let i = 1; i <= 5; i++) await touch('touchMove', [[cx - 60 - i * 12, cy], [cx + 60 + i * 12, cy]]);
+  const mid = await sample();                       // still mid gesture: no touchEnd yet
+  await touch('touchEnd', []);
+
+  const pinScale = mid.spread / start.spread;
+  ok('the pinch spread the pins', pinScale > 1.2);
+  // The one that fails if the basemap stops following: the streets sat at
+  // scale 1 through the whole gesture while this ratio climbed.
+  ok('and the streets grew with them',
+     Math.abs(mid.canvasScale / start.canvasScale - pinScale) / pinScale < 0.03);
   await ctx.close();
 }
 
