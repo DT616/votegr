@@ -369,8 +369,8 @@
         // and next to an address it can be read as the hours of the building
         // rather than of the box. The label says which.
         (b.office
-          ? '<span class="bx-hours-odd">Office hours' +
-            (b.phone ? ' \u00b7 ' + esc(b.phone) : '') + '</span>'
+          ? '<span class="bx-hours-odd">' + officeHours() + '</span>' +
+            (b.phone ? '<span class="bx-addr">' + esc(b.phone) + '</span>' : '')
           : b.hours
           ? '<span class="' + (ALWAYS_OPEN.test(b.hours) ? 'bx-hours' : 'bx-hours-odd') +
             '">' + (ALWAYS_OPEN.test(b.hours) ? 'Open 24/7'
@@ -1270,7 +1270,7 @@
     $('pinBtn').setAttribute('aria-pressed', 'true');
     $('map').classList.add('pin-armed');
     setHint('Tap the map where you want to start from. Esc cancels.');
-    $('mapNote').textContent = 'Tap anywhere in the city to start from that spot.';
+    $('mapNote').textContent = 'Tap anywhere in Kent County to start from that spot.';
     scrollToResult('mapBlock');
   }
 
@@ -1367,12 +1367,13 @@
                                     ? 'Where to return an absentee ballot'
                                     : 'Ballot drop box nearest to you')) + '</div>' +
         '<div class="pp-name">' + esc(boxLabel(box.place)) + '</div>' +
-        '<div class="pp-addr">' + esc(addressForDisplay(box.place.address)) +
+        '<div class="pp-addr">' +
+        (box.place.address ? esc(addressForDisplay(box.place.address)) : '') +
         (box.place.note
           ? '<br>Location: ' + esc(sentenceCase(box.place.note)) : '') +
         (box.place.office
-          ? '<br><strong class="bx-hours-odd">Office hours' +
-            (box.place.phone ? ' \u00b7 ' + esc(box.place.phone) : '') + '</strong>'
+          ? '<br><strong class="bx-hours-odd">' + officeHours() + '</strong>' +
+            (box.place.phone ? '<br>' + esc(box.place.phone) : '')
           : box.place.hours
           ? (ALWAYS_OPEN.test(box.place.hours)
               ? '<br>Open 24/7'
@@ -1923,13 +1924,27 @@
     // hours it does not keep, or says it is watched.
     var office = P ? P.clerkOf(r.mcd) : null;
     if (!office || !office.lat || !office.lng) return [];
+    // The street address is the part before the first comma; the county
+    // often trails a P.O. Box and a second mailing line. A record with no
+    // usable street line falls back to whatever it has rather than showing
+    // an empty one, and a missing phone is simply not mentioned.
+    var street = String(office.address || '').split(',')[0].trim();
     return [{
       name: (r.jurisdiction || 'Your') + ' Clerk\u2019s Office',
-      address: String(office.address || '').split(',')[0],
-      phone: office.phone || null,
+      address: street || String(office.address || '').trim() || null,
+      phone: (office.phone && String(office.phone).trim()) || null,
       lat: office.lat, lng: office.lng,
       hours: null, office: true
     }];
+  }
+
+  // The county publishes no office hours for any clerk, so this can only
+  // say that there are some. The phone number goes on a line of its own,
+  // below, with nothing explaining it: a phone number is its own
+  // explanation, and "call to check" was telling the reader what to do
+  // with it.
+  function officeHours() {
+    return 'Open during office hours';
   }
 
   // The drop-off list is the clerk's office rather than any box.
