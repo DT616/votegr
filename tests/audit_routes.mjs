@@ -12,10 +12,12 @@
 //   4. TURNS        every consecutive edge pair passes turnAllowed()
 //   5. U-TURNS      only where the node offers no other exit
 //   6. DISTANCE     step distances sum to the route distance (within 2%)
+import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const R = require('./site/router.js');
-const { pointInRings } = require('./site/precinct.js');
+process.chdir(fileURLToPath(new URL('..', import.meta.url)));   // paths below are from the repo root
+const R = require('../site/router.js');
+const { pointInRings } = require('../site/precinct.js');
 const fs = require('fs');
 
 const graph = new R.Graph(JSON.parse(fs.readFileSync('site/data/graph.json')));

@@ -142,7 +142,7 @@ because nothing recomputes them.
 **`polling.json`** comes from the City Clerk's precinct directory PDF. Each
 election the clerk publishes a new one under a new generated filename, so the
 URL in the file's `provenance` block goes stale; when it 404s (the weekly link
-check, `check_links.mjs`, is what will say so), find the current directory from
+check, `scripts/check_links.mjs`, is what will say so), find the current directory from
 the elections page rather than assuming it is gone. After
 transcribing: check there are 59 precincts and the numbering runs 1 to 59,
 cross-check against the Kent County listing, and read the footnotes for
@@ -163,15 +163,20 @@ posting for that election rather than carrying the previous one's forward.
 
 ## Verifying a rebuild
 
+The suites live in `tests/` and the two network tools in `scripts/`; all of
+them find the repository root from their own location, so they run from any
+directory.
+
 ```
-node test_display_case.mjs         # display casing invariants over the real corpus
-node test_router.mjs               # 76 assertions: routing, restrictions, addresses
-node audit_routes.mjs              # drives hundreds of real trips, checks every route
-npm ci && node test_page.mjs       # 93 assertions: the page itself, in a browser
-node test_early_voting_states.mjs  # the four early voting states, from a dated fixture
-node test_check_links.mjs          # what the link checker makes of a response
-node compare_osrm.mjs 30           # differential check against OSRM
-node check_links.mjs               # every external link, the provenance URLs included
+node tests/test_display_case.mjs         # display casing invariants over the real corpus
+node tests/test_router.mjs               # routing, chunks, restrictions, addresses, the county index, the polls clock
+node tests/audit_routes.mjs              # drives hundreds of real trips, checks every route
+npm ci && node tests/test_page.mjs       # the page itself, in a browser
+node tests/test_simple_page.mjs          # /simple, in a browser
+node tests/test_early_voting_states.mjs  # the early voting states and election day, from a dated fixture
+node tests/test_check_links.mjs          # what the link checker makes of a response
+node scripts/compare_osrm.mjs 30         # differential check against OSRM
+node scripts/check_links.mjs             # every external link, the provenance URLs included
 ```
 
 All but the last two also run on every pull request, so a rebuild that breaks

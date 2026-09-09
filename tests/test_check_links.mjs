@@ -17,7 +17,7 @@
 // silently stops checking a link. So the answer is a rule about statuses,
 // with no host in it, and these tests are what hold that line.
 import { readFile } from 'fs/promises';
-import { classify } from './check_links.mjs';
+import { classify } from '../scripts/check_links.mjs';
 
 let fails = 0;
 const ok = (n, c, d = '') => { console.log((c ? '  ok   ' : '  FAIL ') + n + (c ? '' : '  ' + d)); if (!c) fails++; };
@@ -69,7 +69,7 @@ ok('every status 100-599 classifies', stray === null, `status ${stray} did not`)
 // Not style checks. Each one is the exact thing that was wrong before, and
 // each would pass silently if it came back, since the live run only reports
 // what it found today.
-const src = await readFile(new URL('./check_links.mjs', import.meta.url), 'utf8');
+const src = await readFile(new URL('../scripts/check_links.mjs', import.meta.url), 'utf8');
 ok('no per-host exemption list',
    !/\b(FIREWALLED|ALLOWED?_HOSTS|EXEMPT(ED)?_HOSTS|HOST_ALLOWLIST)\b/.test(src),
    'a named host means a link stopped being checked');

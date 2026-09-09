@@ -15,7 +15,7 @@
 import { createRequire } from 'module';
 import { readFile } from 'fs/promises';
 const require = createRequire(import.meta.url);
-const D = require('./site/display-case.js');
+const D = require('../site/display-case.js');
 
 let fails = 0;
 const ok = (n, c, d = '') => { console.log((c ? '  ok   ' : '  FAIL ') + n + (c ? '' : '  ' + d)); if (!c) fails++; };
@@ -50,15 +50,15 @@ ok('number passes through', D(5) === 5);
 // --- invariants over the real corpus ---
 const read = async (p) => JSON.parse(await readFile(new URL(p, import.meta.url), 'utf8'));
 const corpus = [];
-const polling = await read('./site/data/polling.json');
+const polling = await read('../site/data/polling.json');
 for (const v of Object.values(polling.precincts)) {
   corpus.push(v.name, v.address, v.entrance_note || '');
 }
-const elections = await read('./site/data/elections.json');
+const elections = await read('../site/data/elections.json');
 for (const el of elections.elections) {
   for (const s of el.early_voting_sites || []) corpus.push(s.name, s.address);
 }
-const graph = await read('./site/data/graph.json');
+const graph = await read('../site/data/graph.json');
 for (const e of graph.edges) if (typeof e.n === 'string' && e.n) corpus.push(e.n);
 
 const strings = [...new Set(corpus.filter(Boolean))];
