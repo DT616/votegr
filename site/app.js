@@ -1303,7 +1303,7 @@
   // These come last and only fill what the city's own suggestions leave. A
   // city street is what this tool can answer, and one that matches should
   // never be pushed down the list by a neighbour.
-  var GR_CITY = 'Grand Rapids city';
+  var GR_CITY = 'Grand Rapids City';
   var GR_MCD = '34000';      // the state's MCD code for the City of Grand Rapids
 
   // Whether a result is in the one jurisdiction whose own clerk data this
@@ -1315,14 +1315,23 @@
     return !!(r && r.mcd === GR_MCD);
   }
 
+  // The name a suggestion row carries. The state's precinct index says
+  // "Township" when it means one and nothing when it means a city, so the
+  // city half is spelled out: Grand Rapids Township is a real, different
+  // place next door, and "Grand Rapids" alone does not say which.
+  function jurisdictionLabel(name) {
+    return /Township$/i.test(name) ? name : name + ' City';
+  }
+
   function suggestWithNeighbours(text, limit) {
     var out = P.suggest(text, limit) || [];
     // Say which jurisdiction EVERY suggestion is in, not only the ones from
     // outside. A list where some rows are labelled and some are bare reads as
     // "these are the odd ones"; a reader still has to know that the unlabelled
-    // ones are the answerable ones. "city" is not padding either -- Grand
-    // Rapids Township is a real, different place next door.
-    out.forEach(function (o) { if (!o.where) o.where = [GR_CITY]; });
+    // ones are the answerable ones.
+    out.forEach(function (o) {
+      o.where = o.where && o.where.length ? o.where.map(jurisdictionLabel) : [GR_CITY];
+    });
     if (out.length >= limit || !neighbors) return out;
 
     var typed = P.parseTyped(text);
@@ -1335,7 +1344,7 @@
     }).sort();
 
     for (var i = 0; i < names.length && out.length < limit; i++) {
-      var where = neighbors[names[i]] || [];
+      var where = (neighbors[names[i]] || []).map(jurisdictionLabel);
       out.push({ street: names[i], number: typed.number, kind: 'outside',
                  where: where });
     }

@@ -903,7 +903,15 @@ body {
    is the one note every row carries and a column reads faster than a note
    that moves. */
 .ac-item .ac-where { margin-left: 9px; }
-.ac-item.is-outside .ac-where { color: var(--warn); }
+/* On a phone a street in four jurisdictions does not fit beside its name:
+   the row wraps and the jurisdictions take a line of their own under the
+   street, indented past the pin so they read as part of the same row. */
+@media (max-width: 700px) {
+  .ac-item { flex-wrap: wrap; }
+  .ac-item .ac-where {
+    flex: 0 0 100%; margin: 3px 0 0 var(--ac-indent, 24px); white-space: normal;
+  }
+}
 .ac-head {
   padding: 8px 13px; font-size: .76rem; letter-spacing: .08em;
   text-transform: uppercase; color: var(--dim); background: var(--raise);
