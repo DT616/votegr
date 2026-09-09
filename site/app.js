@@ -543,6 +543,23 @@
     return '<span class="dir-cue" aria-hidden="true">\u203a</span>';
   }
 
+  // One section of the answer: the place and its dates. On a wider screen
+  // they are two cells of a row -- place left, dates right -- and go out in
+  // that order for the grid to place. On a phone they are ONE card with the
+  // dates on top, because the date is what a voter reads first there; and
+  // where the window has not opened yet, the place is folded under the
+  // dates behind a "Show" line, so what is on screen by default is when,
+  // with where a tap away. Election day is never folded: it is the default
+  // destination, and the map below is already pointed at it.
+  function section(kind, where, when, opts) {
+    if (!isPhone()) return where + when;
+    var body = opts && opts.collapsed
+      ? '<details class="vi-place"><summary>' + esc(opts.summary) + '</summary>' +
+        where + '</details>'
+      : where;
+    return '<div class="vi-card vi-card-' + kind + '">' + when + body + '</div>';
+  }
+
   function metaBlock(lines) {
     var body = lines.filter(Boolean).join('');
     return body ? '<div class="pp-meta">' + body + '</div>' : '';
@@ -1369,7 +1386,7 @@
   // trip to the polls.
   var box = destinations(r).filter(function (o) { return o.kind === 'dropbox'; })[0];
   if (box) {
-    html += '<div class="vi-where vi-dropbox' + customClass('dropbox') +
+    var where = '<div class="vi-where vi-dropbox' + customClass('dropbox') +
       '" data-kind="dropbox">' +
       '<div class="vi-lbl">' +
       esc(placeLabel('dropbox', box.place.office
@@ -1395,9 +1412,13 @@
         '<button type="button" class="box-open" id="boxListBtn">' +
         'Show all drop box locations</button>') +
       dirButton('dropbox');
-    html += '</div>';
+    where += '</div>';
 
-    html += whenCell('dropbox', absenteeState(), '');
+    var st = absenteeState();
+    html += section('dropbox', where, whenCell('dropbox', st, ''), {
+      collapsed: !/open/i.test(st.label),
+      summary: box.place.office ? 'Show where to return it' : 'Show the nearest drop box'
+    });
   }
     return html;
   }
@@ -1421,7 +1442,7 @@
     // line of their own, so "upcoming" read as a different shape from
     // "open"; a row that says "No site published yet" beside its dates is
     // the same row with one fact missing, and should look like it.
-    html += '<div class="vi-where vi-ev-site' + (ev ? customClass('early') : '') + '"' +
+    var where = '<div class="vi-where vi-ev-site' + (ev ? customClass('early') : '') + '"' +
       (ev ? ' data-kind="early"' : '') + '>' +
       '<div class="vi-lbl">' +
       esc(placeLabel('early', 'Early voting site nearest to you')) + '</div>' +
@@ -1439,9 +1460,11 @@
         : '<div class="pp-addr">No site published yet.</div>') +
       (ev ? dirButton('early') : '') +
       '</div>';
-    html += whenCell('early', { label: evState.label, status: evState.status,
-                                  live: true },
-                       ev ? evHoursHtml(activeEl) : '');
+    html += section('early', where,
+      whenCell('early', { label: evState.label, status: evState.status, live: true },
+               ev ? evHoursHtml(activeEl) : ''),
+      { collapsed: !!ev && !/open/i.test(evState.label),
+        summary: 'Show the nearest early voting site' });
   }
     return html;
   }
@@ -1477,8 +1500,9 @@
   }
   html += '</div>';
 
+  var when = '';
   if (activeEl) {
-    html += whenCell('polling',
+    when += whenCell('polling',
       { label: 'Election day', status: Elections.withWeekday(activeEl.date) },
       electionDayHours && electionDayHours.open && electionDayHours.close
         ? '<div class="vi-hours"><span class="vi-hours-lbl">Hours:</span> ' +
@@ -1486,7 +1510,7 @@
           esc(Elections.shortTime(electionDayHours.close)) + '</div>'
         : '');
   }
-    return html;
+    return section('polling', html, when, { collapsed: false });
   }
 
   function show(r, focusKind) {
