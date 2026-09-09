@@ -412,6 +412,21 @@ body {
 .field input::placeholder { color: var(--dim); opacity: .8; }
 /* Rests empty; no reserved height while it has nothing to say. */
 .hint:empty { display: none; }
+
+/* The phone's section bar. Three pills under the search box, in the sticky
+   bar, so "there are directions further down" is always on screen. */
+.section-nav { display: none; }
+@media (max-width: 700px) {
+  #col.has-result .section-nav:not([hidden]) {
+    display: flex; gap: 8px; margin-top: 10px;
+  }
+  .section-nav button {
+    flex: 1; font: inherit; font-size: .84rem; font-weight: 600;
+    color: var(--fg); background: var(--raise); border: 1px solid var(--line);
+    border-radius: 999px; padding: 7px 8px; cursor: pointer;
+  }
+  .section-nav button:active { border-color: var(--accent); color: var(--accent); }
+}
 .hint { font-size: .85rem; color: var(--dim); margin-top: 8px; line-height: 1.45; }
 
 /* ---- the voting info block ----

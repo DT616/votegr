@@ -251,7 +251,7 @@
     },
 
     // The precinct the current answer belongs to, filled so it reads as
-    // "this one is yours" among fifty-nine identical outlines.
+    // "this one is yours" among two hundred identical outlines.
     setActivePrecinct: function (id) {
       this._activePrecinct = id == null ? null : String(id);
       this._redraw();
@@ -486,7 +486,7 @@
         // Ward colour first, precinct shade within it.
         //
         // There are only three wards, so each gets a hue of its own and they
-        // are told apart at a glance. There are fifty-nine precincts, which is
+        // are told apart at a glance. There are dozens of precincts, which is
         // far too many for distinct colours, so each takes a lightness step off
         // its ward's hue instead. A precinct then reads as different from the
         // one beside it while the ward still reads as one area.
