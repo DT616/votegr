@@ -578,8 +578,12 @@ body {
   .vi-grid .vi-when, .vi-grid .vi-where,
   .vi-grid .vi-full, .vi-grid .vi-rail { grid-column: auto; grid-row: auto; }
   /* Stacked there is no rail to run down, and a vertical pair would burn
-     height a phone does not have, so Ward and Precinct sit side by side. */
-  .vi-rail { flex-direction: row; gap: 48px; }
+     height a phone does not have, so Ward and Precinct sit side by side.
+     Each value is centred under its own label rather than left-aligned in a
+     cell the label is wider than: a "1" hanging off the left of WARD reads
+     as belonging to whatever is left of it. */
+  .vi-rail { flex-direction: row; gap: 32px; }
+  .vi-rail > div { text-align: center; }
   /* Stacked, the panels STAY. Each place is a tappable card on a phone --
      tap it for directions -- and a raised, beveled slab is what says so;
      flattened to bare text it read as a list of facts. The when-cell is
@@ -603,23 +607,25 @@ body {
     padding: 10px 2.4rem 12px 14px; border-top: 1px solid var(--line);
   }
   .vi-card .vi-where .vi-lbl { color: var(--dim); }
-  /* "Show the nearest drop box": the fold, when the window is not open yet. */
-  .vi-place > summary {
-    cursor: pointer; list-style: none; padding: 10px 14px 12px;
-    border-top: 1px solid var(--line);
-    font-size: .92rem; font-weight: 600; color: var(--accent);
+  /* The card IS the expander: its head is the summary, and one chevron on
+     the right says which way it will go. Two links under the dates -- "More"
+     and "Show the nearest drop box" -- asked the same question twice and
+     neither said that the section itself was shut. */
+  .vi-fold > summary {
+    cursor: pointer; list-style: none; display: flex; align-items: center;
   }
-  .vi-place > summary::-webkit-details-marker { display: none; }
-  .vi-place > summary::after { content: ' \203a'; }
-  .vi-place[open] > summary::after { content: ' \2039'; }
-  .vi-more { margin-top: 4px; }
-  .vi-more summary {
-    cursor: pointer; font-size: .85rem; font-weight: 600; color: var(--accent);
-    list-style: none; padding: 4px 0;
+  .vi-fold > summary::-webkit-details-marker { display: none; }
+  .vi-fold > summary > .vi-when { flex: 1; min-width: 0; }
+  .vi-fold > summary::after {
+    content: '\203a'; flex: 0 0 auto; margin: 0 14px 0 10px;
+    font-size: 1.5rem; line-height: 1; color: var(--accent);
+    transform: rotate(90deg); transition: transform .15s ease;
   }
-  .vi-more summary::-webkit-details-marker { display: none; }
-  .vi-more summary::after { content: ' \203a'; }
-  .vi-more[open] summary::after { content: ' \2039'; }
+  .vi-fold[open] > summary::after { transform: rotate(-90deg); }
+  /* Shut, the card is one flat block of dates; open, the head is separated
+     from what it revealed. The rule belongs to the opening, not the head. */
+  .vi-fold-body > .pp-note, .vi-fold-body > .ev-hours { margin: 0 14px 12px; }
+  .vi-fold-body > .pp-note { padding-top: 10px; border-top: 1px solid var(--line); }
   .vi-grid .pp-place:hover { background: var(--raise); }
 }
 /* One line, not the days-and-times grid early voting needs: the 7 AM to 8 PM
@@ -1410,38 +1416,46 @@ ol.steps li .glyph {
   height: 0; border-top: 2.5px dashed var(--lg-precinct, #b5a6f0); background: none;
 }
 
-/* Hollow ring, matching the polling markers themselves. */
-.map-legend .pollk {
-  display: inline-block; width: 16px; height: 16px; border-radius: 50%;
-  background: none; border: 3.5px solid var(--poll);
-  vertical-align: -3px; margin-right: 6px;
+/* The legend's three marks are the map's three marks: same drawing, filled
+   in by paintLegendSites(). */
+.map-legend .sitek {
+  display: inline-block; width: 17px; height: 17px;
+  vertical-align: -4px; margin-right: 6px;
 }
 
-/* ---- polling place markers ---- */
-/* Hollow rings. Fifty-nine solid marks fought the precinct numbers and the
-   route for attention; an outline states the location without claiming the
-   foreground. */
+/* ---- the three voting-place marks ---- */
+/* One shape each -- a ticked ring for the polling place, a slot for the drop
+   box, a clock for early voting -- so they separate without relying on
+   colour. Outlined rather than filled: two hundred solid marks fought the
+   precinct numbers and the route for attention. */
 @keyframes poll-pulse {
   0% { box-shadow: 0 0 0 0 rgba(35, 190, 105, .85); }
   100% { box-shadow: 0 0 0 26px rgba(35, 190, 105, 0); }
 }
-.poll-ring.pulse span { animation: poll-pulse 1s ease-out 3; }
+.site-mark.pulse { border-radius: 50%; animation: poll-pulse 1s ease-out 3; }
 
-.poll-ring { background: none; border: 0; }
-.poll-ring span {
-  display: block; width: 100%; height: 100%; border-radius: 50%;
-  border: 3px solid var(--poll);
-  background: color-mix(in srgb, var(--panel) 70%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pin-ring) 55%, transparent),
-              0 1px 3px rgba(0,0,0,.35);
+.site-mark { background: none; border: 0; color: var(--poll); }
+.site-mark svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.site-mark .sm-face {
+  fill: color-mix(in srgb, var(--panel) 78%, transparent);
+  stroke: currentColor; stroke-width: 2.4;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.4));
 }
-.poll-ring:hover span { border-color: var(--poll); background: var(--panel); }
-.poll-ring.active span {
-  border-width: 4px; border-color: var(--poll);
-  background: color-mix(in srgb, var(--poll) 30%, var(--panel));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--poll) 35%, transparent),
-              0 1px 5px rgba(0,0,0,.5);
+.site-mark .sm-ink {
+  stroke: currentColor; stroke-width: 2.2;
+  stroke-linecap: round; stroke-linejoin: round;
 }
+.site-early { color: var(--accent); }
+.site-dropbox { color: var(--warn); }
+/* The one that is yours: filled, so it reads as the answer rather than as
+   one more of the same kind. */
+.site-mark.active .sm-face {
+  fill: color-mix(in srgb, currentColor 34%, var(--panel));
+  stroke-width: 2.8;
+}
+.site-mark.active .sm-ink { stroke-width: 2.6; }
+.site-mark:hover .sm-face { fill: var(--panel); }
 
 /* ---- map layer toggles ---- */
 /* The gear in the map's corner and the panel it opens. Leaflet stacks the

@@ -293,8 +293,9 @@ for (const w of WIDTHS) {
     info: document.getElementById('precinctInfo').innerText.replace(/\s+/g, ' '),
     box: (document.querySelector('.vi-dropbox') || {}).textContent || '',
     // textContent, not innerText: on a phone the note sits behind a closed
-    // <details>, which innerText leaves out and textContent does not.
-    note: (document.querySelector('.vi-when-dropbox') || {}).textContent || '',
+    // <details>, which innerText leaves out and textContent does not. The
+    // card, not the dates cell: the note folds away with the place.
+    note: (document.querySelector('.vi-card-dropbox') || document.querySelector('.vi-when-dropbox') || {}).textContent || '',
     ward: !!document.querySelector('.vi-rail .vi-num + .vi-lbl'),
   }));
   ok('a township with no drop box names its clerk\'s office instead',
@@ -310,7 +311,7 @@ for (const w of WIDTHS) {
   // been reaching the polling-place marker and the consolidation note as
   // one. A township has no ward, so its marker names bare numbers.
   const adaPop = await page.evaluate(async () => {
-    const a = document.querySelector('.poll-ring.active');
+    const a = document.querySelector('.site-polling.active');
     if (!a) return '(no active marker)';
     a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
     await new Promise(r => setTimeout(r, 400));
@@ -346,7 +347,7 @@ for (const w of WIDTHS) {
   const cons = await page.evaluate(async () => {
     const note = [...document.querySelectorAll('.pp-note')]
       .map(n => n.innerText.replace(/\s+/g, ' ')).filter(t => /votes with/.test(t))[0] || '';
-    const a = document.querySelector('.poll-ring.active');
+    const a = document.querySelector('.site-polling.active');
     if (a) a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
     await new Promise(r => setTimeout(r, 400));
     const p = document.querySelector('.leaflet-popup-content');
@@ -356,6 +357,26 @@ for (const w of WIDTHS) {
      /Precinct 51 votes with precinct 45\b/.test(cons.note));
   ok('a ward city\'s marker names the ward with the precinct', /Precincts 3-45, 3-51/i.test(cons.pop));
   ok('no 13-digit precinct code is ever shown', !/\b08\d{11}\b/.test(cons.body));
+
+  // Three ways to vote, three marks on the map, and a legend that draws the
+  // same three. Told apart by shape as well as colour.
+  const marks = await page.evaluate(() => ({
+    polling: document.querySelectorAll('.site-polling').length,
+    early: document.querySelectorAll('.site-early').length,
+    dropbox: document.querySelectorAll('.site-dropbox').length,
+    legend: [...document.querySelectorAll('.map-legend .sitek')].map(i => i.dataset.kind),
+    legendDrawn: [...document.querySelectorAll('.map-legend .sitek svg')].length,
+    shapes: ['polling', 'early', 'dropbox'].map(k => {
+      const el = document.querySelector('.map-legend .sitek[data-kind="' + k + '"] svg');
+      return el ? el.innerHTML.length : 0;
+    })
+  }));
+  ok('the polling places are on the map', marks.polling > 100);
+  ok('so are the drop boxes and the early voting sites', marks.dropbox > 0 && marks.early > 0);
+  ok('the legend names all three', marks.legend.join() === 'polling,early,dropbox');
+  ok('and draws each of them', marks.legendDrawn === 3);
+  ok('the three marks are three different drawings',
+     new Set(marks.shapes).size === 3 && marks.shapes.every(n => n > 0));
 
   ok('nothing failed to load and nothing threw', errors.length === 0);
   // Asserted after a full lookup and a drawn route, so it covers the paths a
@@ -397,6 +418,48 @@ for (const w of WIDTHS) {
   ok('the address of a debug run is shareable', (await page.url()).includes('debug&from='));
   ok('the debug run threw nothing', errors.length === 0);
   if (errors.length) errors.forEach(e => console.log('       ' + e));
+  await ctx.close();
+}
+
+// --- one expander per card on a phone ---
+// The dates are the button: a card that is shut says that way of voting is
+// not open yet, and tapping the head opens it on the place and the detail.
+// It used to take two links under the dates -- "More" and "Show the nearest
+// drop box" -- neither of which said the section itself was shut.
+{
+  const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+  const page = await ctx.newPage();
+  await page.goto(URL_, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => !document.getElementById('addr').disabled, null, { timeout: 60000 });
+  await page.fill('#addr', '602 Alexander St SE');
+  await page.press('#addr', 'Enter');
+  await page.waitForFunction(() => document.querySelector('.vi-fold'), null, { timeout: 30000 });
+  const cards = await page.evaluate(() => [...document.querySelectorAll('.vi-card')].map(c => ({
+    kind: (c.className.match(/vi-card-(\w+)/) || [])[1],
+    folds: c.querySelectorAll('details').length,
+    open: !!(c.querySelector('.vi-fold') || {}).open,
+    place: !!c.querySelector('[data-kind]')
+  })));
+  ok('every card carries exactly one fold', cards.length === 3 && cards.every(c => c.folds === 1));
+  ok('a window that has not opened yet is shut',
+     cards.filter(c => c.kind !== 'polling').every(c => !c.open));
+  ok('election day is open', (cards.filter(c => c.kind === 'polling')[0] || {}).open === true);
+  ok('and the old pair of links is gone', await page.evaluate(() =>
+     !document.querySelector('.vi-more, .vi-place')));
+  // Tapping the head opens that card and nothing else.
+  await page.tap('.vi-card-dropbox summary');
+  await page.waitForTimeout(250);
+  const after = await page.evaluate(() => ({
+    box: document.querySelector('.vi-card-dropbox .vi-fold').open,
+    early: document.querySelector('.vi-card-early .vi-fold').open,
+    shows: !!document.querySelector('.vi-card-dropbox [data-kind="dropbox"]')
+  }));
+  ok('tapping a shut card opens it', after.box && after.shows);
+  ok('and leaves the others alone', !after.early);
+  // Ward and precinct read as a row of labelled numbers, each centred.
+  ok('the rail centres each value under its label', await page.evaluate(() =>
+     [...document.querySelectorAll('.vi-rail > div')]
+       .every(d => getComputedStyle(d).textAlign === 'center')));
   await ctx.close();
 }
 

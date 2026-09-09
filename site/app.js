@@ -8,7 +8,7 @@
   'use strict';
 
   var map, graph, P, cameras;
-  var pollLayer, camLayer, routeLayer, pinLayer;
+  var pollLayer, siteLayer, camLayer, routeLayer, pinLayer;
   var cachedCameras = null, current = null;
   var activeEl = null, destChoice = null, electionDayHours = null;
   // Kept beside activeEl because the countdown re-asks the calendar when the
@@ -155,10 +155,11 @@
   function applyLayers() {
     var o = layerState();
     ownBase.setLayerOpts(o);
-    if (pollLayer) {
-      if (o.polling) { if (!map.hasLayer(pollLayer)) pollLayer.addTo(map); }
-      else map.removeLayer(pollLayer);
-    }
+    [pollLayer, siteLayer].forEach(function (layer) {
+      if (!layer) return;
+      if (o.polling) { if (!map.hasLayer(layer)) layer.addTo(map); }
+      else map.removeLayer(layer);
+    });
     if (camLayer) {
       if (o.cameras && camerasInScope()) { if (!map.hasLayer(camLayer)) camLayer.addTo(map); }
       else map.removeLayer(camLayer);
@@ -467,21 +468,24 @@
   // twelve days of early voting hours -- sit behind a "More" that opens
   // in place. The dates themselves stay in view; the answer went from four
   // screens to two.
+  // The dates cell. Two pieces on a phone -- the head, which is what the
+  // card shows when it is shut, and the fold, which is what opening it
+  // reveals -- so the card can be one expander instead of a block of dates
+  // with two separate "More" and "Show the nearest ..." links under it.
   function whenCell(kind, state, extra) {
     var note = state.note ? '<div class="pp-note">' + esc(state.note) + '</div>' : '';
     var shown = extra || '';
-    if (isPhone()) {
-      // Election day's "7 AM to 8 PM" is one line and belongs with the date;
-      // early voting's twelve days of hours do not, and fold with the note.
-      var fold = note + (kind === 'early' ? shown : '');
-      if (kind === 'early') shown = '';
-      note = fold ? '<details class="vi-more"><summary>More</summary>' + fold + '</details>' : '';
-    }
-    return '<div class="vi-when vi-when-' + kind + '">' +
+    var phone = isPhone();
+    // Election day's "7 AM to 8 PM" is one line and belongs with the date;
+    // early voting's twelve days of hours do not, and fold away with the note.
+    var fold = phone ? note + (kind === 'early' ? shown : '') : '';
+    if (phone && kind === 'early') shown = '';
+    var head = '<div class="vi-when vi-when-' + kind + '">' +
       '<div class="vi-lbl' + (state.live ? ' live' : '') + '">' +
       esc(state.label) + '</div>' +
       '<div class="vi-val">' + esc(state.status) + '</div>' +
-      shown + note + '</div>';
+      shown + (phone ? '' : note) + '</div>';
+    return { head: head, fold: fold };
   }
 
   // A drop box is only useful once there is a ballot to put in it, and the
@@ -572,12 +576,18 @@
   // with where a tap away. Election day is never folded: it is the default
   // destination, and the map below is already pointed at it.
   function section(kind, where, when, opts) {
-    if (!isPhone()) return where + when;
-    var body = opts && opts.collapsed
-      ? '<details class="vi-place"><summary>' + esc(opts.summary) + '</summary>' +
-        where + '</details>'
-      : where;
-    return '<div class="vi-card vi-card-' + kind + '">' + when + body + '</div>';
+    var head = (when && when.head) || '', fold = (when && when.fold) || '';
+    if (!isPhone()) return where + head;
+    // One control, not two. The dates ARE the button: tap the head and the
+    // card opens on the place, the hours and the fine print. Shut is also the
+    // statement that this way of voting is not open yet -- the windows that
+    // are open, and election day, come up already expanded.
+    if (!head) return '<div class="vi-card vi-card-' + kind + '">' + where + '</div>';
+    return '<div class="vi-card vi-card-' + kind + '">' +
+      '<details class="vi-fold"' + (opts && opts.collapsed ? '' : ' open') + '>' +
+      '<summary>' + head + '</summary>' +
+      '<div class="vi-fold-body">' + fold + where + '</div>' +
+      '</details></div>';
   }
 
   function metaBlock(lines) {
@@ -724,6 +734,7 @@
       else if (mq.addListener) mq.addListener(onScheme);
     }
     pollLayer = L.layerGroup().addTo(map);
+    siteLayer = L.layerGroup().addTo(map);
     camLayer = L.layerGroup().addTo(map);
     routeLayer = L.layerGroup().addTo(map);
     pinLayer = L.layerGroup().addTo(map);
@@ -794,7 +805,7 @@
         '<div class="lyr"><input type="checkbox" id="lyrPrecincts" checked><label for="lyrPrecincts">Precinct boundaries</label></div>' +
         '<div class="lyr"><input type="checkbox" id="lyrNumbers" checked><label for="lyrNumbers">Precinct numbers</label></div>' +
         '<div class="lyr"><input type="checkbox" id="lyrWards" checked><label for="lyrWards">Your city or township</label></div>' +
-        '<div class="lyr"><input type="checkbox" id="lyrPolling" checked><label for="lyrPolling">Polling places</label></div>' +
+        '<div class="lyr"><input type="checkbox" id="lyrPolling" checked><label for="lyrPolling">Voting locations</label></div>' +
         '<div class="lyr"><input type="checkbox" id="lyrCameras" checked><label for="lyrCameras">License plate cameras</label></div>' +
         '</div>' +
         '<div class="gear-sec">Camera data</div>' +
@@ -1082,6 +1093,7 @@
       graph.warm();
       drawCameras();
       input.disabled = false;
+      paintLegendSites();
       if (DEBUG) mountDebug();
       input.placeholder = IDLE_PLACEHOLDER;
       setHint('');
@@ -1099,6 +1111,46 @@
 
 
 
+
+  // Three places a ballot can go, three marks, told apart by SHAPE before
+  // colour so they are still three things to a reader who cannot separate
+  // green from amber: a ring with a tick for the polling place, a box with a
+  // slot for a drop box, a clock for early voting. Drawn at 22 units and
+  // scaled by the icon size, so one drawing serves the map and the legend.
+  var SITE_ART = {
+    polling:
+      '<svg viewBox="0 0 22 22" aria-hidden="true">' +
+      '<circle cx="11" cy="11" r="8.4" class="sm-face"/>' +
+      '<path d="M7 11.3l2.7 2.7L15.2 8.5" class="sm-ink" fill="none"/></svg>',
+    dropbox:
+      '<svg viewBox="0 0 22 22" aria-hidden="true">' +
+      '<rect x="3.2" y="6.6" width="15.6" height="12.2" rx="2.4" class="sm-face"/>' +
+      '<path d="M7.2 10.6h7.6" class="sm-ink" fill="none"/>' +
+      '<path d="M11 2.6v5.2M8.6 5.6L11 8.1l2.4-2.5" class="sm-ink" fill="none"/></svg>',
+    early:
+      '<svg viewBox="0 0 22 22" aria-hidden="true">' +
+      '<circle cx="11" cy="11" r="8.4" class="sm-face"/>' +
+      '<path d="M11 6.2v5.1l3.3 2" class="sm-ink" fill="none"/></svg>'
+  };
+
+  function siteIcon(kind, active) {
+    var S = active ? 26 : 19;
+    return L.divIcon({
+      className: 'site-mark site-' + kind + (active ? ' active' : ''),
+      html: SITE_ART[kind] || SITE_ART.polling,
+      iconSize: [S, S], iconAnchor: [S / 2, S / 2]
+    });
+  }
+
+  // The legend draws the same three marks the map does, from the same
+  // strings: a key that is redrawn by hand is a key that goes stale.
+  function paintLegendSites() {
+    Array.prototype.forEach.call(document.querySelectorAll('.sitek'), function (el) {
+      var kind = el.dataset.kind;
+      el.className = 'sitek site-mark site-' + kind;
+      el.innerHTML = SITE_ART[kind] || '';
+    });
+  }
 
   // Every polling place in the city, shown from the start. This is a voting
   // tool: where people vote is the subject, and seeing all 202 makes the one
@@ -1127,13 +1179,8 @@
       var isActive = !!activeKey && key === activeKey;
       // A hollow ring: present without competing. Fifty-nine filled marks
       // buried the precinct numbers and the route underneath them.
-      var S = isActive ? 21 : 15;
       var m = L.marker([pl.lat, pl.lng], {
-        icon: L.divIcon({
-          className: 'poll-ring' + (isActive ? ' active' : ''),
-          html: '<span></span>',
-          iconSize: [S, S], iconAnchor: [S / 2, S / 2]
-        }),
+        icon: siteIcon('polling', isActive),
         zIndexOffset: isActive ? 500 : 300, keyboard: false, riseOnHover: true
       }).addTo(pollLayer);
       bindDetail(m, function () {
@@ -1150,6 +1197,38 @@
           '<div class="dw">Precinct' + (list.length > 1 ? 's ' : ' ') +
           esc(list.join(', ')) + '</div></div>';
       }, 280);
+    });
+  }
+
+  // The other two ways to vote, on the map beside the polling places. They
+  // are drawn from the answer rather than at load because that is what
+  // resolves them: a drop box is published as an address, and the coordinate
+  // comes from the same geocode the directions use. Everything the answer
+  // offers is drawn, not just the nearest, so the card's "show all" list and
+  // the map agree about what is out there.
+  function drawSites(r) {
+    if (!siteLayer) return;
+    siteLayer.clearLayers();
+    if (!r) return;
+    destinations(r).forEach(function (opt) {
+      if (opt.kind === 'polling') return;      // drawn with all the others
+      var list = opt.all && opt.all.length ? opt.all : [opt.place];
+      list.forEach(function (place) {
+        if (!place || place.lat == null) return;
+        var isPick = place === opt.place;
+        var m = L.marker([place.lat, place.lng], {
+          icon: siteIcon(opt.kind, isPick),
+          zIndexOffset: isPick ? 450 : 250, keyboard: false, riseOnHover: true
+        }).addTo(siteLayer);
+        bindDetail(m, '<div class="destpop">' +
+          '<div class="dt">' + (opt.kind === 'early' ? 'Early voting site'
+                                                     : 'Absentee ballot drop box') + '</div>' +
+          '<div class="dn">' + esc(boxLabel(place)) + '</div>' +
+          '<div class="da">' + esc(addressForDisplay(place.address)) + '</div>' +
+          (place.entrance_note ? '<div class="de">' + esc(place.entrance_note) + '</div>' : '') +
+          (place.hours ? '<div class="dw">' + esc(place.hours) + '</div>' : '') +
+          '</div>', 280);
+      });
     });
   }
 
@@ -1266,6 +1345,7 @@
     ownBase.setActivePrecinct(null);
     ownBase.setScope(null);
     drawPollingPlaces();
+    drawSites(null);
     drawCameras();
     map.setView(GR, 13);
     $('addr').focus();
@@ -1517,10 +1597,8 @@
     where += '</div>';
 
     var st = absenteeState();
-    html += section('dropbox', where, whenCell('dropbox', st, ''), {
-      collapsed: !/open/i.test(st.label),
-      summary: box.place.office ? 'Show where to return it' : 'Show the nearest drop box'
-    });
+    html += section('dropbox', where, whenCell('dropbox', st, ''),
+                    { collapsed: !/open/i.test(st.label) });
   }
     return html;
   }
@@ -1565,8 +1643,7 @@
     html += section('early', where,
       whenCell('early', { label: evState.label, status: evState.status, live: true },
                ev ? evHoursHtml(activeEl) : ''),
-      { collapsed: !!ev && !/open/i.test(evState.label),
-        summary: 'Show the nearest early voting site' });
+      { collapsed: !!ev && !/open/i.test(evState.label) });
   }
     return html;
   }
@@ -1602,9 +1679,9 @@
   }
   html += '</div>';
 
-  var when = '';
+  var when = null;
   if (activeEl) {
-    when += whenCell('polling',
+    when = whenCell('polling',
       { label: 'Election day', status: Elections.withWeekday(activeEl.date) },
       electionDayHours && electionDayHours.open && electionDayHours.close
         ? '<div class="vi-hours"><span class="vi-hours-lbl">Hours:</span> ' +
@@ -2516,6 +2593,7 @@
     // The polling places are keyed by code, so the active one has to be
     // asked for by code: by number, nothing matched and no marker grew.
     drawPollingPlaces(current && (current.code || current.precinct));
+    drawSites(current);
     // Tell the basemap which streets this route uses so it names them first.
     ownBase.setRouteStreets(
       (routes[selected].steps || []).map(function (st) { return st.street; })
