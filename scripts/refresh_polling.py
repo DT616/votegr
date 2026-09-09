@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Scrape Kent County's polling places and drop boxes into
 site/data/polling/<mcd>.json, one file per jurisdiction.
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Build a street-name index for the jurisdictions that surround Grand Rapids.
 
 More than half the road segments carrying a Grand Rapids ZIP are not in the

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Read the Grand Rapids City Clerk's current election page into
 site/data/gr-clerk.json: early voting dates, sites and drop boxes for the city.
 

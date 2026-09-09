@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // Every external link in the docs, the two pages and the data provenance
 // blocks, checked live. Run: node check_links.mjs [--list]
 //

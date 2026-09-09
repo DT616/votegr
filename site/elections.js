@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // The election calendar, shared by both pages.
 //
 // This module exists because the same calendar was being read twice, in

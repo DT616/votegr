@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Check the committed polling places against Google Civic, and report
 disagreements. Never stores what Google returns.
 

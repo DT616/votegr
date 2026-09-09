@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Fetch water, parks and railways for Grand Rapids from OpenStreetMap.
 
 These are what separate a street diagram from something that reads as a map.

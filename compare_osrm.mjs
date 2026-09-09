@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // Differential test: our fastest route vs OSRM (the OSM reference router)
 // over the same origin/destination pairs.
 //

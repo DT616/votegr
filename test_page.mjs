@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // Plain-assert tests for the page itself. Run: node test_page.mjs
 //
 // test_router.mjs checks the answer. This checks that a reader can actually

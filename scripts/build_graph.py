@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Compile build/centerlines.json into build/graph.json: the county-wide
 routing graph that the per-jurisdiction browser chunks are cut from.
 

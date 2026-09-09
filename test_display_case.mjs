@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // displayCase: the vectors, then the two invariants over the REAL corpus.
 //
 // Vectors are ported from the sibling project this function came from, minus

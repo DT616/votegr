@@ -1,3 +1,4 @@
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Regenerate site/data/precincts.geojson from the State of Michigan layer.
 
 Covers all of Kent County: 202 precincts across 30 jurisdictions. The layer is

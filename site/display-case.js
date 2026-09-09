@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 /* Title-case a display string without expanding or rewriting it.
 
    Every street name in the routing graph, every polling place address and

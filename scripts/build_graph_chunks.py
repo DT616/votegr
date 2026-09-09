@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Cut build/graph.json into the per-jurisdiction chunks the browser loads,
 under site/data/graph/.
 

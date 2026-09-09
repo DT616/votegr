@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // Plain-assert tests for /simple, the light version. Run: node test_simple_page.mjs
 //
 // This page had no browser test at all, which is how it drifted from the map

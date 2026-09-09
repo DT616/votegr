@@ -240,6 +240,13 @@ doing something that carries risk.
 Code is public domain under the [Unlicense](UNLICENSE). Copy, host, revise, and
 change it without asking, with or without credit.
 
+Two third-party pieces ship with the site and keep their own licences:
+[Leaflet](https://leafletjs.com) 1.9.4, BSD 2-Clause, in `site/vendor/leaflet/`
+with its `LICENSE`; and the Hanken Grotesk typeface, SIL Open Font License 1.1,
+in `site/fonts/` with its `OFL.txt`. The address-matching logic in
+`site/precinct.js` is carried over from the earlier vote-gr project and says so
+at the top of the file.
+
 The data is not ours to license. Streets and address ranges are public
 records of Kent County and the City of Grand Rapids; precinct boundaries are a
 public record of the State of Michigan; polling places, drop boxes and clerks'

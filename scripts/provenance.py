@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """One shape for the provenance block every generated data file carries.
 
 Four of the ten files under site/data/ recorded where they came from and six

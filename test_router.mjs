@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // Plain-assert tests for the router core. Run: node test_router.mjs
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);

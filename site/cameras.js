@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // What a license plate camera looks like and what it says about itself.
 //
 // Split out of app.js because none of it is about this page: it is the popup

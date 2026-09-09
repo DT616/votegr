@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Released into the public domain under the Unlicense, see UNLICENSE.
 """Slim the precinct polygons into site/data/precincts.json.
 
 Needed so a pin dropped on the map can be resolved to a precinct by

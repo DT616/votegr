@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // The suggestion list under the address box.
 //
 // Nothing resolves while you type. The list offers addresses that really

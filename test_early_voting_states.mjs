@@ -1,3 +1,4 @@
+// Released into the public domain under the Unlicense, see UNLICENSE.
 // The early voting group in the answer block has four states, and only one
 // of them can be reached from the committed data on any given day. So the
 // states are driven here by serving a synthetic elections.json, with every
