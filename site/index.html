@@ -190,54 +190,43 @@
     <div class="modal-body">
       <p class="modal-tagline">Privacy by design</p>
       <h3>How it works</h3>
-      <p class="body">We created an engine that runs locally in your browser
-        that finds your voter information based on where you live, and generates
-        directions to your polling place while avoiding license plate cameras.
-        The data files come down once, when you first visit. Everything after
-        that happens on your device: the lookup and the directions are worked
-        out against those files, so your address never leaves your browser.
-        There is no geocoder to call, no routing server to ask, and nothing on
-        the page reporting what you looked up. Once it has loaded it makes no
-        requests at all, to us or to anyone else, and it keeps working with no
-        connection.</p>
-      <p class="body">It covers every city and township in Kent County:
-        30 jurisdictions and 202 precincts, loaded once and held on your
-        device, so a lookup or a route anywhere in the county asks nothing
-        further of the network. Your ward is shown where your city has wards;
-        most townships do not. Grand Rapids' polling places, early voting sites
-        and drop boxes come from the City Clerk; every other jurisdiction's
-        polling places, drop boxes and clerk's office come from the Kent County
-        Clerk's pages.</p>
-      <p class="body">The files this page uses to compute your information were
-        compiled from published city, state and county data sources.
-        The camera locations come from the data DeFlock publishes on
-        OpenStreetMap for projects like this to use. That sync happens when the
-        site is built, not while you are reading it, so the list is as current
-        as the last publish rather than as current as this minute.</p>
+      <p class="body">Everything runs in your browser. The data files, every
+        street, precinct, polling place and camera in Kent County, come down
+        once when the page loads; the lookup and the directions are then worked
+        out on your device against those files. Your address never leaves your
+        browser, nothing reports what you looked up, and after loading the page
+        makes no further requests to anyone, so it keeps working if your
+        connection drops while it is open.</p>
+      <p class="body">Coverage is all 30 cities and townships in Kent County,
+        202 precincts. Wards are shown for the five cities that have them
+        (Grand Rapids, Wyoming, Kentwood, Walker and East Grand Rapids);
+        townships have none. Grand Rapids' polling places, early voting sites
+        and drop boxes come from the City Clerk; everywhere else, polling
+        places, drop boxes and the clerk's office come from the Kent County
+        Clerk. Camera locations are the license plate readers mapped on
+        OpenStreetMap by the DeFlock community, refreshed daily when the site
+        is built: as current as the last refresh, not this minute.</p>
 
       <h3>What this does not hide</h3>
-      <p class="body">A route around the plate readers is a route around the
-        ones volunteers have mapped, and nothing more. Newly installed and
-        covert readers are not in the data, a camera watches a corridor rather
-        than a point, and the roads themselves are watched in ways no list
-        covers.</p>
-      <p class="body">The drop boxes are the plainest case, and worth saying
-        outright on a page that argues for privacy: <strong>every absentee
-        ballot drop box is under video surveillance</strong>. That is not an
-        accident of where they sit, it is
+      <p class="body">A route around the plate readers avoids only the ones
+        volunteers have mapped: new and covert readers are not in the data, a
+        camera watches a stretch of road rather than a point, and roads are
+        watched in ways no list covers.</p>
+      <p class="body"><strong>Drop boxes are watched by law.</strong> Under
         <a href="https://www.legislature.mi.gov/Laws/MCL?objectName=mcl-168-761d"
-           target="_blank" rel="noopener">MCL 168.761d</a>, which requires the
-        clerk to monitor each one. The statute says video monitoring does not
-        include storing the video, but do not read that as a promise about any
-        particular box. Voting in person, voting early and posting a ballot are
-        all watched at the far end; what this page can keep private is the
-        lookup and the journey.</p>
+           target="_blank" rel="noopener">MCL 168.761d</a> the clerk must have
+        every absentee ballot drop box under video monitoring for the 75 days
+        before an election and on election day. The statute's definition of
+        monitoring excludes storing the footage, but do not read that as a
+        promise about any particular box. Voting in person, voting early and
+        posting a ballot are all watched at the far end; what this page keeps
+        private is the lookup and the journey.</p>
       <p class="body">Only six of the county's thirty jurisdictions publish a
-        drop box at all. Where yours does not, this page sends you to your own
-        clerk's office, never to a neighbouring city's box, because under
+        drop box. Where yours does not, the page sends you to your own clerk's
+        office, never a neighbouring city's box, because under
         <a href="https://www.legislature.mi.gov/Laws/MCL?objectName=mcl-168-764a"
-           target="_blank" rel="noopener">MCL 168.764a</a> an absentee ballot can
-        be returned only to the clerk of the city or township where you are
+           target="_blank" rel="noopener">MCL 168.764a</a> a ballot goes back
+        only to the clerk, or a drop box, of the city or township where you are
         registered.</p>
 
       <h3>Why make this?</h3>
