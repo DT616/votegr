@@ -390,6 +390,13 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
 
   ok('county: drop boxes come per jurisdiction',
      C.dropBoxes('42820').length === 3 && C.dropBoxes('34000').length === 10);
+  // Twenty-four jurisdictions publish no box. Their clerk's office is the
+  // place an absentee ballot goes instead, and it has to be somewhere the
+  // page can drive to.
+  const noBox = index.jurisdictions.filter((j) => C.dropBoxes(j.mcd).length === 0);
+  ok(`county: ${noBox.length} jurisdictions publish no drop box`, noBox.length >= 20);
+  ok('county: every one of them has a clerk\'s office with a coordinate',
+     noBox.every((j) => { const c = C.clerkOf(j.mcd); return c && c.lat && c.lng && c.phone; }));
 }
 
 // --- inferred addresses must defer to the precinct boundary --------------
