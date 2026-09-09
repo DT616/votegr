@@ -291,7 +291,7 @@ for (const w of WIDTHS) {
     { timeout: 15000 });
   const ada = await page.evaluate(() => ({
     info: document.getElementById('precinctInfo').innerText.replace(/\s+/g, ' '),
-    box: (document.querySelector('.vi-dropbox') || {}).innerText || '',
+    box: (document.querySelector('.vi-dropbox') || {}).textContent || '',
     // textContent, not innerText: on a phone the note sits behind a closed
     // <details>, which innerText leaves out and textContent does not.
     note: (document.querySelector('.vi-when-dropbox') || {}).textContent || '',
