@@ -479,6 +479,28 @@ for (const w of WIDTHS) {
   }));
   ok('tapping a shut card opens it', after.box && after.shows);
   ok('and leaves the others alone', !after.early);
+  // Open is a selected state, and has to look different from shut.
+  const lit = await page.evaluate(() => {
+    const paint = (sel) => {
+      const el = document.querySelector(sel);
+      const s = getComputedStyle(el);
+      return s.backgroundColor + ' ' + s.boxShadow;
+    };
+    return { open: paint('.vi-card-dropbox .vi-fold'), shut: paint('.vi-card-early .vi-fold') };
+  });
+  ok('an open card is lit differently from a shut one', lit.open !== lit.shut);
+  ok('and a shut card carries no highlight of its own',
+     /rgba\(0, 0, 0, 0\)/.test(lit.shut));
+  // Nothing on this page moves the phone's viewport by itself: not the
+  // lookup, not opening a card, not tapping a place for directions. The tap
+  // is dispatched rather than driven, because the driver scrolls the target
+  // into view before it taps and that scroll is the test harness's, not the
+  // page's.
+  const before = await page.evaluate(() => Math.round(window.scrollY));
+  await page.evaluate(() => document.querySelector('[data-kind="polling"]').click());
+  await page.waitForTimeout(900);
+  ok('tapping a place for directions does not scroll the page',
+     await page.evaluate(() => Math.round(window.scrollY)) === before);
   // Ward and precinct read as a row of labelled numbers, each centred.
   ok('the rail centres each value under its label', await page.evaluate(() =>
      [...document.querySelectorAll('.vi-rail > div')]

@@ -1775,9 +1775,11 @@
       cell.onclick = function () {
         if (!current) return;
         routeTo(current, kind);
-        // The route block, not the map, so the destination tabs and the
-        // distance line stay on screen above the map.
-        if (phone) scrollToResult('routeBlock');
+        // No scroll on a phone, for either the search or this tap. Every
+        // anchor tried landed somewhere the reader had not asked to be --
+        // most recently past the destination tabs and onto the map. The
+        // answer stays where it appeared, under the box it was typed into,
+        // and the page is scrolled by the person reading it.
       };
       cell.onkeydown = function (e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cell.click(); }

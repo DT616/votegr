@@ -635,6 +635,18 @@ a:hover, a:focus-visible { color: var(--accent); text-decoration-color: var(--ac
     transform: rotate(90deg); transition: transform .15s ease;
   }
   .vi-fold[open] > summary::after { transform: rotate(-90deg); }
+  /* Open is a selected state and should look like one: the card lifts to a
+     faint accent wash with an accent edge down its left, so a glance says
+     which sections you have opened. The head takes a press highlight, so a
+     tap is answered before the card has finished opening. */
+  .vi-card, .vi-fold { transition: background-color .16s ease, box-shadow .16s ease; }
+  .vi-fold[open] {
+    display: block; border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 11%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .vi-fold > summary:active { background: color-mix(in srgb, var(--fg) 9%, transparent); }
+  .vi-fold[open] > summary { border-bottom: 1px solid var(--line); }
   /* Shut, the card is one flat block of dates; open, the head is separated
      from what it revealed. The rule belongs to the opening, not the head. */
   .vi-fold-body > .pp-note, .vi-fold-body > .ev-hours { margin: 0 14px 12px; }
