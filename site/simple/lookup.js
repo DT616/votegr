@@ -619,8 +619,7 @@
           "accept them until the polls close on election day. "
         : "Return it by the time the polls close on election day. ") +
       // Not our claim: MCL 168.761d requires the clerk to monitor each box.
-      "Drop boxes are monitored by video surveillance, which Michigan law " +
-      "requires." +
+      "Drop boxes are monitored, as Michigan law requires." +
       (odd ? ` Most are accessible 24/7; ${odd === 1 ? "one is not, and its" : `${odd} are not, and their`}` +
              " hours are listed with it."
            : " They are accessible 24/7.")));
