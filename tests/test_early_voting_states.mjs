@@ -8,11 +8,13 @@
 // before election day, the block must stop naming an early voting site. A
 // reader who saw one listed last week and drives to it finds a locked door,
 // and nothing else in the suite would catch that regression.
+import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 import { createServer } from 'http';
 import { readFile } from 'fs/promises';
 import { join, extname, normalize } from 'path';
 
+process.chdir(fileURLToPath(new URL('..', import.meta.url)));   // paths below are from the repo root
 const ROOT = join(process.cwd(), 'site');
 // LOCAL date, the way Elections.todayISO() reckons it. toISOString() is UTC,
 // and after 8pm Eastern that is already tomorrow: the "election day" case,

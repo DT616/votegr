@@ -1,8 +1,10 @@
 // Released into the public domain under the Unlicense, see UNLICENSE.
 // Plain-assert tests for the router core. Run: node test_router.mjs
+import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const R = require('./site/router.js');
+process.chdir(fileURLToPath(new URL('..', import.meta.url)));   // paths below are from the repo root
+const R = require('../site/router.js');
 
 let pass = 0, fail = 0;
 function ok(name, cond) { cond ? (pass++, console.log('  ok  ' + name)) : (fail++, console.log('  FAIL ' + name)); }
@@ -281,7 +283,7 @@ ok('freeway: snap avoids it', /SURFACE|A ST|B ST/.test(g.edgeName(g.snapToRoad(4
 // suggestion order has to reflect that, and must not bury a good answer under
 // a list of the neighbors' addresses.
 const fs = require('fs');
-const { Precincts } = require('./site/precinct.js');
+const { Precincts } = require('../site/precinct.js');
 const P = new Precincts(
   JSON.parse(fs.readFileSync('./site/data/addresses.json')),
   JSON.parse(fs.readFileSync('./site/data/polling.json')));
@@ -405,7 +407,7 @@ ok('suggest: falls back to nearest on the street', sg.length > 0 && sg[0].kind =
 // to 7 AM, then to 8 PM, then says they have closed. The phase is decided
 // from a fixed instant here so it can be checked at times that are not now.
 {
-  const E = require('./site/elections.js');
+  const E = require('../site/elections.js');
   const hours = { open: '7:00 AM', close: '8:00 PM' };
   const el = { date: '2026-11-03', name: 'General Election' };
   const at = (h, m) => new Date(2026, 10, 3, h, m || 0);   // local time

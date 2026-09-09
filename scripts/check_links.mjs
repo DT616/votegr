@@ -21,7 +21,7 @@ import { readFile } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { join } from 'path';
 
-const ROOT = fileURLToPath(new URL('.', import.meta.url));
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 // Text files scanned for anything that looks like a URL. The Python scripts
 // are left out on purpose: they assemble their endpoint URLs from fragments

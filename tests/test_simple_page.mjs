@@ -22,7 +22,7 @@ import { join, extname, normalize } from 'path';
 import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 
-const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), 'site');
+const ROOT = join(fileURLToPath(new URL('..', import.meta.url)), 'site');
 
 let pass = 0, fail = 0;
 function ok(name, cond) { cond ? (pass++, console.log('  ok  ' + name)) : (fail++, console.log('  FAIL ' + name)); }

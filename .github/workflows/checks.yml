@@ -8,21 +8,21 @@
 # Seven suites, cheapest first, so an obvious break fails in seconds rather
 # than after a browser download:
 #
-#   test_display_case.mjs         display casing, over the real corpus
-#   test_router.mjs               the routing core, restrictions and address lookup
-#   audit_routes.mjs              859 real trips, mechanically checked -- the one
+#   tests/test_display_case.mjs         display casing, over the real corpus
+#   tests/test_router.mjs               the routing core, restrictions and address lookup
+#   tests/audit_routes.mjs              859 real trips, mechanically checked -- the one
 #                                 that matters, per the README, and only ~15s
-#   test_page.mjs                 the page in a real browser at three widths
-#   test_simple_page.mjs          /simple in a real browser at three widths
-#   test_early_voting_states.mjs  the four early voting states, from a fixture
-#   test_check_links.mjs          what the link checker makes of a response
+#   tests/test_page.mjs                 the page in a real browser at three widths
+#   tests/test_simple_page.mjs          /simple in a real browser at three widths
+#   tests/test_early_voting_states.mjs  the four early voting states, from a fixture
+#   tests/test_check_links.mjs          what the link checker makes of a response
 #
-# compare_osrm.mjs is deliberately absent. It queries a public OSRM server,
+# scripts/compare_osrm.mjs is deliberately absent. It queries a public OSRM server,
 # which makes it network-dependent and slow, and sending trips to a routing
 # server is the thing this project exists to avoid doing. It stays a tool you
 # reach for by hand.
 #
-# check_links.mjs is absent for the same reason and runs weekly from
+# scripts/check_links.mjs is absent for the same reason and runs weekly from
 # link-check.yml instead. Its judgement about what a response means is a pure
 # function, though, and that part belongs here: it is what decides whether a
 # link-check run is red, and it is where a host-by-host exemption list would
@@ -63,13 +63,13 @@ jobs:
       - run: npm ci
 
       - name: Display case
-        run: node test_display_case.mjs
+        run: node tests/test_display_case.mjs
 
       - name: Router core
-        run: node test_router.mjs
+        run: node tests/test_router.mjs
 
       - name: Real trips across the city
-        run: node audit_routes.mjs
+        run: node tests/audit_routes.mjs
 
       # Only chromium. The page is plain HTML, CSS and ES5-era JavaScript, so
       # a second engine would cost minutes to tell us the same thing.
@@ -77,20 +77,20 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: The page in a browser
-        run: node test_page.mjs
+        run: node tests/test_page.mjs
 
       # The light version, which answers the same question from the same files
       # and had no browser test at all until now. Its own file rather than
-      # more of test_page.mjs: different page, different failures.
+      # more of tests/test_page.mjs: different page, different failures.
       - name: The /simple page in a browser
-        run: node test_simple_page.mjs
+        run: node tests/test_simple_page.mjs
 
       # Four early voting states, only one of which the committed data can
       # reach on any given day, so this serves its own dated fixture.
       - name: Early voting states
-        run: node test_early_voting_states.mjs
+        run: node tests/test_early_voting_states.mjs
 
       # Makes no request: it feeds fabricated responses to the link checker's
       # classifier. The live check runs weekly, from link-check.yml.
       - name: Link checker rules
-        run: node test_check_links.mjs
+        run: node tests/test_check_links.mjs

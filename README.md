@@ -60,6 +60,8 @@ site/data/graph.json         the city-only road network, kept for the router tes
 site/data/elections.json     election days and early voting
 site/data/precincts.geojson  full precinct polygons, the source scripts/build_precincts.py slims
 site/simple/                 the light version, no map, at /simple/ (Grand Rapids only, for now)
+tests/                       the test suites and the route audit
+scripts/                     the data refresh and build scripts, the link checker, the OSRM comparison
 ```
 
 The `<mcd>` in a filename is the state's five-digit code for the city or
@@ -128,15 +130,18 @@ silently forbids a legal turn.
 
 ## Checking the data
 
+Each finds the repository root from its own location, so run them from anywhere.
+
 ```bash
-node test_display_case.mjs         # display casing: vectors, then two invariants over the real corpus
-node test_router.mjs               # 122 assertions: routing, chunks, restrictions, addresses, the county index, the polls clock
-node audit_routes.mjs              # drives hundreds of real trips, checks every route
-npm ci && node test_page.mjs       # 174 assertions: the page itself, in a browser, city and county
-node test_early_voting_states.mjs  # the four early voting states, from a dated fixture
-node test_check_links.mjs          # what the link checker makes of a response
-node compare_osrm.mjs 30           # differential test against OSRM, the OSM reference
-node check_links.mjs               # every external link in the docs, the pages and the data provenance
+node tests/test_display_case.mjs         # display casing: vectors, then two invariants over the real corpus
+node tests/test_router.mjs               # 122 assertions: routing, chunks, restrictions, addresses, the county index, the polls clock
+node tests/audit_routes.mjs              # drives hundreds of real trips, checks every route
+npm ci && node tests/test_page.mjs       # 174 assertions: the page itself, in a browser, city and county
+node tests/test_simple_page.mjs          # 48 assertions: /simple in a browser
+node tests/test_early_voting_states.mjs  # the early voting states and election day, from a dated fixture, both pages
+node tests/test_check_links.mjs          # what the link checker makes of a response
+node scripts/compare_osrm.mjs 30         # differential test against OSRM, the OSM reference
+node scripts/check_links.mjs             # every external link in the docs, the pages and the data provenance
 ```
 
 All but the last two run on every pull request, and on any push to `main`.
@@ -147,13 +152,13 @@ gone, never on a server that declined to answer it. The `package.json` exists
 only so the two browser tests have a browser to drive; the site has no build
 step and no dependencies.
 
-`audit_routes.mjs` is the one that matters. It routes across the real city and
+`tests/audit_routes.mjs` is the one that matters. It routes across the real city and
 mechanically checks every result: edges join end to end, no edge is driven
 against its one-way, no freeway is used, every turn passes the restriction
 gate, no gratuitous U-turns, and the step distances add up. It exits non-zero
 on any violation.
 
-`compare_osrm.mjs` compares our fastest route against OSRM over the same
+`scripts/compare_osrm.mjs` compares our fastest route against OSRM over the same
 origin and destination. OSRM is used as a measuring stick, never at run time:
 sending your trip to a routing server is the thing this tool exists to avoid.
 Turn costs were added to the router because that comparison showed our routes
@@ -195,7 +200,7 @@ none. The dates are shown; the row says no site is published.
 
 The page downloads its data once and does everything in the browser. It makes
 no third-party request at all.  You can watch that in the network
-panel, and `test_page.mjs` asserts it, over a full session from load to drawn
+panel, and `tests/test_page.mjs` asserts it, over a full session from load to drawn
 route.
 
 A **Cache / OSM** control under *Camera data* in the map's gear menu used to be
