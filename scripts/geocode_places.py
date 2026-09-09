@@ -390,39 +390,46 @@ def inside(bbox, lat, lng):
             and west - BBOX_MARGIN_DEG <= lng <= east + BBOX_MARGIN_DEG)
 
 
-def stamp(record, address_text, index, stats, misses, label, bbox=None,
-          pending=None, key=None, mcd=None):
-    """Add lat/lng to one record. Returns True when it landed.
+class Run:
+    """One geocoding run: the parcel index, the tallies, the misses, and the
+    records the parcels could not place, held for the centreline pass."""
 
-    A record the parcels cannot place is queued for the centreline pass, by
-    the key its caller gave it, so the second pass can fill it in place.
-    """
-    found = geocode(index, address_text)
-    # Not placed by a parcel, but parseable: hand it to the centreline pass
-    # and let THAT decide whether it is a miss. Counting it here as well would
-    # count it twice, once in each pass.
-    if not found and pending is not None:
-        parsed = split_address(address_text)
-        if parsed:
-            pending.append({"mcd": mcd, "key": key,
-                            "number": parsed[0], "street": parsed[1],
-                            "_record": record, "_bbox": bbox, "_label": label})
+    def __init__(self, index):
+        self.index = index
+        self.stats = defaultdict(int)
+        self.misses = []
+        self.pending = []
+
+    def stamp(self, record, address_text, label, bbox, key, mcd):
+        """Add lat/lng to one record. Returns True when it landed.
+
+        A record the parcels cannot place, but which parses as an address,
+        is queued for the centreline pass by the key its caller gave it, so
+        the second pass can fill it in place. It is not counted as a miss
+        here as well -- that would count it twice, once in each pass.
+        """
+        found = geocode(self.index, address_text)
+        if not found:
+            parsed = split_address(address_text)
+            if parsed:
+                self.pending.append({"mcd": mcd, "key": key,
+                                     "number": parsed[0], "street": parsed[1],
+                                     "_record": record, "_bbox": bbox, "_label": label})
+                return False
+            self.stats["miss"] += 1
+            self.misses.append((label, address_text))
             return False
-    if found and not inside(bbox, found[0], found[1]):
-        stats["outside"] += 1
-        misses.append((label, f"{address_text} [matched outside the jurisdiction]"))
-        return False
-    if not found:
-        stats["miss"] += 1
-        misses.append((label, address_text))
-        return False
-    lat, lng, how = found
-    record["lat"], record["lng"] = lat, lng
-    record["geocode"] = how
-    stats["hit"] += 1
-    stats[how.split(" ")[0] if how.startswith("quadrant") else how] += 1
-    stats["quadrant inferred"] += how.startswith("quadrant")
-    return True
+        if not inside(bbox, found[0], found[1]):
+            self.stats["outside"] += 1
+            self.misses.append((label, f"{address_text} [matched outside the jurisdiction]"))
+            return False
+        lat, lng, how = found
+        record["lat"], record["lng"] = lat, lng
+        record["geocode"] = how
+        self.stats["hit"] += 1
+        self.stats[how.split(" ")[0] if how.startswith("quadrant") else how] += 1
+        self.stats["quadrant inferred"] += how.startswith("quadrant")
+        return True
 
 
 def main():
@@ -433,16 +440,15 @@ def main():
                         help="report the hit rate and write nothing")
     args = parser.parse_args()
 
-    index = build_index(load_parcels(args.parcels))
+    run = Run(build_index(load_parcels(args.parcels)))
     bboxes = load_bboxes()
     neighbours = neighbours_of(bboxes)
-    pending = []
     # Grand Rapids keeps its own polling places, hand-transcribed WITH
     # coordinates in polling.json, and that file is better than anything
     # derivable here. The county's scrape of the same 59 precincts is the
     # cross-check, not the source, so it is not geocoded.
     skip_mcd = {"34000"}
-    stats, misses, documents = defaultdict(int), [], []
+    documents = []
 
     for path in sorted(POLLING_DIR.glob("*.json")):
         document = json.loads(path.read_text())
@@ -452,16 +458,10 @@ def main():
         bbox = bboxes.get(document["mcd"])
         mcd = document["mcd"]
         for code, place in (document.get("precincts") or {}).items():
-            stamp(place, place.get("address"), index, stats, misses,
-                  f"{where} polling {place.get('name', code)}", bbox,
-                  pending, f"p:{mcd}:{code}", mcd)
-        # The county page does not format the two fields the same way twice.
-        # Grand Rapids rows carry the ADDRESS in `name` and a note in
-        # `address` ("300 Ottawa Ave NW" / "Across from Calder Plaza"); every
-        # other jurisdiction is the other way round ("Kentwood City Hall" /
-        # "4900 Breton Avenue SE"). So take whichever field parses as an
-        # address rather than trusting either name. Reading only `name` said
-        # thirteen boxes had no address at all when all thirteen do.
+            run.stamp(place, place.get("address"),
+                      f"{where} polling {place.get('name', code)}", bbox,
+                      f"p:{mcd}:{code}", mcd)
+
         # The clerk's own office. Twenty-four of the thirty jurisdictions
         # publish no drop box at all, and an absentee ballot has to go to the
         # voter's OWN clerk under MCL 168.764a, so for those the office is the
@@ -470,15 +470,21 @@ def main():
         # and a second mailing line; split_address takes the first part that
         # starts with a number, which is the street address.
         if document.get("clerk") and document["clerk"].get("address"):
-            stamp(document["clerk"], document["clerk"]["address"], index, stats,
-                  misses, f"{where} clerk's office", bbox,
-                  pending, f"c:{mcd}", mcd)
+            run.stamp(document["clerk"], document["clerk"]["address"],
+                      f"{where} clerk's office", bbox, f"c:{mcd}", mcd)
+
+        # The county page does not format the two fields the same way twice.
+        # Grand Rapids rows carry the ADDRESS in `name` and a note in
+        # `address` ("300 Ottawa Ave NW" / "Across from Calder Plaza"); every
+        # other jurisdiction is the other way round ("Kentwood City Hall" /
+        # "4900 Breton Avenue SE"). So take whichever field parses as an
+        # address rather than trusting either name. Reading only `name` said
+        # thirteen boxes had no address at all when all thirteen do.
         for slot, box in enumerate(document.get("drop_boxes") or []):
             written = next((v for v in (box.get("address"), box.get("name"))
                             if split_address(v)), box.get("name"))
-            stamp(box, written, index, stats, misses,
-                  f"{where} drop box {box.get('name')}", bbox,
-                  pending, f"b:{mcd}:{slot}", mcd)
+            run.stamp(box, written, f"{where} drop box {box.get('name')}", bbox,
+                      f"b:{mcd}:{slot}", mcd)
         documents.append((path, document))
 
     early = json.loads(EARLY_VOTING.read_text())
@@ -486,14 +492,14 @@ def main():
         placed = []
         for slot, location in enumerate(site["locations"]):
             record = {"text": location}
-            stamp(record, location, index, stats, misses,
-                  f"{site['jurisdiction']} early voting", bboxes.get(mcd),
-                  pending, f"e:{mcd}:{slot}", mcd)
+            run.stamp(record, location, f"{site['jurisdiction']} early voting",
+                      bboxes.get(mcd), f"e:{mcd}:{slot}", mcd)
             placed.append(record)
         site["located"] = placed
     documents.append((EARLY_VOTING, early))
 
     # Second pass, over everything the parcels could not place.
+    pending, stats, misses = run.pending, run.stats, run.misses
     print(f"\ntrying {len(pending)} more from the street centrelines")
     found = centreline([
         dict({k: v for k, v in item.items() if not k.startswith("_")},

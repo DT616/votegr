@@ -795,7 +795,7 @@
 
   // One JSON file from data/. The first four the page cannot work without,
   // so a failure there fails the whole load; the rest degrade to a page with
-  // no boundary veil, no election line or no precinct polygons.
+  // no election line or no precinct polygons.
   function loadJson(name, optional) {
     var p = fetch('data/' + name + '.json').then(function (r) { return r.json(); });
     return optional ? p.catch(function () { return null; }) : p;
@@ -1125,6 +1125,7 @@
     $('routeBlock').classList.remove('map-only');
     routes = null;   // out of scope: reset also takes the cameras off the map
     $('col').classList.remove('has-result');
+    document.body.classList.remove('has-result');
     if ($('sectionNav')) $('sectionNav').hidden = true;
     window.scrollTo({ top: 0, behavior: 'smooth' });
     disarmPin();
@@ -1336,9 +1337,137 @@
     routeLayer.clearLayers(); pinLayer.clearLayers();
   }
 
+  // The absentee drop box row: the where-cell, then the when-cell.
+  function dropBoxCard(r) {
+    var html = '';
+  // --- absentee drop box ------------------------------------------------
+  // Returning an absentee ballot is the one trip here made entirely at a
+  // time of your own choosing, which makes it the one where a record of the
+  // journey is least excusable. It gets the same camera-aware routing as a
+  // trip to the polls.
+  var box = destinations(r).filter(function (o) { return o.kind === 'dropbox'; })[0];
+  if (box) {
+    html += '<div class="vi-where vi-dropbox' + customClass('dropbox') +
+      '" data-kind="dropbox">' +
+      '<div class="vi-lbl">' +
+      esc(placeLabel('dropbox', box.place.office
+                                  ? 'Where to return an absentee ballot'
+                                  : 'Ballot drop box nearest to you')) + '</div>' +
+      '<div class="pp-name">' + esc(boxLabel(box.place)) + '</div>' +
+      '<div class="pp-addr">' +
+      (box.place.address ? esc(addressForDisplay(box.place.address)) : '') +
+      '</div>' +
+      metaBlock([
+        locLine(box.place.note),
+        box.place.office
+          ? '<div class="bx-hours-odd">' + officeHours() + '</div>' +
+            (box.place.phone ? '<div>' + esc(box.place.phone) + '</div>' : '')
+          : box.place.hours
+          ? (ALWAYS_OPEN.test(box.place.hours)
+              ? '<div>Open 24/7</div>'
+              : '<div class="bx-hours-odd">Open hours: ' + esc(box.place.hours) + '</div>')
+          : ''
+      ]) +
+      // One office is not a list to show all of.
+      (box.place.office ? '' :
+        '<button type="button" class="box-open" id="boxListBtn">' +
+        'Show all drop box locations</button>');
+    html += '</div>';
+
+    html += whenCell('dropbox', absenteeState(), '');
+  }
+    return html;
+  }
+
+  // The early voting row. Empty when the calendar has no window to speak of.
+  function earlyVotingCard(r) {
+    var html = '';
+  // --- early voting -----------------------------------------------------
+  var evState = earlyVotingForBlock();
+  if (evState) {
+    // ev can come back empty with a window published, because destinations()
+    // also wants sites with coordinates and an origin to measure from: the
+    // honest thing then is to give the dates and name nothing, rather than
+    // blame the calendar for a gap of our own. destinations() already ranks
+    // by distance from this origin, so the nearest is read back from it.
+    var ev = evState.site
+      ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
+      : null;
+    // Always a two-column row, whether or not a site is named. With no
+    // site this cell used to span both columns and push the dates onto a
+    // line of their own, so "upcoming" read as a different shape from
+    // "open"; a row that says "No site published yet" beside its dates is
+    // the same row with one fact missing, and should look like it.
+    html += '<div class="vi-where vi-ev-site' + (ev ? customClass('early') : '') + '"' +
+      (ev ? ' data-kind="early"' : '') + '>' +
+      '<div class="vi-lbl">' +
+      esc(placeLabel('early', 'Early voting site nearest to you')) + '</div>' +
+      (ev
+        ? '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
+          '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
+          metaBlock([locLine(ev.place.entrance_note)]) +
+          (ev.all.length > 1
+            ? '<div class="pp-note">Early voting is not tied to your ' +
+              'precinct. Any Grand Rapids voter may use any of these ' +
+              ev.all.length + ' sites.</div>' +
+              '<button type="button" class="box-open" id="evListBtn">' +
+              'Show all my early voting site options</button>'
+            : '')
+        : '<div class="pp-addr">No site published yet.</div>') +
+      '</div>';
+    html += whenCell('early', { label: evState.label, status: evState.status,
+                                  live: true },
+                       ev ? evHoursHtml(activeEl) : '');
+  }
+    return html;
+  }
+
+  // The election day row: the polling place, then the day and its hours.
+  function pollingCard(r) {
+    var html = '';
+  // --- election day -----------------------------------------------------
+  html += '<div class="vi-where' + (activeEl ? '' : ' vi-full') +
+    '" data-kind="polling"><div class="vi-lbl">Election day polling place</div>';
+  var place = r.place;
+  if (place) {
+    // The name and address ARE the show-on-map control: clicking the place
+    // takes you to the place. A separate link said in four words what the
+    // affordance can say in zero.
+    var clickable = !!(place.lat && place.lng);
+    html += '<div' + (clickable
+        ? ' class="pp-place" id="showPlaceBtn" role="button" tabindex="0"' +
+          ' title="Show it on the map"'
+        : '') + '>' +
+      '<div class="pp-name">' + esc(displayCase(place.name)) + '</div>' +
+      '<div class="pp-addr">' + esc(addressForDisplay(place.address)) + '</div>' +
+      metaBlock([locLine(place.entrance_note)]) +
+      '</div>';
+    if (place.consolidated_with) {
+      html += '<div class="pp-note">Precinct ' + esc(r.precinct) + ' votes with precinct ' +
+        esc(place.consolidated_with) + ' this election' +
+        (place.note ? ', because ' + esc(place.note).toLowerCase() : '') + '.</div>';
+    }
+  } else {
+    html += '<div class="err">No polling place on file for precinct ' + esc(r.precinct) + '.</div>';
+  }
+  html += '</div>';
+
+  if (activeEl) {
+    html += whenCell('polling',
+      { label: 'Election day', status: Elections.withWeekday(activeEl.date) },
+      electionDayHours && electionDayHours.open && electionDayHours.close
+        ? '<div class="vi-hours"><span class="vi-hours-lbl">Hours:</span> ' +
+          esc(Elections.shortTime(electionDayHours.open)) + ' to ' +
+          esc(Elections.shortTime(electionDayHours.close)) + '</div>'
+        : '');
+  }
+    return html;
+  }
+
   function show(r, focusKind) {
     current = r;
     $('col').classList.add('has-result');
+    document.body.classList.add('has-result');
     var nav = $('sectionNav');
     if (nav) nav.hidden = false;
     revealMap();
@@ -1375,120 +1504,10 @@
     // A row whose window has not opened, or has closed, says so where the
     // dates are.
     //
-    // Each is built into its own string rather than appended straight to the
-    // page, because on election day the order changes: see below.
-    var boxHtml = '', evHtml = '', pollHtml = '';
-
-    // --- absentee drop box ------------------------------------------------
-    // Returning an absentee ballot is the one trip here made entirely at a
-    // time of your own choosing, which makes it the one where a record of the
-    // journey is least excusable. It gets the same camera-aware routing as a
-    // trip to the polls.
-    var box = destinations(r).filter(function (o) { return o.kind === 'dropbox'; })[0];
-    if (box) {
-      boxHtml += '<div class="vi-where vi-dropbox' + customClass('dropbox') +
-        '" data-kind="dropbox">' +
-        '<div class="vi-lbl">' +
-        esc(placeLabel('dropbox', box.place.office
-                                    ? 'Where to return an absentee ballot'
-                                    : 'Ballot drop box nearest to you')) + '</div>' +
-        '<div class="pp-name">' + esc(boxLabel(box.place)) + '</div>' +
-        '<div class="pp-addr">' +
-        (box.place.address ? esc(addressForDisplay(box.place.address)) : '') +
-        '</div>' +
-        metaBlock([
-          locLine(box.place.note),
-          box.place.office
-            ? '<div class="bx-hours-odd">' + officeHours() + '</div>' +
-              (box.place.phone ? '<div>' + esc(box.place.phone) + '</div>' : '')
-            : box.place.hours
-            ? (ALWAYS_OPEN.test(box.place.hours)
-                ? '<div>Open 24/7</div>'
-                : '<div class="bx-hours-odd">Open hours: ' + esc(box.place.hours) + '</div>')
-            : ''
-        ]) +
-        // One office is not a list to show all of.
-        (box.place.office ? '' :
-          '<button type="button" class="box-open" id="boxListBtn">' +
-          'Show all drop box locations</button>');
-      boxHtml += '</div>';
-
-      boxHtml += whenCell('dropbox', absenteeState(), '');
-    }
-
-    // --- early voting -----------------------------------------------------
-    var evState = earlyVotingForBlock();
-    if (evState) {
-      // ev can come back empty with a window published, because destinations()
-      // also wants sites with coordinates and an origin to measure from: the
-      // honest thing then is to give the dates and name nothing, rather than
-      // blame the calendar for a gap of our own. destinations() already ranks
-      // by distance from this origin, so the nearest is read back from it.
-      var ev = evState.site
-        ? destinations(r).filter(function (o) { return o.kind === 'early'; })[0]
-        : null;
-      // Always a two-column row, whether or not a site is named. With no
-      // site this cell used to span both columns and push the dates onto a
-      // line of their own, so "upcoming" read as a different shape from
-      // "open"; a row that says "No site published yet" beside its dates is
-      // the same row with one fact missing, and should look like it.
-      evHtml += '<div class="vi-where vi-ev-site' + (ev ? customClass('early') : '') + '"' +
-        (ev ? ' data-kind="early"' : '') + '>' +
-        '<div class="vi-lbl">' +
-        esc(placeLabel('early', 'Early voting site nearest to you')) + '</div>' +
-        (ev
-          ? '<div class="pp-name">' + esc(displayCase(ev.place.name)) + '</div>' +
-            '<div class="pp-addr">' + esc(addressForDisplay(ev.place.address)) + '</div>' +
-            metaBlock([locLine(ev.place.entrance_note)]) +
-            (ev.all.length > 1
-              ? '<div class="pp-note">Early voting is not tied to your ' +
-                'precinct. Any Grand Rapids voter may use any of these ' +
-                ev.all.length + ' sites.</div>' +
-                '<button type="button" class="box-open" id="evListBtn">' +
-                'Show all my early voting site options</button>'
-              : '')
-          : '<div class="pp-addr">No site published yet.</div>') +
-        '</div>';
-      evHtml += whenCell('early', { label: evState.label, status: evState.status,
-                                    live: true },
-                         ev ? evHoursHtml(activeEl) : '');
-    }
-
-    // --- election day -----------------------------------------------------
-    pollHtml += '<div class="vi-where' + (activeEl ? '' : ' vi-full') +
-      '" data-kind="polling"><div class="vi-lbl">Election day polling place</div>';
-    if (place) {
-      // The name and address ARE the show-on-map control: clicking the place
-      // takes you to the place. A separate link said in four words what the
-      // affordance can say in zero.
-      var clickable = !!(place.lat && place.lng);
-      pollHtml += '<div' + (clickable
-          ? ' class="pp-place" id="showPlaceBtn" role="button" tabindex="0"' +
-            ' title="Show it on the map"'
-          : '') + '>' +
-        '<div class="pp-name">' + esc(displayCase(place.name)) + '</div>' +
-        '<div class="pp-addr">' + esc(addressForDisplay(place.address)) + '</div>' +
-        metaBlock([locLine(place.entrance_note)]) +
-        '</div>';
-      if (place.consolidated_with) {
-        pollHtml += '<div class="pp-note">Precinct ' + esc(r.precinct) + ' votes with precinct ' +
-          esc(place.consolidated_with) + ' this election' +
-          (place.note ? ', because ' + esc(place.note).toLowerCase() : '') + '.</div>';
-      }
-    } else {
-      pollHtml += '<div class="err">No polling place on file for precinct ' + esc(r.precinct) + '.</div>';
-    }
-    pollHtml += '</div>';
-
-    if (activeEl) {
-      pollHtml += whenCell('polling',
-        { label: 'Election day', status: Elections.withWeekday(activeEl.date) },
-        electionDayHours && electionDayHours.open && electionDayHours.close
-          ? '<div class="vi-hours"><span class="vi-hours-lbl">Hours:</span> ' +
-            esc(Elections.shortTime(electionDayHours.open)) + ' to ' +
-            esc(Elections.shortTime(electionDayHours.close)) + '</div>'
-          : '');
-    }
+    // Each is built by its own function into its own string rather than
+    // appended straight to the page, because on election day the order
+    // changes: see below.
+    var boxHtml = dropBoxCard(r), evHtml = earlyVotingCard(r), pollHtml = pollingCard(r);
 
     // Normally the order is the order a voter can act: the box is open first
     // and for longest, then early voting, then the deadline. On the day of the
@@ -1599,8 +1618,10 @@
 
     routeTo(r, focusKind);
     // After routeTo, because the blocks it fills are hidden until then and a
-    // hidden element has no offset to scroll to.
-    scrollToResult('resultBlock');
+    // hidden element has no offset to scroll to. On a phone the map is the
+    // thing to land on, with the directions right under it; on a wider
+    // screen the map sits beside the answer and the answer's top is right.
+    scrollToResult(isPhone() && !$('mapBlock').hidden ? 'mapBlock' : 'resultBlock');
   }
 
   // ---- election + destination -----------------------------------------
@@ -2211,6 +2232,12 @@
     // computed against the stale width centres everything ~200px off, which
     // is exactly the constant offset that kept showing up in verification.
     map.invalidateSize(false);
+    // On a phone, a new route brings the map to the top of the screen, under
+    // the sticky bar, with the directions following below it. The lookup had
+    // scrolled to the top of the answer, which on a phone put the map and
+    // the directions a screen and a half further down where nothing said
+    // they existed. The section bar takes you back up.
+    if (fit && isPhone()) scrollToResult('mapBlock');
 
     routeLayer.clearLayers();
     pinLayer.clearLayers();
@@ -2543,7 +2570,11 @@
               })();
           originArrow = marker(st.points[0], 'origin', hb);
         }
-        if (isPhone()) $('mapBlock').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        // Anchor the TOP of the map under the sticky bar. 'nearest' scrolled
+        // the minimum distance, which on a phone left the map's bottom edge
+        // at the bottom of the screen and its top, the flag and the start of
+        // the route out of sight above it.
+        if (isPhone()) scrollToResult('mapBlock');
       });
     });
   }

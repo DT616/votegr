@@ -485,7 +485,7 @@
 
         // Ward colour first, precinct shade within it.
         //
-        // There are only three wards, so each gets a hue of its own and they
+        // A city has at most three wards, so each gets a hue of its own and they
         // are told apart at a glance. There are dozens of precincts, which is
         // far too many for distinct colours, so each takes a lightness step off
         // its ward's hue instead. A precinct then reads as different from the
