@@ -110,7 +110,8 @@ scripts/
   build_graph_osm.py       the same graph from OpenStreetMap instead, for comparison
   build_restrictions.py    merges turn restrictions into it
   build_graph_chunks.py    cuts it into one file per jurisdiction, plus the index
-  build_precincts.py       slims the precinct polygons for in-browser use
+  build_precincts.py       slims the precinct polygons, and unions each
+                           jurisdiction's into the outline the map draws
   archive.py, sources.py   Wayback captures and the master registry of sources
 ```
 

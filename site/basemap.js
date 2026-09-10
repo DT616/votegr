@@ -181,6 +181,7 @@
       this._land = opts.landcover || null;
       this._dark = !!opts.dark;
       this._buckets = null;
+      this._outlines = {};
     },
 
     setDark: function (d) { this._dark = !!d; this._redraw(); },
@@ -193,6 +194,34 @@
       this._redraw();
     },
 
+    // Every jurisdiction's own outline, by MCD code, as precincts.json ships
+    // them. They are computed there, by build_precincts.py, as the union of
+    // each jurisdiction's precincts.
+    //
+    // This used to be worked out here instead: count every precinct edge in
+    // the jurisdiction and keep the ones seen only once, on the reasoning
+    // that an edge two precincts share is seen twice and an edge on the
+    // outside is seen once. That is true of the ground and false of the
+    // file. Each precinct polygon is thinned on its own upstream, so the two
+    // sides of a shared border keep different vertices off the same line,
+    // neither edge matches its twin, and both were drawn. It put 263 km of
+    // line through the insides of jurisdictions, 71 km of it inside Grand
+    // Rapids, which is where it was noticed: a third of the yellow on the
+    // screen was interior precinct borders wearing the city border's colour.
+    setJurisdictions: function (list) {
+      this._outlines = {};
+      for (var i = 0; i < (list || []).length; i++) {
+        var j = list[i];
+        if (j && j.outline) this._outlines[String(j.mcd)] = j.outline;
+      }
+      this._scopeBorder = this._outline(this._scopeMcd);
+      this._redraw();
+    },
+
+    _outline: function (mcd) {
+      return mcd == null ? null : (this._outlines || {})[String(mcd)] || null;
+    },
+
     // The jurisdiction the current answer is in, by MCD code. Only its
     // precincts are tinted and only its outer border is drawn: an address
     // in Solon Township lights Solon Township, and the rest of the county
@@ -203,33 +232,7 @@
     // as not-in-scope.
     setScope: function (mcd) {
       this._scopeMcd = mcd == null ? null : String(mcd);
-      this._scopeBorder = null;
-      if (this._scopeMcd && this._precincts) {
-        // The outer border of a jurisdiction is every boundary segment its
-        // precincts do not share with each other. The precinct polygons
-        // come from one state file and share their vertices exactly, so a
-        // segment seen once is on the outside and one seen twice is
-        // between two precincts. Checked on Kentwood, Grand Rapids and
-        // Solon: no segment is seen more than twice.
-        var count = {}, segs = {};
-        for (var i = 0; i < this._precincts.length; i++) {
-          var pr = this._precincts[i];
-          if (String(pr.mcd) !== this._scopeMcd) continue;
-          for (var r = 0; r < pr.rings.length; r++) {
-            var ring = pr.rings[r];
-            for (var k = 0; k < ring.length; k++) {
-              var a = ring[k], b = ring[(k + 1) % ring.length];
-              var ka = a[0] + ',' + a[1], kb = b[0] + ',' + b[1];
-              var key = ka < kb ? ka + '|' + kb : kb + '|' + ka;
-              count[key] = (count[key] || 0) + 1;
-              segs[key] = [a, b];
-            }
-          }
-        }
-        var out = [];
-        for (var s in count) if (count[s] === 1) out.push(segs[s]);
-        this._scopeBorder = out;
-      }
+      this._scopeBorder = this._outline(this._scopeMcd);
       this._redraw();
     },
 
@@ -603,14 +606,9 @@
           ctx.lineCap = 'round'; ctx.lineJoin = 'round';
           ctx.globalAlpha = 0.95;
           ctx.strokeStyle = P.precinctHalo; ctx.lineWidth = 5.5;
-          ctx.beginPath();
-          for (var bs = 0; bs < this._scopeBorder.length; bs++) {
-            var sa = pt(this._scopeBorder[bs][0]), sb = pt(this._scopeBorder[bs][1]);
-            ctx.moveTo(sa[0], sa[1]); ctx.lineTo(sb[0], sb[1]);
-          }
-          ctx.stroke();
+          this._strokeRings(ctx, this._scopeBorder, pt);
           ctx.strokeStyle = P.scopeBorder; ctx.lineWidth = 2.8;
-          ctx.stroke();
+          this._strokeRings(ctx, this._scopeBorder, pt);
           ctx.restore();
         }
       }

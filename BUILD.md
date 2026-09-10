@@ -10,15 +10,16 @@ and get the same files.
 
 ## Setup
 
-Most scripts use only the Python standard library. Two need `requests` and
+Most scripts use only the Python standard library. A few need `requests` or
 `shapely`:
 
 ```
 pip install -r requirements.txt
 ```
 
-`scripts/refresh_addresses.py` and `scripts/refresh_precincts.py` are the
-exceptions. Everything else runs on a bare interpreter.
+`scripts/refresh_addresses.py` and `scripts/refresh_precincts.py` need both;
+`scripts/build_precincts.py` and `scripts/build_graph_chunks.py` need `shapely`
+alone. Everything else runs on a bare interpreter.
 
 ## What generates what
 
@@ -32,7 +33,7 @@ exceptions. Everything else runs on a bare interpreter.
 | `cameras.json` | `refresh_cameras.py` — **automated, see below** | OpenStreetMap |
 | `addresses.json` | `refresh_addresses.py` | Kent County parcels, matched to precincts |
 | `precincts.geojson` | `refresh_precincts.py` | Michigan Secretary of State |
-| `precincts.json` | `build_precincts.py` | slimmed from `precincts.geojson` |
+| `precincts.json` | `build_precincts.py` | slimmed from `precincts.geojson`, plus each jurisdiction's outline |
 | `boundary.json` | `refresh_boundary.py` | Michigan Geographic Framework |
 | `landcover.json` | `refresh_landcover.py` | OpenStreetMap |
 | `neighbors.json` | `refresh_neighbors.py` | Michigan Geographic Framework |
@@ -86,7 +87,7 @@ python3 scripts/build_graph_chunks.py    # cut per jurisdiction    -> site/data/
 
 # Precincts, addresses, boundaries
 python3 scripts/refresh_precincts.py     # SOS precinct polygons   -> site/data/precincts.geojson
-python3 scripts/build_precincts.py       # slim them for the browser -> site/data/precincts.json
+python3 scripts/build_precincts.py       # slim them + outline each jurisdiction -> site/data/precincts.json
 python3 scripts/refresh_addresses.py     # parcels -> precincts    -> site/data/addresses.json
 python3 scripts/refresh_boundary.py      # city limits             -> site/data/boundary.json
 python3 scripts/refresh_neighbors.py     # neighbouring street names -> site/data/neighbors.json
@@ -122,13 +123,14 @@ discards restrictions, so they have to be re-attached afterwards or the router
 silently permits banned turns.
 
 **`build_precincts.py` must follow `refresh_precincts.py`.** It reads the
-geojson that script writes, and refuses to run if it does not hold exactly 59
+geojson that script writes, and refuses to run if it does not hold exactly 202
 precincts.
 
 Both steps guard, at different points. `refresh_precincts.py` checks the count
 and that each ward's precinct numbers fall in its expected range before writing
-the geojson; `build_precincts.py` re-checks the count before slimming it. A bad
-upstream pull stops at one of them rather than reaching the browser.
+the geojson; `build_precincts.py` re-checks the precinct and jurisdiction
+counts, and that every jurisdiction came out with an outline. A bad upstream
+pull stops at one of them rather than reaching the browser.
 
 `scripts/build_graph_osm.py` is not part of this sequence. It builds the same
 graph from OpenStreetMap instead of the city centerlines, for comparison. The
