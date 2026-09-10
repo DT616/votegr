@@ -953,7 +953,16 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
 .dbg-sub { font-weight: 400; font-size: .82rem; color: var(--dim); margin-left: 8px; }
 .dbg-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
 .dbg-row label { flex: 1 1 220px; font-size: .78rem; color: var(--dim);
-                 text-transform: uppercase; letter-spacing: .05em; }
+                 text-transform: uppercase; letter-spacing: .05em;
+                 /* The suggestion list hangs off this, so it has to be the
+                    positioned ancestor. Without it the list anchors to the
+                    panel and sits under the wrong field. */
+                 position: relative; }
+/* The label is a small uppercase caption and the list inherits from it, so
+   the addresses would come out shouting and letter-spaced. .ac-item takes
+   font: inherit, which is what makes this necessary here and nowhere else. */
+.debug-panel .ac { text-transform: none; letter-spacing: normal; }
+.debug-panel .ac-item { font-size: .92rem; color: var(--fg); }
 .dbg-row input {
   display: block; width: 100%; margin-top: 3px; box-sizing: border-box;
   background: var(--bg); color: var(--fg); border: 1.5px solid var(--line);

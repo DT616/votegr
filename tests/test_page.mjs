@@ -229,8 +229,8 @@ for (const w of WIDTHS) {
   // --- a real lookup ---
   await page.fill('#addr', '');
   await page.type('#addr', '300 Monroe Ave NW', { delay: 25 });
-  await page.waitForSelector('#ac .ac-item', { timeout: 10000 });
-  await page.locator('#ac .ac-item').first().click();
+  await page.waitForSelector('#ac-addr .ac-item', { timeout: 10000 });
+  await page.locator('#ac-addr .ac-item').first().click();
   await page.waitForTimeout(2500);
   const result = await page.evaluate(() => {
     const d = document.getElementById('advisory');
