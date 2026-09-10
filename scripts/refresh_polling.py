@@ -123,11 +123,81 @@ def fetch(slug):
         return response.read().decode("utf-8", "replace")
 
 
+# A street address opens with a house number and a space: "1226 Union NE".
+# The space matters. Grand Rapids Ward 2 Precinct 24 votes at "4th Reformed
+# Church", which starts with a digit and is not an address, and a bare ^\d
+# here read it as one and dropped the precinct.
+STREET_ADDRESS = re.compile(r"^\d+\s")
+
+# An address can wrap. Cannon Township's precinct 3 prints "8331 Myers Lake"
+# and "Ave NE" as two lines, and stopping at the first of them published a
+# street with no suffix, which geocodes to nothing. A continuation is a line
+# made ONLY of street suffixes and directionals: that takes "Ave NE" and
+# leaves a note like "(Back entrance)" or a city line alone.
+ADDRESS_TAIL = {
+    "AVE", "AVENUE", "ST", "STREET", "RD", "ROAD", "DR", "DRIVE", "LN",
+    "LANE", "CT", "COURT", "BLVD", "BOULEVARD", "PKWY", "PARKWAY", "HWY",
+    "HIGHWAY", "WAY", "CIR", "CIRCLE", "TER", "TERRACE", "PL", "PLACE",
+    "TRL", "TRAIL", "NE", "NW", "SE", "SW", "N", "S", "E", "W",
+}
+
+
+def is_address_tail(line):
+    words = line.replace(",", " ").split()
+    return bool(words) and all(w.upper().strip(".") in ADDRESS_TAIL for w in words)
+
+
+# The first line under the label is always the venue name, so the search for
+# the address starts after it and the name can never be mistaken for one.
+# Beyond that the name may run on: Algoma prints "Kent County Road Commission"
+# / "North Complex" before its address. This is how many extra lines of name
+# to tolerate before giving up, which stops a page whose markup changed from
+# swallowing the next precinct's address as this one's.
+MAX_NAME_LINES = 3
+
+
+# Addresses the county publishes that the jurisdiction running the election
+# publishes differently. The county page is the source for all thirty
+# jurisdictions and stays the source; this is the narrow exception, and every
+# entry has to say who overrules it and why, because a wrong correction here
+# sends a voter to the wrong building and nothing downstream would notice.
+#
+# Keyed by the state's 13-digit precinct code, which is unique and does not
+# move when a page is reorganised.
+ADDRESS_OVERRIDES = {
+    # Kent County Road Commission North Complex, Algoma precinct 3.
+    # The county page says 11723. Algoma Township, which runs the election
+    # and designates the place, says 11777 on its own elections page, and so
+    # does the Road Commission. 11777 is also the number the county's OWN
+    # parcel layer carries, and 11723 is in no parcel, so the county page
+    # disagrees with the county's own records. Taking 11777 puts the pin on
+    # the building; 11723 only interpolates to a point on the road 77 m away.
+    "0810116000003": {
+        "address": "11777 White Creek Ave NE",
+        "county_published": "11723 White Creek Avenue",
+        "source": "Algoma Township Clerk, Elections page",
+        "source_url": "https://www.algomatwp.org/departments/elections/index.php",
+    },
+}
+
+
 def parse_polling(lines):
     """[{ward, precinct, name, address}] from the Election Day section.
 
     A ward jurisdiction prints "Ward 1, Precinct 2"; a township prints
     "Precinct 2". Both are followed by the venue name and its street address.
+
+    The name is NOT always one line. Algoma's precinct 3 prints as three
+    lines, "Kent County Road Commission" / "North Complex" /
+    "11723 White Creek Avenue", and reading the address from a fixed offset
+    took "North Complex" as the address and dropped the real one. The name
+    then had no house number, geocoding had nothing to match, and that
+    polling place shipped with no coordinate at all: no marker, no distance
+    and no route, with nothing downstream saying so. So the address is found
+    by its shape and the name is whatever precedes it.
+
+    A note can follow the address, as "(Back entrance)" does in Grand Rapids,
+    and is ignored: the scan stops at the address.
     """
     try:
         start = next(i for i, line in enumerate(lines)
@@ -137,12 +207,30 @@ def parse_polling(lines):
     rows = []
     for i in range(start + 1, len(lines)):
         match = PRECINCT_LABEL.match(lines[i])
-        if not match or i + 2 >= len(lines):
+        if not match:
             continue
         ward = int(match.group(1)) if match.group(1) else None
         numbers = [int(n) for n in re.findall(r"\d+", match.group(2))]
-        name = lines[i + 1].rstrip(":").strip()
-        address = lines[i + 2].rstrip(":").strip()
+
+        if i + 2 >= len(lines):
+            continue
+        name_lines, address = [lines[i + 1].rstrip(":").strip()], None
+        for j in range(i + 2, min(i + 2 + MAX_NAME_LINES, len(lines))):
+            line = lines[j].rstrip(":").strip()
+            if PRECINCT_LABEL.match(lines[j]):
+                break
+            if STREET_ADDRESS.match(line):
+                address = line
+                if j + 1 < len(lines):
+                    tail = lines[j + 1].rstrip(":").strip()
+                    if not PRECINCT_LABEL.match(lines[j + 1]) and is_address_tail(tail):
+                        address = f"{address} {tail}"
+                break
+            name_lines.append(line)
+        if address is None:
+            continue
+        name = " ".join(name_lines)
+
         # "Precincts 1 and 2" is two precincts voting in one building, which is
         # ordinary in the rural townships. Each gets its own row.
         for precinct in numbers:
@@ -231,7 +319,7 @@ def main():
                  f"{sorted(names[m] for m in missing_pages)}")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    unmatched, table, pending = [], [], []
+    unmatched, table, pending, applied = [], [], [], []
     for mcd, slug in sorted(PAGES.items(), key=lambda kv: names[kv[0]]):
         lines = lines_of(fetch(slug))
         # The page names itself; if it does not name who we asked for, the id
@@ -251,7 +339,21 @@ def main():
             if code is None:
                 unmatched.append((names[mcd], key, row["name"]))
                 continue
-            places[code] = {"name": row["name"], "address": row["address"]}
+            override = ADDRESS_OVERRIDES.get(code)
+            if override:
+                if row["address"] != override["county_published"]:
+                    sys.exit(
+                        f"REFUSE: the override for {code} expects the county to "
+                        f"publish {override['county_published']!r}, but it now "
+                        f"publishes {row['address']!r}. Re-check which address "
+                        f"is right before this correction is applied again.")
+                applied.append((names[mcd], code, override))
+                places[code] = {"name": row["name"],
+                                "address": override["address"],
+                                "address_source": override["source"],
+                                "address_as_published": override["county_published"]}
+            else:
+                places[code] = {"name": row["name"], "address": row["address"]}
 
         document = {
             "provenance": {
@@ -289,6 +391,11 @@ def main():
     for name, got, want, boxes in table:
         flag = "" if got == want else "  <-- SHORT"
         print(f"{name:<26}{got:>8}{want:>11}{boxes:>12}{flag}")
+    if applied:
+        print(f"\n{len(applied)} address(es) overruled the county page:")
+        for where, code, o in applied:
+            print(f"  {where} {code}: {o['county_published']!r} -> "
+                  f"{o['address']!r}, per {o['source']}")
     if unmatched:
         print(f"\n{len(unmatched)} rows matched no precinct in the state layer:")
         for name, key, venue in unmatched[:10]:

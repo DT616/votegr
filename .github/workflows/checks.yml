@@ -5,12 +5,14 @@
 # were run by whoever remembered. This is the step that makes remembering
 # unnecessary, and gives branch protection something real to require.
 #
-# Eight suites, cheapest first, so an obvious break fails in seconds rather
+# Nine suites, cheapest first, so an obvious break fails in seconds rather
 # than after a browser download:
 #
 #   tests/test_display_case.mjs         display casing, over the real corpus
 #   tests/test_precinct_outline.mjs     the jurisdiction outline is a border, not
 #                                 a line through the middle of the place
+#   tests/test_polling_data.mjs         every polling place has a real address and
+#                                 a coordinate to route to
 #   tests/test_router.mjs               the routing core, restrictions and address lookup
 #   tests/audit_routes.mjs              859 real trips, mechanically checked -- the one
 #                                 that matters, per the README, and only ~15s
@@ -72,6 +74,12 @@ jobs:
       # script that makes it is run by hand.
       - name: Jurisdiction outlines
         run: node tests/test_precinct_outline.mjs
+
+      # Reads the committed polling files. Two parser bugs shipped invisibly
+      # in 202 rows before this existed: an address that was a building name,
+      # and one truncated mid-street.
+      - name: Polling places
+        run: node tests/test_polling_data.mjs
 
       - name: Router core
         run: node tests/test_router.mjs
