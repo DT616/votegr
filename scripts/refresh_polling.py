@@ -155,6 +155,40 @@ def is_address_tail(line):
 # swallowing the next precinct's address as this one's.
 MAX_NAME_LINES = 3
 
+# Where inside the building to go: "(Back entrance)" under Grand Rapids Ward 2
+# Precinct 24. The county publishes no field for this, only sometimes a line
+# under the address, and it is the ONLY source of it for the 29 jurisdictions
+# outside Grand Rapids, whose polling rows are otherwise a name and a street.
+# Grand Rapids has better: polling.json is transcribed by hand from the City
+# Clerk's directory, which carries an entrance or a room for 15 of its 59
+# precincts, and that file wins for the city.
+#
+# The trap is what else sits under an address. The last precinct on every page
+# is followed by the county's list of all thirty jurisdictions, so "Ada
+# Township" is the next line and would be read as a note. Hence the rejects.
+GR_MCD = "34000"          # polling.json is the source of record for the city
+NOTE_MAX_CHARS = 60
+# A bare "Ward 2" is the page's heading for the NEXT block of precincts, not
+# a room in the building above it. The cities with wards print one, so the
+# last precinct of every ward but the final one had its neighbour's heading
+# read as a note: five of them, in Kentwood, Walker and Wyoming.
+NOTE_REJECT = re.compile(
+    r"^(Election Day|Absentee|Drop Box|Note|If your polling|Ward\s+\d+$)", re.I)
+
+
+def read_note(line, not_notes):
+    """The line under the address, when it is really about the building."""
+    note = line.strip().strip("()").strip()
+    if not note or len(note) > NOTE_MAX_CHARS:
+        return None
+    if STREET_ADDRESS.match(note) or PRECINCT_LABEL.match(note):
+        return None
+    if NOTE_REJECT.match(note) or CLERK_HEADING.match(note):
+        return None
+    if note.casefold() in not_notes:
+        return None
+    return note
+
 
 # Addresses the county publishes that the jurisdiction running the election
 # publishes differently. The county page is the source for all thirty
@@ -181,7 +215,7 @@ ADDRESS_OVERRIDES = {
 }
 
 
-def parse_polling(lines):
+def parse_polling(lines, not_notes=frozenset()):
     """[{ward, precinct, name, address}] from the Election Day section.
 
     A ward jurisdiction prints "Ward 1, Precinct 2"; a township prints
@@ -214,17 +248,21 @@ def parse_polling(lines):
 
         if i + 2 >= len(lines):
             continue
-        name_lines, address = [lines[i + 1].rstrip(":").strip()], None
+        name_lines, address, note = [lines[i + 1].rstrip(":").strip()], None, None
         for j in range(i + 2, min(i + 2 + MAX_NAME_LINES, len(lines))):
             line = lines[j].rstrip(":").strip()
             if PRECINCT_LABEL.match(lines[j]):
                 break
             if STREET_ADDRESS.match(line):
                 address = line
-                if j + 1 < len(lines):
-                    tail = lines[j + 1].rstrip(":").strip()
-                    if not PRECINCT_LABEL.match(lines[j + 1]) and is_address_tail(tail):
+                after = j + 1
+                if after < len(lines):
+                    tail = lines[after].rstrip(":").strip()
+                    if not PRECINCT_LABEL.match(lines[after]) and is_address_tail(tail):
                         address = f"{address} {tail}"
+                        after += 1
+                if after < len(lines):
+                    note = read_note(lines[after], not_notes)
                 break
             name_lines.append(line)
         if address is None:
@@ -235,7 +273,7 @@ def parse_polling(lines):
         # ordinary in the rural townships. Each gets its own row.
         for precinct in numbers:
             rows.append({"ward": ward, "precinct": precinct,
-                         "name": name, "address": address})
+                         "name": name, "address": address, "note": note})
     return rows
 
 
@@ -319,7 +357,12 @@ def main():
                  f"{sorted(names[m] for m in missing_pages)}")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    unmatched, table, pending, applied = [], [], [], []
+    not_notes = set()
+    for name in names.values():
+        not_notes.add(name.casefold())
+        not_notes.add(name.replace(" Township", "").casefold())
+
+    unmatched, table, pending, applied, notes = [], [], [], [], []
     for mcd, slug in sorted(PAGES.items(), key=lambda kv: names[kv[0]]):
         lines = lines_of(fetch(slug))
         # The page names itself; if it does not name who we asked for, the id
@@ -329,7 +372,10 @@ def main():
             sys.exit(f"REFUSE: {BASE}/{slug} does not mention {expected!r}; "
                      f"the county page id has probably changed")
 
-        rows = parse_polling(lines)
+        # The county's own nav list of all thirty jurisdictions follows the
+        # last precinct on every page, so those names must never be read as
+        # a note about a building.
+        rows = parse_polling(lines, not_notes)
         boxes = parse_dropboxes(lines)
         clerk = parse_clerk(lines)
         places = {}
@@ -354,6 +400,12 @@ def main():
                                 "address_as_published": override["county_published"]}
             else:
                 places[code] = {"name": row["name"], "address": row["address"]}
+            # Grand Rapids is not given one here: polling.json carries the
+            # city's, from the clerk's own directory, and it is the better
+            # source. Everywhere else this line is the only one there is.
+            if row.get("note") and mcd != GR_MCD:
+                places[code]["entrance_note"] = row["note"]
+                notes.append((names[mcd], code, row["name"], row["note"]))
 
         document = {
             "provenance": {
@@ -391,6 +443,12 @@ def main():
     for name, got, want, boxes in table:
         flag = "" if got == want else "  <-- SHORT"
         print(f"{name:<26}{got:>8}{want:>11}{boxes:>12}{flag}")
+    if notes:
+        print(f"\n{len(notes)} polling place(s) publish where to go inside:")
+        for where, code, venue, note in notes:
+            print(f"  {where} {code}: {venue} -- {note!r}")
+    else:
+        print("\nno polling place published a note about the building")
     if applied:
         print(f"\n{len(applied)} address(es) overruled the county page:")
         for where, code, o in applied:
