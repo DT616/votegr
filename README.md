@@ -164,7 +164,7 @@ Each finds the repository root from its own location, so run them from anywhere.
 ```bash
 node tests/test_display_case.mjs         # display casing: vectors, then two invariants over the real corpus
 node tests/test_router.mjs               # 122 assertions: routing, chunks, restrictions, addresses, the county index, the polls clock
-node tests/audit_routes.mjs              # drives hundreds of real trips, checks every route
+node tests/audit_routes.mjs              # drives hundreds of real trips countywide, checks every route
 npm ci && node tests/test_page.mjs       # 174 assertions: the page itself, in a browser, city and county
 node tests/test_simple_page.mjs          # 48 assertions: /simple in a browser
 node tests/test_early_voting_states.mjs  # the early voting states and election day, from a dated fixture, both pages
@@ -181,11 +181,13 @@ gone, never on a server that declined to answer it. The `package.json` exists
 only so the two browser tests have a browser to drive; the site has no build
 step and no dependencies.
 
-`tests/audit_routes.mjs` is the one that matters. It routes across the real city and
-mechanically checks every result: edges join end to end, no edge is driven
-against its one-way, no freeway is used, every turn passes the restriction
-gate, no gratuitous U-turns, and the step distances add up. It exits non-zero
-on any violation.
+`tests/audit_routes.mjs` is the one that matters. It routes across the real county,
+every jurisdiction and every one of the 202 polling places, and mechanically
+checks every result: edges join end to end, no edge is driven against its
+one-way, no freeway is used, every turn passes the restriction gate, no
+gratuitous U-turns, and the step distances add up. Its trips are seeded, so a
+failure can be reproduced rather than re-rolled away. It exits non-zero on any
+violation.
 
 `scripts/compare_osrm.mjs` compares our fastest route against OSRM over the same
 origin and destination. OSRM is used as a measuring stick, never at run time:

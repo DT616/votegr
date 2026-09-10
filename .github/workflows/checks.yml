@@ -14,8 +14,9 @@
 #   tests/test_polling_data.mjs         every polling place has a real address and
 #                                 a coordinate to route to
 #   tests/test_router.mjs               the routing core, restrictions and address lookup
-#   tests/audit_routes.mjs              859 real trips, mechanically checked -- the one
-#                                 that matters, per the README, and only ~15s
+#   tests/audit_routes.mjs              1,000 real routes countywide, mechanically
+#                                 checked -- the one
+#                                 that matters, per the README, and ~40s
 #   tests/test_page.mjs                 the page in a real browser at three widths
 #   tests/test_simple_page.mjs          /simple in a real browser at three widths
 #   tests/test_early_voting_states.mjs  the four early voting states, from a fixture
