@@ -312,6 +312,16 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
 }
 .countdown[hidden] { display: none; }
 
+/* The hidden attribute has to WIN. It is only display:none in the browser's
+   own stylesheet, so any rule of ours that sets display beats it, and the
+   element stays on screen with its attribute saying otherwise. That is not
+   hypothetical: #routeBlock:not(.map-only) takes display:grid above 640px,
+   which left "Directions" floating under the search box on the start page,
+   heading a section that had nothing in it yet. Every phone width hid it
+   correctly, so it read as a desktop-only mystery rather than a CSS
+   precedence bug. One rule, once, rather than a display:none per section. */
+[hidden] { display: none !important; }
+
 /* The third rule that steps off --label-size, on the same grounds .vi-grid
    .vi-lbl does: this titles a whole card, not a word above a single value,
    and it has to stay the largest label inside it. At .74rem it sat under the
@@ -1426,9 +1436,12 @@ ol.steps .scam {
    not the panel colour, so the sticky band is invisible against what scrolls
    beneath it. */
 .searchbar { padding: 0; }
+/* Larger than the lede above it on purpose. This is the one thing the page
+   is asking anybody to do, and at .95rem it read as a caption on the box
+   rather than the instruction. */
 .field-label {
-  display: block; margin: 0 0 7px;
-  font-size: .95rem; font-weight: 700; letter-spacing: -.01em; color: var(--fg);
+  display: block; margin: 0 0 9px;
+  font-size: 1.25rem; font-weight: 700; letter-spacing: -.01em; color: var(--fg);
 }
 /* Once there is an answer the field is a tool you come back to, not the
    question being asked, so its framing collapses along with the hint. */
