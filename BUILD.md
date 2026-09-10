@@ -123,13 +123,14 @@ discards restrictions, so they have to be re-attached afterwards or the router
 silently permits banned turns.
 
 **`build_precincts.py` must follow `refresh_precincts.py`.** It reads the
-geojson that script writes, and refuses to run if it does not hold exactly 59
+geojson that script writes, and refuses to run if it does not hold exactly 202
 precincts.
 
 Both steps guard, at different points. `refresh_precincts.py` checks the count
 and that each ward's precinct numbers fall in its expected range before writing
-the geojson; `build_precincts.py` re-checks the count before slimming it. A bad
-upstream pull stops at one of them rather than reaching the browser.
+the geojson; `build_precincts.py` re-checks the precinct and jurisdiction
+counts, and that every jurisdiction came out with an outline. A bad upstream
+pull stops at one of them rather than reaching the browser.
 
 `scripts/build_graph_osm.py` is not part of this sequence. It builds the same
 graph from OpenStreetMap instead of the city centerlines, for comparison. The
