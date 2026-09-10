@@ -5,10 +5,12 @@
 # were run by whoever remembered. This is the step that makes remembering
 # unnecessary, and gives branch protection something real to require.
 #
-# Seven suites, cheapest first, so an obvious break fails in seconds rather
+# Eight suites, cheapest first, so an obvious break fails in seconds rather
 # than after a browser download:
 #
 #   tests/test_display_case.mjs         display casing, over the real corpus
+#   tests/test_precinct_outline.mjs     the jurisdiction outline is a border, not
+#                                 a line through the middle of the place
 #   tests/test_router.mjs               the routing core, restrictions and address lookup
 #   tests/audit_routes.mjs              859 real trips, mechanically checked -- the one
 #                                 that matters, per the README, and only ~15s
@@ -64,6 +66,12 @@ jobs:
 
       - name: Display case
         run: node tests/test_display_case.mjs
+
+      # Reads the committed precincts.json only. It is here rather than left
+      # to build_precincts.py because the data ships to browsers and the
+      # script that makes it is run by hand.
+      - name: Jurisdiction outlines
+        run: node tests/test_precinct_outline.mjs
 
       - name: Router core
         run: node tests/test_router.mjs

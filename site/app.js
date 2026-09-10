@@ -1114,6 +1114,9 @@
       neighbors = (neighborData && neighborData.streets) || null;
       precincts = (precinctData && precinctData.precincts) || null;
       if (precincts) ownBase.setPrecincts(precincts);
+      // The jurisdiction outlines ride in the same file, on the index that
+      // already says which jurisdictions exist.
+      if (precinctData) ownBase.setJurisdictions(precinctData.jurisdictions);
       ownBase.setData(graph, landcover || null);
       // Every camera in the county, not just the ones inside the city.
       //
