@@ -38,6 +38,16 @@
     };
   }
 
+  // The text a chosen suggestion puts in the box, written the way somebody
+  // writes an address rather than the way the parcel file stores it. Mirrors
+  // what choose() does on the main search box.
+  function label(item) {
+    if (!item) return '';
+    var street = typeof root.displayCase === 'function'
+      ? root.displayCase(item.street) : item.street;
+    return (item.number != null ? item.number + ' ' : '') + street;
+  }
+
   function mount(api) {
     var bar = $('searchBar');
     if (!bar || $('debugPanel')) return;
@@ -65,6 +75,29 @@
     var from = $('dbgFrom'), to = $('dbgTo'), out = $('dbgOut'), status = $('dbgStatus');
     from.value = param('from');
     to.value = param('to');
+
+    // Both ends get the page's own address picker. Typing a house number
+    // offers real addresses out of the index, and picking one fills the box,
+    // which is the same widget and the same suggestions a visitor gets. A
+    // lat,lng pair still works: the picker offers nothing for text with no
+    // house number in it, so coordinates fall straight through to run().
+    var pickers = [];
+    if (root.Autocomplete && typeof api.suggest === 'function') {
+      [from, to].forEach(function (el) {
+        var ac = root.Autocomplete.attach({
+          input: el,
+          suggest: api.suggest,
+          onChoose: function (item) {
+            el.value = label(item);
+            ac.close();
+          },
+          // Nothing to say here. The panel dumps whatever resolve() makes of
+          // the text, which is more use to somebody debugging than a message.
+          onMiss: function () {}
+        });
+        pickers.push(ac);
+      });
+    }
 
     function shareUrl() {
       var u = new URL(location.href);
@@ -116,6 +149,7 @@
     $('dbgRun').onclick = run;
     $('dbgSwap').onclick = function () {
       var a = from.value; from.value = to.value; to.value = a;
+      pickers.forEach(function (p) { p.close(); });
     };
     $('dbgLink').onclick = function () {
       var url = shareUrl();
@@ -127,8 +161,13 @@
         status.textContent = url;
       }
     };
+    // Deferred by a tick on purpose: Enter with a suggestion highlighted is
+    // the picker's key first, and running before its onChoose lands would
+    // route the half-typed text the reader was replacing.
     [from, to].forEach(function (el) {
-      el.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') setTimeout(run, 0);
+      });
     });
     if (from.value && to.value) run();
     else from.focus();

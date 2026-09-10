@@ -1037,7 +1037,10 @@
       if (!window.VoteGRDebug) return;
       window.VoteGRDebug.mount({
         graph: graph, precincts: P, polygons: precincts, cameras: cameras, map: map,
-        resolve: resolveEnd, computeRoutes: computeRoutes, draw: drawDebugRoutes
+        resolve: resolveEnd, computeRoutes: computeRoutes, draw: drawDebugRoutes,
+        // The same suggestion source the search box uses, so the debug ends
+        // are picked from the real address index rather than typed blind.
+        suggest: suggestWithNeighbours
       });
     };
     document.body.appendChild(s);

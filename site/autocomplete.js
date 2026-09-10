@@ -49,7 +49,11 @@
     function element() {
       if (!box) {
         box = document.createElement('div');
-        box.id = 'ac';
+        // One list per input, so the id has to name which. The debug panel
+        // attaches this to its own two fields, and three elements sharing
+        // id="ac" is invalid markup and an ambiguous selector for anything
+        // reaching for one of them.
+        box.id = 'ac-' + (input.id || 'x');
         box.className = 'ac';
         box.hidden = true;
         box.setAttribute('role', 'listbox');
