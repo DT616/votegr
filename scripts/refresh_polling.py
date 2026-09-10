@@ -123,11 +123,56 @@ def fetch(slug):
         return response.read().decode("utf-8", "replace")
 
 
+# A street address opens with a house number and a space: "1226 Union NE".
+# The space matters. Grand Rapids Ward 2 Precinct 24 votes at "4th Reformed
+# Church", which starts with a digit and is not an address, and a bare ^\d
+# here read it as one and dropped the precinct.
+STREET_ADDRESS = re.compile(r"^\d+\s")
+
+# An address can wrap. Cannon Township's precinct 3 prints "8331 Myers Lake"
+# and "Ave NE" as two lines, and stopping at the first of them published a
+# street with no suffix, which geocodes to nothing. A continuation is a line
+# made ONLY of street suffixes and directionals: that takes "Ave NE" and
+# leaves a note like "(Back entrance)" or a city line alone.
+ADDRESS_TAIL = {
+    "AVE", "AVENUE", "ST", "STREET", "RD", "ROAD", "DR", "DRIVE", "LN",
+    "LANE", "CT", "COURT", "BLVD", "BOULEVARD", "PKWY", "PARKWAY", "HWY",
+    "HIGHWAY", "WAY", "CIR", "CIRCLE", "TER", "TERRACE", "PL", "PLACE",
+    "TRL", "TRAIL", "NE", "NW", "SE", "SW", "N", "S", "E", "W",
+}
+
+
+def is_address_tail(line):
+    words = line.replace(",", " ").split()
+    return bool(words) and all(w.upper().strip(".") in ADDRESS_TAIL for w in words)
+
+
+# The first line under the label is always the venue name, so the search for
+# the address starts after it and the name can never be mistaken for one.
+# Beyond that the name may run on: Algoma prints "Kent County Road Commission"
+# / "North Complex" before its address. This is how many extra lines of name
+# to tolerate before giving up, which stops a page whose markup changed from
+# swallowing the next precinct's address as this one's.
+MAX_NAME_LINES = 3
+
+
 def parse_polling(lines):
     """[{ward, precinct, name, address}] from the Election Day section.
 
     A ward jurisdiction prints "Ward 1, Precinct 2"; a township prints
     "Precinct 2". Both are followed by the venue name and its street address.
+
+    The name is NOT always one line. Algoma's precinct 3 prints as three
+    lines, "Kent County Road Commission" / "North Complex" /
+    "11723 White Creek Avenue", and reading the address from a fixed offset
+    took "North Complex" as the address and dropped the real one. The name
+    then had no house number, geocoding had nothing to match, and that
+    polling place shipped with no coordinate at all: no marker, no distance
+    and no route, with nothing downstream saying so. So the address is found
+    by its shape and the name is whatever precedes it.
+
+    A note can follow the address, as "(Back entrance)" does in Grand Rapids,
+    and is ignored: the scan stops at the address.
     """
     try:
         start = next(i for i, line in enumerate(lines)
@@ -137,12 +182,30 @@ def parse_polling(lines):
     rows = []
     for i in range(start + 1, len(lines)):
         match = PRECINCT_LABEL.match(lines[i])
-        if not match or i + 2 >= len(lines):
+        if not match:
             continue
         ward = int(match.group(1)) if match.group(1) else None
         numbers = [int(n) for n in re.findall(r"\d+", match.group(2))]
-        name = lines[i + 1].rstrip(":").strip()
-        address = lines[i + 2].rstrip(":").strip()
+
+        if i + 2 >= len(lines):
+            continue
+        name_lines, address = [lines[i + 1].rstrip(":").strip()], None
+        for j in range(i + 2, min(i + 2 + MAX_NAME_LINES, len(lines))):
+            line = lines[j].rstrip(":").strip()
+            if PRECINCT_LABEL.match(lines[j]):
+                break
+            if STREET_ADDRESS.match(line):
+                address = line
+                if j + 1 < len(lines):
+                    tail = lines[j + 1].rstrip(":").strip()
+                    if not PRECINCT_LABEL.match(lines[j + 1]) and is_address_tail(tail):
+                        address = f"{address} {tail}"
+                break
+            name_lines.append(line)
+        if address is None:
+            continue
+        name = " ".join(name_lines)
+
         # "Precincts 1 and 2" is two precincts voting in one building, which is
         # ordinary in the rural townships. Each gets its own row.
         for precinct in numbers:
