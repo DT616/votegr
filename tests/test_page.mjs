@@ -709,6 +709,57 @@ for (const w of WIDTHS) {
   await ctx.close();
 }
 
+// --- the pills and the two-pane layout may not both apply ---
+// The pills exist because the answer is one long column with the directions
+// at the bottom of it. At 640px it stops being one: the grid puts the
+// directions beside the map, at the top. Those two bounds were 700 and 640,
+// so between them a landscape phone got the two-pane layout AND a 126px phone
+// bar on a viewport that may only be 400px tall, and the map went behind that
+// bar 54px sooner at the end of the page.
+//
+// The last check is the one that would have caught it: the sticky map's top
+// is a constant in the stylesheet and the bar's height is content, so they
+// can drift apart silently. They were 6px apart before the pills ever grew,
+// and 60px apart after.
+{
+  const widths = [639, 640, 660, 701, 1280];
+  const seen = [];
+  for (const w of widths) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: 900 } });
+    const page = await ctx.newPage();
+    await page.goto(URL_, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => !document.getElementById('addr').disabled, null, { timeout: 60000 });
+    await page.fill('#addr', '300 Monroe Ave NW');
+    await page.press('#addr', 'Enter');
+    await page.waitForFunction(() => !document.getElementById('mapBlock').hidden, null, { timeout: 30000 });
+    seen.push(await page.evaluate(() => {
+      const nav = document.getElementById('sectionNav');
+      const ms = document.querySelector('#routeBlock > .map-section');
+      return {
+        pills: getComputedStyle(nav).display !== 'none',
+        grid: getComputedStyle(document.getElementById('routeBlock')).display === 'grid',
+        barH: Math.round(document.getElementById('searchBar').getBoundingClientRect().height),
+        stickyTop: parseFloat(getComputedStyle(ms).top),
+      };
+    }));
+    await ctx.close();
+  }
+  const at = (w) => seen[widths.indexOf(w)];
+  ok('under 640 the answer is one column and the pills are up',
+     at(639).pills === true && at(639).grid === false);
+  ok('at 640 it is two panes and the pills are gone',
+     at(640).pills === false && at(640).grid === true);
+  ok('and nowhere do both apply at once',
+     seen.every(v => !(v.pills && v.grid)));
+  // In the two-pane layout the bar is one height, so the sticky top can be
+  // one number. If a future change makes the bar taller in some of these and
+  // not others, this is what says so.
+  ok('the bar is the same height everywhere the two panes apply',
+     new Set(seen.filter(v => v.grid).map(v => v.barH)).size === 1);
+  ok('and the sticky map clears exactly that much',
+     seen.filter(v => v.grid).every(v => v.stickyTop === v.barH));
+}
+
 // --- the map may not paint over the sticky bar on a phone ---
 // Leaflet numbers its own panes 200 to 700 and its controls 1000, against the
 // map. Those numbers only stay inside the map if its container is a stacking

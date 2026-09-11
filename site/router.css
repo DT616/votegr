@@ -274,7 +274,19 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
   #routeBlock:not(.map-only) > .map-section {
     grid-column: 2;
     grid-row: 1 / span 9;   /* overshoot; empty implicit rows cost nothing */
-    position: sticky; top: 66px;   /* clears the sticky search bar */
+    /* 72px is the sticky search bar's measured height in THIS layout, which
+       is one number rather than two now that the section pills stop at the
+       same 640px the grid starts at. It was 66px, which was already 6px
+       short of the bar it was written for.
+       Worth knowing before trusting this line: the rule is inert as things
+       stand. A sticky box can only travel inside its containing block, and
+       here that is the grid area, whose height the map itself sets because
+       the map section is taller than the directions column beside it (737px
+       against 534px on a nine-step route at 660px wide). So the map scrolls
+       away with the page instead of holding. Making it hold means making the
+       map section shorter than the column, which is a design decision about
+       how tall the map should be, not a number to nudge here. */
+    position: sticky; top: 72px;
     padding-top: 0;
   }
   /* On a landscape phone 64vh is under 300px, so the clamp floor carries
@@ -473,7 +485,7 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
 /* Rests empty; no reserved height while it has nothing to say. */
 .hint:empty { display: none; }
 
-/* The phone's section bar. Three pills under the search box, in the sticky
+/* The phone's section bar. Two pills under the search box, in the sticky
    bar, so "there are directions further down" is always on screen. */
 .section-nav { display: none; }
 /* The chevron on the right of a place card: phones only. */
@@ -486,7 +498,18 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
     color: var(--accent); pointer-events: none;
   }
 }
-@media (max-width: 700px) {
+/* 640, not 700, because these pills belong to the SINGLE-COLUMN answer and
+   that is exactly where it ends. Their own reason for existing is that the
+   answer is one long column with the directions at the bottom of it, and at
+   640px it stops being one: the grid above puts the directions beside the
+   map, at the top. Between 640 and 700 both rules used to apply, so a
+   landscape phone got the two-pane layout AND a phone bar that was 126px
+   rather than 72px tall, on a viewport that may only be 400px to begin with.
+   The map then went behind that bar 54px sooner at the end of the page.
+   Keeping the two bounds equal is what stops the band existing at all, and
+   it is also what lets the sticky map's top up in the grid rule be a single
+   stable number rather than one value per breakpoint. */
+@media (max-width: 639.98px) {
   #col.has-result .section-nav:not([hidden]) {
     display: flex; gap: 8px; margin-top: 10px;
   }
