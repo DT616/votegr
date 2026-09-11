@@ -184,7 +184,7 @@ for (const w of WIDTHS) {
       numSize: px(document.querySelector('.cd-num')),
       forColor: getComputedStyle(document.querySelector('.cd-for')).color,
       whenColor: getComputedStyle(document.querySelector('.cd-when')).color,
-      footDate: document.querySelectorAll('#electionBarInfo .elec-date')[0].textContent,
+      footBand: !!document.getElementById('electionFoot'),
       overflow: box.scrollWidth - box.clientWidth,
     };
   });
@@ -193,10 +193,11 @@ for (const w of WIDTHS) {
      cd1.labels.join(',') === 'Days,Hours,Minutes,Seconds');
   // A colon, not a comma: the election is the label and the day is the value.
   ok('it names the election it is counting to', /^[^:]+: .+\d{4}$/.test(cd1.note));
-  // The footer prints the same date in a different voice; they read the same
-  // calendar and must not be able to disagree about it.
-  ok('it agrees with the footer about the date',
-     cd1.note.toLowerCase().includes(cd1.footDate.toLowerCase()));
+  // The footer used to print the same date in a shorter voice and this
+  // asserted the two could not disagree. The band is gone: the countdown
+  // above says it once, in full, and a second copy of one date in the
+  // chrome at the bottom of every screen was not worth the row.
+  ok('and the footer no longer prints a second copy of it', cd1.footBand === false);
   ok('the election and its date are told apart by colour',
      cd1.whenColor !== cd1.forColor);
   // The card title heads the whole card, so it outranks the line two rows
@@ -645,22 +646,51 @@ for (const w of WIDTHS) {
   ok('centred and in the accent', head.align === 'center' && head.accent);
   ok('and above the destination buttons', head.aboveButtons);
 
-  // The cue on a place card is a chevron and nothing else. A navigation arrow
-  // was tried beside it and taken back out; this asserts it stayed out, and
-  // that the one mark left still clears the address.
-  const cue = await page.evaluate(() => {
-    const c = document.querySelector('.vi-where .dir-cue');
-    if (!c) return {};
-    const addr = c.closest('.vi-where').querySelector('.pp-addr');
-    const a = addr && addr.getBoundingClientRect(), b = c.getBoundingClientRect();
-    return { shown: getComputedStyle(c).display !== 'none',
-             marks: c.childElementCount,
-             hasChevron: c.textContent.includes('\u203a'),
-             overlapsText: a ? a.right > b.left + 0.5 : false };
+  // Every place card offers Directions as a labelled button, under its
+  // address and beside the button that opens the other options where there
+  // are any. It replaced a chevron in the card's corner, which was the only
+  // sign the card could be tapped at all. Same shape as the list button it
+  // sits with, because they are the same kind of control.
+  const acts = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('.vi-where[data-kind]')];
+    const shape = (el) => { const s = getComputedStyle(el);
+      return s.borderRadius + '|' + s.fontSize + '|' + s.padding + '|' + s.borderWidth; };
+    return {
+      cards: cards.length,
+      everyCardHasOne: cards.every(c => c.querySelector('.vi-actions .dir-btn')),
+      labelled: cards.every(c => c.querySelector('.dir-btn').textContent.trim() === 'Directions'),
+      chevronGone: !document.querySelector('.dir-cue'),
+      // Below the address, never beside it.
+      belowAddress: cards.every(c => {
+        const a = c.querySelector('.pp-addr'), b = c.querySelector('.dir-btn');
+        return !a || b.getBoundingClientRect().top >= a.getBoundingClientRect().bottom - 0.5;
+      }),
+      // Where a card has a list button too, the two share a row and a shape,
+      // and the list button leads. They share a LINE only where there is
+      // room: on a phone "Show all my early voting site options" plus a
+      // button is wider than the screen, and wrapping is what should happen.
+      pairedRow: [...document.querySelectorAll('.vi-actions')].filter(r =>
+        r.children.length === 2).every(r => {
+          const [a, b] = r.children;
+          const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+          const sameLine = Math.abs(ra.top - rb.top) < 1;
+          return shape(a) === shape(b) && b.classList.contains('dir-btn')
+                 && (sameLine ? rb.left > ra.left : rb.top > ra.top);
+        }),
+      pairs: [...document.querySelectorAll('.vi-actions')].filter(r => r.children.length === 2).length,
+      // Wide enough and they really are side by side.
+      sideBySideWhenRoom: innerWidth < 700 || [...document.querySelectorAll('.vi-actions')]
+        .filter(r => r.children.length === 2)
+        .every(r => Math.abs(r.children[0].getBoundingClientRect().top
+                           - r.children[1].getBoundingClientRect().top) < 1),
+    };
   });
-  ok('the place cue is a chevron on its own',
-     cue.shown && cue.hasChevron && cue.marks === 0);
-  ok('and it clears the address', !cue.overlapsText);
+  ok('every place card offers Directions', acts.cards >= 2 && acts.everyCardHasOne && acts.labelled);
+  ok('and the old chevron cue is gone', acts.chevronGone);
+  ok('the button sits below the address', acts.belowAddress);
+  ok('and in the same row as the list button, in the same shape',
+     acts.pairs >= 1 && acts.pairedRow);
+  ok('side by side wherever there is room for both', acts.sideBySideWhenRoom);
 
   // Selection is a state on a phone, not something the page animates into.
   // Duration, not property: with no transition set at all, transition-property
@@ -707,6 +737,65 @@ for (const w of WIDTHS) {
   });
   ok('an open card is not painted in the accent', !noBlue.paint.includes(noBlue.rgb));
   await ctx.close();
+}
+
+// --- a lookup lands on the voting info, at every width ---
+// The bar is sticky so the second address is typed from wherever the reader
+// had got to. The phone used to be left exactly where it stood, which is
+// right for the first lookup and wrong for every one after it: search again
+// from the directions and the new answer arrived with the map filling the
+// screen and the ward and precinct several hundred pixels above it.
+//
+// The second lookup is the one that matters, so it is the one asserted, and
+// the first is checked too so a fix that only moves the page on a cold load
+// cannot pass.
+{
+  for (const [tag, opt] of [['phone', { ...devices['Pixel 7'] }],
+                            ['desktop', { viewport: { width: 1280, height: 900 } }]]) {
+    const ctx = await browser.newContext(opt);
+    const page = await ctx.newPage();
+    await page.goto(URL_, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => !document.getElementById('addr').disabled, null, { timeout: 60000 });
+    const settle = () => page.waitForFunction(() => {
+      const y = Math.round(window.scrollY);
+      const n = window.__ly === y ? (window.__ln || 0) + 1 : 0;
+      window.__ly = y; window.__ln = n;
+      return n >= 4;
+    }, null, { timeout: 15000, polling: 120 });
+    // Landed on the answer means: the top of the voting info is on screen and
+    // clear of the sticky bar, and the map is not what you are looking at.
+    const landed = () => page.evaluate(() => {
+      const top = (id) => document.getElementById(id).getBoundingClientRect().top;
+      const barBottom = document.getElementById('searchBar').getBoundingClientRect().bottom;
+      return { gap: Math.round(top('resultBlock') - barBottom),
+               mapBelow: top('mapBlock') > barBottom };
+    });
+    const look = async (addr) => {
+      await page.fill('#addr', addr);
+      await page.press('#addr', 'Enter');
+      await page.waitForFunction(() => !document.getElementById('mapBlock').hidden, null, { timeout: 30000 });
+      await page.waitForTimeout(600);
+      await settle();
+      return landed();
+    };
+    const first = await look('300 Monroe Ave NW');
+    ok(tag + ': the first lookup shows the voting info',
+       first.gap >= -1 && first.gap <= 48 && first.mapBelow);
+    // Read the directions, as a reader does, then search a different address
+    // from the bar that followed them down.
+    await page.evaluate(() => {
+      const d = document.getElementById('dirHead');
+      window.scrollTo({ top: window.scrollY + d.getBoundingClientRect().top - 120 });
+    });
+    await page.waitForTimeout(500);
+    ok(tag + ': and the reader can get down to the directions',
+       (await landed()).gap < -100);
+    const second = await look('602 Alexander St SE');
+    ok(tag + ': a second lookup comes back to the voting info',
+       second.gap >= -1 && second.gap <= 48);
+    ok(tag + ': and not to the map', second.mapBelow);
+    await ctx.close();
+  }
 }
 
 // --- the pills and the two-pane layout may not both apply ---
@@ -915,10 +1004,23 @@ for (const w of WIDTHS) {
     return { drawn: true, clicks: window.__cardClicks };
   });
   await page.waitForTimeout(1200);
-  const after = await page.evaluate(() => ({ y: Math.round(window.scrollY), clicks: window.__cardClicks }));
+  const after = await page.evaluate(() => {
+    const top = (id) => document.getElementById(id).getBoundingClientRect().top;
+    const barBottom = document.getElementById('searchBar').getBoundingClientRect().bottom;
+    return { clicks: window.__cardClicks,
+             gap: Math.round(top('resultBlock') - barBottom),
+             mapBelow: top('mapBlock') > barBottom };
+  });
   ok('choosing a suggestion on mousedown draws the answer', r.drawn);
   ok('the tap\'s trailing click never reaches the answer', r.drawn && r.clicks === 0 && after.clicks === 0);
-  ok('the page does not scroll after a phone lookup', after.y === 0);
+  // This asserted the page had not moved at all, as a proxy for "the
+  // trailing click did not reach a card and drive us to the map". A lookup
+  // now lands on the voting info deliberately, so the proxy would report
+  // that as the failure it was watching for. Assert the destination instead,
+  // which is what was actually meant and tells the two apart: the answer is
+  // under the bar, and the map is not.
+  ok('a phone lookup lands on the voting info, not the map',
+     after.gap >= -1 && after.gap <= 48 && after.mapBelow);
   // The swallow is one click wide: the next click on a card still lands.
   const later = await page.evaluate(() => {
     document.querySelector('#precinctInfo [data-kind]').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
