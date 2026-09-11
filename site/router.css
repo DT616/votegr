@@ -208,12 +208,28 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
   box-shadow: 0 1px 5px rgba(0,0,0,.22);
 }
 .map-status:empty { display: none; }
+/* Leaflet numbers its own furniture in the hundreds -- panes 200 to 700, and
+   controls at 1000 -- and those numbers are written against the map, not
+   against the page. They only stay inside it if the container is a stacking
+   context, and position: relative with z-index auto is not one: Leaflet sets
+   that position itself and stops there. So on a phone, where the map is in
+   the normal flow, every one of those numbers escaped and beat the sticky
+   search bar's z-index 5. Scrolling the map up under the bar painted canvas
+   over the address field and the pills AND took their taps, because the hit
+   test follows the same order. Pinning the map at z-index 0 keeps Leaflet's
+   scale to itself; the bar, the masthead and the modals keep theirs.
+   Desktop never showed this: .map-section is sticky there, and a sticky box
+   is a stacking context whether or not it is given a z-index, so it was
+   already doing this job by accident.
+   Not fixed by raising the bar instead: 1000 is Leaflet's ceiling AND the
+   modals', so that trade is one overlap for another. */
 #map {
   height: 320px;
   background: var(--raise);
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;   /* keeps Leaflet's tiles inside the rounded corner */
+  position: relative; z-index: 0;
 }
 .map-note {
   margin-top: 8px; font-size: .82rem; color: var(--dim); line-height: 1.45;
@@ -474,10 +490,17 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
   #col.has-result .section-nav:not([hidden]) {
     display: flex; gap: 8px; margin-top: 10px;
   }
+  /* 44px because these are the page's navigation on the device with the
+     worst pointer. At 7px of padding they came out 33px tall, under both
+     platform floors, and they are the two controls a reader uses most on a
+     phone. The bar is sticky, so the height is paid for on every screen: it
+     buys back its cost by being the thing that is hit on the first try.
+     One pill fewer is what makes the room for it. */
   .section-nav button {
     flex: 1; font: inherit; font-size: .84rem; font-weight: 600;
     color: var(--fg); background: var(--raise); border: 1px solid var(--line);
     border-radius: 999px; padding: 7px 8px; cursor: pointer;
+    min-height: 44px;
   }
   .section-nav button:active { border-color: var(--accent); color: var(--accent); }
   /* The section you are in, lit: pressing a pill lights it, and scrolling
