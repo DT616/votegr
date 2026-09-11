@@ -502,9 +502,24 @@ for (const w of WIDTHS) {
     return b ? b.textContent.trim() : null;
   });
   ok('the first section is lit as soon as the answer lands', await litPill() === 'Voting info');
-  await page.tap('#sectionNav button[data-goto="mapBlock"]');
+  // Two pills, not three. The Map pill was removed: the map is already in
+  // view on the way to the directions, so the pill spent its third of the bar
+  // on a jump nobody needed, and it was the only reason the two handlers
+  // below carried a mapBlock special case.
+  const pills = await page.evaluate(() => [...document.querySelectorAll('#sectionNav button')]
+     .map(b => ({ text: b.textContent.trim(), goto: b.dataset.goto })));
+  ok('the bar carries two pills', pills.length === 2);
+  ok('and neither of them jumps to the map',
+     pills.every(p => p.goto !== 'mapBlock') &&
+     pills.map(p => p.text).join('|') === 'Voting info|Directions');
+  // The page's navigation on the device with the worst pointer, so it carries
+  // the 44px floor rather than the height its padding happens to make.
+  ok('a pill is big enough to hit', await page.evaluate(() =>
+     [...document.querySelectorAll('#sectionNav button')]
+       .every(b => b.getBoundingClientRect().height >= 44)));
+  await page.tap('#sectionNav button[data-goto="routeBlock"]');
   await page.waitForTimeout(800);
-  ok('pressing a pill lights it', await litPill() === 'Map');
+  ok('pressing a pill lights it', await litPill() === 'Directions');
   ok('and only it', await page.evaluate(() =>
      document.querySelectorAll('#sectionNav button.is-current').length === 1));
   ok('a lit pill is drawn in the accent', await page.evaluate(() => {
@@ -563,6 +578,28 @@ for (const w of WIDTHS) {
   // scrolled would read as several hundred; overscrolled would read negative.
   ok('and leaves the heading clear of the sticky bar',
      gapAfterTap >= 0 && gapAfterTap <= 48);
+
+  // The Directions pill has to land where tapping a place lands: at the
+  // heading, under the bar. It used to aim at #steps, which is the turn list
+  // BELOW the map, and #steps plus the advisory under it are shorter than a
+  // screen -- so the scroll the pill asked for was past the end of the
+  // document and the browser clamped it. The reader was left a third of a
+  // screen short with the map still filling the top half, which reads as a
+  // button that does not work rather than as a page that cannot scroll
+  // further. Aiming at the section instead of at its tail is what makes the
+  // landing reachable.
+  await page.evaluate(() => window.scrollTo({ top: 0 }));
+  await page.waitForTimeout(400);
+  await page.evaluate(() =>
+    document.querySelector('#sectionNav button[data-goto="routeBlock"]').click());
+  const gapAfterPill = await landing();
+  ok('the Directions pill lands on the heading too',
+     gapAfterPill >= 0 && gapAfterPill <= 48);
+  ok('and not at the bottom of the page, short of its target',
+     await page.evaluate(() => {
+       const doc = document.documentElement;
+       return window.innerHeight + window.scrollY < doc.scrollHeight - 4;
+     }));
 
   // The other way a place gets chosen: out of the full list, by name. Picking
   // "Main Library" there is the same intent as tapping the card that names
@@ -669,6 +706,105 @@ for (const w of WIDTHS) {
     return { rgb, paint: s.backgroundColor + ' ' + s.boxShadow };
   });
   ok('an open card is not painted in the accent', !noBlue.paint.includes(noBlue.rgb));
+  await ctx.close();
+}
+
+// --- the pills and the two-pane layout may not both apply ---
+// The pills exist because the answer is one long column with the directions
+// at the bottom of it. At 640px it stops being one: the grid puts the
+// directions beside the map, at the top. Those two bounds were 700 and 640,
+// so between them a landscape phone got the two-pane layout AND a 126px phone
+// bar on a viewport that may only be 400px tall, and the map went behind that
+// bar 54px sooner at the end of the page.
+//
+// The last check is the one that would have caught it: the sticky map's top
+// is a constant in the stylesheet and the bar's height is content, so they
+// can drift apart silently. They were 6px apart before the pills ever grew,
+// and 60px apart after.
+{
+  const widths = [639, 640, 660, 701, 1280];
+  const seen = [];
+  for (const w of widths) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: 900 } });
+    const page = await ctx.newPage();
+    await page.goto(URL_, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => !document.getElementById('addr').disabled, null, { timeout: 60000 });
+    await page.fill('#addr', '300 Monroe Ave NW');
+    await page.press('#addr', 'Enter');
+    await page.waitForFunction(() => !document.getElementById('mapBlock').hidden, null, { timeout: 30000 });
+    seen.push(await page.evaluate(() => {
+      const nav = document.getElementById('sectionNav');
+      const ms = document.querySelector('#routeBlock > .map-section');
+      return {
+        pills: getComputedStyle(nav).display !== 'none',
+        grid: getComputedStyle(document.getElementById('routeBlock')).display === 'grid',
+        barH: Math.round(document.getElementById('searchBar').getBoundingClientRect().height),
+        stickyTop: parseFloat(getComputedStyle(ms).top),
+      };
+    }));
+    await ctx.close();
+  }
+  const at = (w) => seen[widths.indexOf(w)];
+  ok('under 640 the answer is one column and the pills are up',
+     at(639).pills === true && at(639).grid === false);
+  ok('at 640 it is two panes and the pills are gone',
+     at(640).pills === false && at(640).grid === true);
+  ok('and nowhere do both apply at once',
+     seen.every(v => !(v.pills && v.grid)));
+  // In the two-pane layout the bar is one height, so the sticky top can be
+  // one number. If a future change makes the bar taller in some of these and
+  // not others, this is what says so.
+  ok('the bar is the same height everywhere the two panes apply',
+     new Set(seen.filter(v => v.grid).map(v => v.barH)).size === 1);
+  ok('and the sticky map clears exactly that much',
+     seen.filter(v => v.grid).every(v => v.stickyTop === v.barH));
+}
+
+// --- the map may not paint over the sticky bar on a phone ---
+// Leaflet numbers its own panes 200 to 700 and its controls 1000, against the
+// map. Those numbers only stay inside the map if its container is a stacking
+// context, and the position: relative Leaflet sets for itself is not one. On a
+// phone, where the map sits in the normal flow, they escaped and beat the
+// search bar's z-index 5: scrolling the map up under the bar painted canvas
+// over the address field and the pills, and took their taps with it, because
+// the hit test follows the same order.
+//
+// Checked by hit test rather than by eye, since a screenshot cannot say which
+// element would receive the touch. The overlap is asserted FIRST: if the map
+// never reaches the bar the rest of this proves nothing, and a check that
+// cannot fail is worse than no check.
+{
+  const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+  const page = await ctx.newPage();
+  await page.goto(URL_, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => !document.getElementById('addr').disabled, null, { timeout: 60000 });
+  await page.fill('#addr', '300 Monroe Ave NW');
+  await page.press('#addr', 'Enter');
+  await page.waitForFunction(() => !document.getElementById('mapBlock').hidden, null, { timeout: 30000 });
+  await page.waitForTimeout(600);
+  const probe = await page.evaluate(() => {
+    const mb = document.getElementById('mapBlock');
+    window.scrollTo({ top: window.scrollY + mb.getBoundingClientRect().top - 10 });
+    return new Promise(res => setTimeout(() => {
+      const bar = document.getElementById('searchBar');
+      // What a touch in the middle of each control would actually land on.
+      const lands = (el) => {
+        const r = el.getBoundingClientRect();
+        const t = document.elementFromPoint(Math.round(r.left + r.width / 2),
+                                            Math.round(r.top + r.height / 2));
+        return !!(t && bar.contains(t));
+      };
+      res({
+        overlap: document.getElementById('map').getBoundingClientRect().top
+                 < bar.getBoundingClientRect().bottom,
+        field: lands(document.getElementById('addr')),
+        pill: lands(document.querySelector('#sectionNav button')),
+      });
+    }, 250));
+  });
+  ok('the map really does scroll up under the bar', probe.overlap);
+  ok('and a touch on the address field still lands on the field', probe.field);
+  ok('and a touch on a pill still lands on the pill', probe.pill);
   await ctx.close();
 }
 

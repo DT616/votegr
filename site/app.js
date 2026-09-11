@@ -720,9 +720,7 @@
     var line = (bar ? bar.getBoundingClientRect().bottom : 0) + 12;
     var current = null, live = [];
     Array.prototype.forEach.call(nav.querySelectorAll('button'), function (b) {
-      var id = b.dataset.goto;
-      if (id === 'mapBlock' && $('mapBlock').hidden) id = 'routeBlock';
-      var el = $(id);
+      var el = $(b.dataset.goto);
       if (!el || el.hidden) return;
       live.push(b);
       if (el.getBoundingClientRect().top <= line) current = b;
@@ -823,12 +821,8 @@
     $('detailX').onclick = hideDetail;
     Array.prototype.forEach.call(document.querySelectorAll('#sectionNav button'), function (b) {
       b.onclick = function () {
-        var id = b.dataset.goto;
-        // The map is inside the route block and starts hidden until a route
-        // draws; jump to the block that holds it if it is not there yet.
-        if (id === 'mapBlock' && $('mapBlock').hidden) id = 'routeBlock';
         markSection(b);
-        scrollToResult(id);
+        scrollToResult(b.dataset.goto);
       };
     });
     // The pill you are reading, not only the pill you last pressed: scrolling

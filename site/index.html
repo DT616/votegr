@@ -95,12 +95,19 @@
     <!-- On a phone the answer is a long column and the directions sit at
          the bottom of it, below the map, where nothing says they exist.
          This rides in the sticky bar once there is an answer and names the
-         three parts of it, each a jump. Hidden on wider screens, where the
-         column is short enough to see whole. -->
+         two parts of it, each a jump. Hidden on wider screens, where the
+         column is short enough to see whole.
+
+         Two pills, not three. There was a Map one between these, and the map
+         is the one thing here nobody has to be sent to: it is already in
+         view on the way down to the directions, and the jump landed on it
+         with its own chrome under the bar. Directions aims at the SECTION,
+         the same anchor tapping a place uses, rather than at the turn list
+         at the tail of it -- the tail is shorter than a screen, so the
+         scroll to it ran past the end of the document and was clamped. -->
     <nav class="section-nav" id="sectionNav" hidden aria-label="Parts of the answer">
       <button type="button" data-goto="resultBlock">Voting info</button>
-      <button type="button" data-goto="mapBlock">Map</button>
-      <button type="button" data-goto="steps">Directions</button>
+      <button type="button" data-goto="routeBlock">Directions</button>
     </nav>
   </div>
 
