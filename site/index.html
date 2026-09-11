@@ -161,11 +161,12 @@
 
 </main>
 
-<!-- Full-width band under the page: colour-scheme switch in the left track,
-     election calendar in the centre one, links in the right one, so the
-     switch sits in the bottom-left corner rather than competing with the
-     wordmark up top. Sits at the viewport bottom on short pages via the body
-     flex chain. -->
+<!-- Full-width band under the page: colour-scheme switch on the left, links
+     on the right, so the switch sits in the bottom-left corner rather than
+     competing with the wordmark up top. Sits at the viewport bottom on short
+     pages via the body flex chain. The election calendar used to be centred
+     between them, printing the same date the countdown above already gives
+     in a fuller voice. -->
 <footer id="siteFooter">
   <div class="theme-switch" id="themeSwitch" role="group" aria-label="Color scheme">
     <button type="button" data-theme-choice="light" title="Light" aria-label="Light">
@@ -178,7 +179,6 @@
            stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
     </button>
   </div>
-  <div id="electionFoot" hidden><span id="electionBarInfo"></span></div>
   <nav class="sf-links">
     <button type="button" class="about-btn" id="aboutBtnFoot">About</button>
     <a class="about-btn" href="https://github.com/DT616/votegr"

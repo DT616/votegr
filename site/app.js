@@ -372,13 +372,13 @@
       if (!li || !current) return;
       chosen[li.dataset.kind] = Number(li.dataset.pick);
       close();
-      // Redraw the card with the chosen place, then drive to it.
-      show(current, li.dataset.kind);
-      // Same landing as tapping the card. Picking "Main Library" out of the
-      // list is the same intent as tapping the card that names it, and the
-      // two arriving in different places was the tell that they were wired
-      // separately. One helper, both callers.
-      if (isPhone()) scrollToDirections();
+      // Redraw the card with the chosen place, then drive to it. Picking
+      // "Main Library" out of the list is the same intent as tapping the card
+      // that names it, so on a phone it lands on the directions rather than
+      // back at the voting info. Told to show() rather than scrolled again
+      // afterwards: two scrolls for one press is a stutter, and the second
+      // one only won by arriving later.
+      show(current, li.dataset.kind, isPhone() ? 'routeBlock' : null);
     };
     body.onkeydown = function (e) {
       var li = e.target.closest && e.target.closest('li[data-pick]');
@@ -568,8 +568,19 @@
   // tapping a place routes to it and scrolls down to the Directions heading
   // -- and the chevron is what says so. Wider screens hide it: the cell is
   // the control and the destination buttons are in view beside the map.
-  function dirButton(kind) {
-    return '<span class="dir-cue" aria-hidden="true">\u203a</span>';
+  // The card was its own tap target, with a chevron in the corner as the only
+  // sign of it. That is discoverable if you already suspect it; a labelled
+  // button says the thing out loud. Same shape as the "Show all ..." button
+  // it sits beside, because they are the same kind of control: one opens the
+  // list, the other drives to the one already named.
+  //
+  // Wrapped with whatever else the card offers, so the two sit on one line
+  // and wrap together on a narrow screen. The polling card has no list to
+  // show, so its row is the button alone, under the address.
+  function actionRow(kind, extra) {
+    return '<div class="vi-actions">' + (extra || '') +
+      '<button type="button" class="box-open dir-btn" data-dir="' + kind + '">' +
+      'Directions</button></div>';
   }
 
   // One section of the answer: the place and its dates. On a wider screen
@@ -1100,7 +1111,6 @@
       electionDayHours = (calendar && calendar.election_day_hours) || null;
       electionList = (calendar && calendar.elections) || [];
       activeEl = Elections.next(electionList);
-      renderElectionBanner();
       startCountdown();
       return calendar;
     });
@@ -1148,7 +1158,6 @@
       activeEl = Elections.next(electionList);
       sources = (sourceData && sourceData.sources) || {};
       clerk = placeCoords(clerkData);
-      renderElectionBanner();
       startCountdown();
       graph.assignCameras(cameras);
       // The street index and the snap grid are built lazily; build them
@@ -1654,10 +1663,9 @@
           : ''
       ]) +
       // One office is not a list to show all of.
-      (box.place.office ? '' :
+      actionRow('dropbox', box.place.office ? '' :
         '<button type="button" class="box-open" id="boxListBtn">' +
-        'Show all drop box locations</button>') +
-      dirButton('dropbox');
+        'Show all drop box locations</button>');
     where += '</div>';
 
     var st = absenteeState();
@@ -1697,12 +1705,13 @@
           (ev.all.length > 1
             ? '<div class="pp-note">Early voting is not tied to your ' +
               'precinct. Any Grand Rapids voter may use any of these ' +
-              ev.all.length + ' sites.</div>' +
-              '<button type="button" class="box-open" id="evListBtn">' +
-              'Show all my early voting site options</button>'
+              ev.all.length + ' sites.</div>'
             : '')
         : '<div class="pp-addr">No site published yet.</div>') +
-      (ev ? dirButton('early') : '') +
+      (ev ? actionRow('early', ev.all.length > 1
+            ? '<button type="button" class="box-open" id="evListBtn">' +
+              'Show all my early voting site options</button>'
+            : '') : '') +
       '</div>';
     html += section('early', where,
       whenCell('early', { label: evState.label, status: evState.status, live: true },
@@ -1732,7 +1741,7 @@
       '<div class="pp-addr">' + esc(addressForDisplay(place.address)) + '</div>' +
       metaBlock([locLine(place.entrance_note)]) +
       '</div>' +
-      (clickable ? dirButton('polling') : '');
+      (clickable ? actionRow('polling') : '');
     if (place.consolidated_with) {
       html += '<div class="pp-note">Precinct ' + esc(r.precinct) + ' votes with precinct ' +
         esc(precinctNumber(place.consolidated_with, r.ward)) + ' this election' +
@@ -1756,7 +1765,10 @@
     return section('polling', html, when, { collapsed: false });
   }
 
-  function show(r, focusKind) {
+  // landOn is where the reader should be left when this is done, and it is
+  // always the top of something rather than the middle of the answer. It
+  // defaults to the voting info, which is what a lookup is for.
+  function show(r, focusKind, landOn) {
     current = r;
     $('col').classList.add('has-result');
     document.body.classList.add('has-result');
@@ -1822,6 +1834,20 @@
     // destination there is nothing to toggle, and the polling place keeps its
     // older job of framing itself on the map.
     wirePlaceLists(r);
+
+    // The Directions button drives to the place its card names, at every
+    // width. It sits inside a cell that is itself a tap target on a phone,
+    // so the press is stopped here rather than allowed to arrive twice and
+    // route the same trip two times over.
+    Array.prototype.forEach.call($('precinctInfo').querySelectorAll('.dir-btn'),
+      function (b) {
+        b.onclick = function (e) {
+          e.stopPropagation();
+          if (!current) return;
+          routeTo(current, b.dataset.dir);
+          scrollToDirections();
+        };
+      });
 
     var destCells = $('precinctInfo').querySelectorAll('[data-kind]');
     var multi = destinations(r).length > 1;
@@ -1932,11 +1958,19 @@
 
     routeTo(r, focusKind);
     // After routeTo, because the blocks it fills are hidden until then and a
-    // hidden element has no offset to scroll to. Wider screens go to the top
-    // of the answer. A phone is left where it is: every attempt to scroll it
-    // somewhere landed too far down, and with the bar sticky the answer is
-    // directly under it anyway.
-    if (!isPhone()) scrollToResult('resultBlock');
+    // hidden element has no offset to scroll to. A frame later for the same
+    // reason the place tap waits one: the section has just been filled, and
+    // measuring it before the layout settles scrolls to where it was.
+    //
+    // Every width, not just the wide ones. The phone used to be left exactly
+    // where it stood, on the reasoning that the answer appears under the box
+    // it was typed into. That holds for the FIRST lookup and for no other.
+    // The bar is sticky so the second address is typed from wherever the
+    // reader had got to, and if that was the directions, the new answer
+    // arrived with the map filling the screen and the ward and precinct
+    // 492px above it, measured on a Pixel 7. A lookup is a request for the
+    // voting info, so it ends on the voting info.
+    requestAnimationFrame(function () { scrollToResult(landOn || 'resultBlock'); });
   }
 
   // ---- election + destination -----------------------------------------
@@ -2024,17 +2058,6 @@
   function clerkForThisElection() {
     return !!(clerk && clerk.early_voting && activeEl &&
               clerk.election === activeEl.date);
-  }
-
-  function earlyVotingStatus() {
-    var to = evWindow().early_voting_to;
-    switch (Elections.windowState(evWindow())) {
-      case 'none':   return 'Start date TBD';
-      case 'closed': return 'Ended ' + Elections.monthDay(to);
-      case 'before': return Elections.monthDay(activeEl.early_voting_from) +
-                            ' to ' + Elections.monthDay(to);
-      default:       return 'Open through ' + Elections.monthDay(to);
-    }
   }
 
   // What the BLOCK says about early voting, which is deliberately not what
@@ -2131,7 +2154,6 @@
     if (activeEl && activeEl.date < Elections.todayISO()) {
       activeEl = Elections.next(electionList);
       clerk = placeCoords(clerkData);
-      renderElectionBanner();
     }
 
     if (!activeEl) {
@@ -2219,28 +2241,6 @@
     if (said) said.textContent = days + (days === 1 ? ' day' : ' days') +
       ' until the ' + activeEl.name + ' on ' + Elections.withWeekday(activeEl.date) + '.';
     box.hidden = false;
-  }
-
-  function renderElectionBanner() {
-    var bar = $('electionFoot'), barInfo = $('electionBarInfo');
-    if (!barInfo) return;
-    if (!activeEl) {
-      barInfo.innerHTML = '';
-      if (bar) bar.hidden = true;
-      return;
-    }
-    // Emitted as four grid cells rather than two wrapped rows, so the labels
-    // share a column and the values share a column and the two lines line up
-    // instead of each centring on its own width.
-    var cell = function (cls, text) {
-      return '<span class="' + cls + '">' + esc(text) + '</span>';
-    };
-    barInfo.innerHTML =
-      cell('elec-name', activeEl.name) +
-      cell('elec-date', Elections.monthDay(activeEl.date)) +
-      cell('elec-name', 'Early voting') +
-      cell('elec-date', earlyVotingStatus());
-    if (bar) bar.hidden = false;
   }
 
   // Which destinations are available for this voter right now.

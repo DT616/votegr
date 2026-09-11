@@ -488,16 +488,15 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
 /* The phone's section bar. Two pills under the search box, in the sticky
    bar, so "there are directions further down" is always on screen. */
 .section-nav { display: none; }
-/* The chevron on the right of a place card: phones only. */
-.dir-cue { display: none; }
-@media (max-width: 700px) {
-  .vi-grid .vi-where { position: relative; }
-  .dir-cue {
-    display: block; position: absolute; right: 12px; top: 50%;
-    transform: translateY(-50%); font-size: 1.9rem; line-height: 1;
-    color: var(--accent); pointer-events: none;
-  }
-}
+/* The controls a place card offers, on one line. The list button and the
+   Directions button are the same kind of thing -- one opens the other
+   options, the other drives to the one already named -- so they share a
+   shape and sit together, and wrap together where there is no room.
+   This replaces a chevron in the card's top right corner, which was the
+   only sign the card was a tap target at all: discoverable if you already
+   suspected it, invisible if you did not. */
+.vi-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.vi-actions .box-open { margin-top: 0; }
 /* 640, not 700, because these pills belong to the SINGLE-COLUMN answer and
    that is exactly where it ends. Their own reason for existing is that the
    answer is one long column with the directions at the bottom of it, and at
@@ -1138,57 +1137,32 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
    rather than two lines each centred on its own width. */
 
 /* Full-width footer band, the header's mirror: same surface, same three
-   tracks. Colour-scheme switch left, election calendar centred, links right.
-   The body flex chain keeps it at the viewport bottom when the page is
-   short. */
+   tracks. Colour-scheme switch left, links right, and the space between them
+   where the election calendar used to be. The body flex chain keeps it at
+   the viewport bottom when the page is short. */
 #siteFooter {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto 1fr;
   align-items: center;
   gap: 12px 16px; padding: 12px 18px;
   background: var(--panel);
   border-top: 1px solid var(--line);
 }
 #siteFooter .theme-switch { grid-column: 1; justify-self: start; }
-#siteFooter #electionFoot { grid-column: 2; justify-self: center; }
-#siteFooter .sf-links { grid-column: 3; justify-self: end; }
+#siteFooter .sf-links { grid-column: 2; justify-self: end; }
 .sf-links { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sf-links .about-btn { text-decoration: none; }
 /* If the bar runs out of room the links wrap; the switch keeps its size and
    its corner. */
 #siteFooter .theme-switch { flex: none; }
-/* Stacked footer on a phone. The election line stays centred on its own row,
-   then the switch and the links share the row below and push apart, so the
+/* The switch and the links share one row on a phone and push apart, so the
    switch still lands in the bottom-left corner of the screen. */
 @media (max-width: 640px) {
-  #siteFooter { grid-template-columns: auto 1fr; padding: 12px 18px 14px; }
+  #siteFooter { padding: 12px 18px 14px; }
   /* With an answer up, a phone's column ends at the directions. The footer
-     -- calendar, theme switch, About -- is for the page before a search, and
-     under the step list it was one more screen to scroll past. It returns
-     with the reset button. */
+     is for the page before a search, and under the step list it was one more
+     screen to scroll past. It returns with the reset button. */
   body.has-result #siteFooter { display: none; }
-  #siteFooter #electionFoot { grid-column: 1 / -1; grid-row: 1; justify-self: center; }
-  #siteFooter .theme-switch { grid-column: 1; grid-row: 2; justify-self: start; }
-  #siteFooter .sf-links { grid-column: 2; grid-row: 2; justify-self: end; }
-}
-
-#electionBarInfo {
-  display: grid;
-  grid-template-columns: auto auto;
-  gap: 3px 10px;
-  align-items: baseline;
-  justify-content: center;
-}
-
-.elec-name {
-  font-weight: 700; font-size: var(--label-size);
-  letter-spacing: var(--label-track);
-  text-transform: uppercase; color: var(--accent);
-}
-.elec-date {
-  font-weight: 600; font-size: var(--label-size);
-  letter-spacing: var(--label-track);
-  text-transform: uppercase; color: var(--dim);
 }
 
 .cam-count {
