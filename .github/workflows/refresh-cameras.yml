@@ -36,7 +36,16 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
+      # ssh-key, not the default token: the push at the end of this job has to
+      # be made by the DEPLOY KEY, because that is what the branch ruleset
+      # bypasses. GitHub cannot grant the Actions app a ruleset bypass at all
+      # (only installed apps qualify, and Actions is first-party), so the key
+      # is the mechanism that lets this unattended job keep writing to a branch
+      # that otherwise requires a pull request.
       - uses: actions/checkout@v7
+        with:
+          ssh-key: ${{ secrets.CAMERAS_DEPLOY_KEY }}
+          persist-credentials: true
 
       - uses: actions/setup-python@v6
         with:
@@ -100,15 +109,24 @@ jobs:
           git add site/data/cameras.json
           git commit -m "Refresh ALPR cameras from OpenStreetMap ($BEFORE -> $AFTER)"
           git push
-          # Pushing is NOT enough to publish. GitHub deliberately does not fire
-          # workflows for pushes made with GITHUB_TOKEN, so pages.yml ignores
-          # this commit and the refreshed list would sit in the repository
-          # forever without reaching anyone. Measured: the first real run
+          # Ask for the deploy explicitly.
+          #
+          # This was REQUIRED while the push used GITHUB_TOKEN: GitHub
+          # deliberately does not fire workflows for those pushes, so pages.yml
+          # ignored the commit and the refreshed list sat in the repository
+          # without reaching anyone. Measured at the time: the first real run
           # committed 148 -> 152 and no deploy followed it.
           #
-          # So ask for the deploy explicitly. Dispatching the existing workflow
-          # rather than copying its steps keeps one definition of how this site
-          # is published; a second copy here would drift from it.
+          # Since the push moved to the deploy key that is no longer true. A
+          # deploy-key push is an ordinary push and DOES fire pages.yml, so this
+          # dispatch is now belt-and-braces and may cause two deploy runs per
+          # refresh. It is kept on purpose until a real run is observed: the
+          # failure mode of removing it wrongly is a site that silently stops
+          # updating, and the failure mode of keeping it is one redundant deploy.
+          # Drop it once the push alone is seen to publish.
+          #
+          # Dispatching the existing workflow rather than copying its steps
+          # keeps one definition of how this site is published.
           gh workflow run "Deploy site to GitHub Pages" --ref main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
