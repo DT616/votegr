@@ -356,7 +356,11 @@ for (const w of WIDTHS) {
   });
   ok('a consolidated precinct names its host by number',
      /Precinct 51 votes with precinct 45\b/.test(cons.note));
-  ok('a ward city\'s marker names the ward with the precinct', /Precincts 3-45, 3-51/i.test(cons.pop));
+  // Spelled out, not "3-45, 3-51": on its own line a hyphenated pair reads as
+  // a range, and the ward is stated once for the group it applies to.
+  ok('a ward city\'s marker names the ward with the precinct',
+     /Ward 3 \u00b7 Precincts 45, 51/i.test(cons.pop));
+  ok('and does not fall back to the hyphenated form', !/3-45/.test(cons.pop));
   ok('no 13-digit precinct code is ever shown', !/\b08\d{11}\b/.test(cons.body));
 
   // Three ways to vote, three marks on the map, and a legend that draws the

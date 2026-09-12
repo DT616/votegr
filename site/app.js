@@ -1225,6 +1225,34 @@
     });
   }
 
+  // The precincts that vote at one building, named the way the rest of the
+  // page names them: "Ward 3 \u00b7 Precincts 45, 51". The compact "3-45"
+  // form is right where a number is quoted inside a sentence, but it was
+  // the whole line here, and on its own a hyphenated pair reads as a range.
+  // One line per ward, because a ward is the thing the numbers are relative
+  // to: no building in the county's data hosts two wards, but a line that
+  // said "Ward 1 \u00b7 Precincts 5, 12" for a pair split across wards would
+  // be wrong rather than terse. Townships have no wards and get bare numbers.
+  function precinctLines(ids) {
+    var order = [], byWard = {};
+    ids.map(function (id) { return P.describe(id); })
+      .sort(function (a, b) {
+        return (a.ward || 0) - (b.ward || 0) || (a.precinct - b.precinct);
+      })
+      .forEach(function (d) {
+        var key = d.ward == null || d.ward === '' ? '' : String(d.ward);
+        if (!byWard[key]) { byWard[key] = []; order.push(key); }
+        byWard[key].push(String(d.precinct));
+      });
+    return order.map(function (ward) {
+      var nums = byWard[ward];
+      return '<div class="dw">' +
+        (ward ? 'Ward ' + esc(ward) + ' \u00b7 ' : '') +
+        'Precinct' + (nums.length > 1 ? 's ' : ' ') + esc(nums.join(', ')) +
+        '</div>';
+    }).join('');
+  }
+
   // Every polling place in the city, shown from the start. This is a voting
   // tool: where people vote is the subject, and seeing all 202 makes the one
   // that turns out to be yours legible as part of a pattern rather than a
@@ -1257,18 +1285,12 @@
         zIndexOffset: isActive ? 500 : 300, keyboard: false, riseOnHover: true
       }).addTo(pollLayer);
       bindDetail(m, function () {
-        // By ward then precinct, which is also how the numbers read.
-        var list = atThisSpot.slice().sort(function (a, b) {
-          var da = P.describe(a), db = P.describe(b);
-          return (da.ward || 0) - (db.ward || 0) || (da.precinct - db.precinct);
-        }).map(precinctNumber);
         return '<div class="destpop">' +
           '<div class="dt">Polling place</div>' +
           '<div class="dn">' + esc(displayCase(pl.name)) + '</div>' +
           '<div class="da">' + esc(addressForDisplay(pl.address)) + '</div>' +
           (pl.entrance_note ? '<div class="de">' + esc(pl.entrance_note) + '</div>' : '') +
-          '<div class="dw">Precinct' + (list.length > 1 ? 's ' : ' ') +
-          esc(list.join(', ')) + '</div></div>';
+          precinctLines(atThisSpot) + '</div>';
       }, 280);
     });
   }
