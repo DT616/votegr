@@ -1450,6 +1450,9 @@ ol.steps .scam {
   letter-spacing: var(--label-track);
   text-transform: uppercase; color: var(--accent);
 }
+/* A second ward at the same building is another line of the same block, not
+   another block: one rule above the group, not one above each line. */
+.destpop .dw + .dw { margin-top: 3px; padding-top: 0; border-top: 0; }
 
 /* ==========================================================================
    Panel layout
