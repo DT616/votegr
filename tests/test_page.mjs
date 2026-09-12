@@ -743,6 +743,57 @@ for (const w of WIDTHS) {
   await ctx.close();
 }
 
+// --- the About sheet closes with who made it ---
+// The sheet argues at length that the state does not need to be told you
+// looked; the closing section says that once, plainly, for a reader who
+// opened About and did not read the argument. Beside it is the honest limit:
+// this is worked out from public records rather than read off a roll, and
+// "in most cases it should be correct" is the claim it can actually make.
+//
+// The credit is checked as a real link rather than as text, and the repo
+// links are checked for the OLD owner, which redirects and so would never
+// show up as a broken link.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(URL_, { waitUntil: 'networkidle' });
+  await page.click('#aboutBtnFoot');
+  await page.waitForSelector('#aboutModal:not([hidden])', { timeout: 10000 });
+  const a = await page.evaluate(() => {
+    const body = document.querySelector('#aboutModal .modal-body');
+    const credit = body.querySelector('.modal-credit');
+    const link = credit && credit.querySelector('a');
+    const text = body.innerText.replace(/\s+/g, ' ');
+    const cs = credit && getComputedStyle(credit);
+    return {
+      saysStateNeedNotKnow: /state does not need to learn that you looked/i.test(text),
+      // Three claims, not one: that it is an estimate, that the estimate is
+      // computed on the reader's own device, and how far it can be trusted.
+      // The middle one is the whole point and is the one a rewrite would
+      // most easily drop.
+      saysBestEffort: /best effort estimate/i.test(text)
+        && /calculated on your device/i.test(text)
+        && /in most cases it should be correct/i.test(text),
+      creditText: credit ? credit.innerText.replace(/\s+/g, ' ').trim() : null,
+      creditHref: link ? link.href : null,
+      // Last thing in the sheet, and not shrunk into caption type.
+      isLast: credit === body.lastElementChild,
+      px: cs ? parseFloat(cs.fontSize) : 0,
+      staleRepoLinks: [...body.querySelectorAll('a')].filter(x => /DT616/.test(x.href)).length,
+    };
+  });
+  ok('About says the state need not learn you looked', a.saysStateNeedNotKnow);
+  ok('and says the estimate is worked out on your own device', a.saysBestEffort);
+  ok('it closes with the Cantica Systems credit',
+     a.isLast && /^An open source project of Cantica Systems\.$/.test(a.creditText));
+  ok('and the credit is a real link', a.creditHref === 'https://cantica.dev/');
+  ok('the credit is at reading size, not caption size', a.px >= 13);
+  // The repo moved to the org; the old owner still resolves by redirect, so
+  // nothing would report these as broken.
+  ok('no link still names the old repo owner', a.staleRepoLinks === 0);
+  await ctx.close();
+}
+
 // --- a lookup lands on the voting info, at every width ---
 // The bar is sticky so the second address is typed from wherever the reader
 // had got to. The phone used to be left exactly where it stood, which is
