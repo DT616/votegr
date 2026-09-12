@@ -1388,6 +1388,22 @@ ol.steps .scam {
   letter-spacing: -.01em; color: var(--fg);
 }
 .modal-tagline + h3 { margin-top: 18px; }
+/* The line that closes the sheet: who made this and on what terms. A rule
+   above it rather than a heading, because it is a signature and not another
+   section. Dim, but at reading size: the floor for anything a reader is
+   meant to actually read, not caption scale. */
+.modal-credit {
+  margin: 22px 0 0; padding-top: 14px; border-top: 1px solid var(--line);
+  font-size: .9rem; line-height: 1.55; color: var(--dim); text-align: center;
+}
+.modal-credit a, .modal-credit a:visited {
+  color: var(--fg); text-decoration: underline;
+  text-decoration-color: var(--dim); text-underline-offset: 2px;
+}
+.modal-credit a:hover, .modal-credit a:focus-visible {
+  color: var(--accent); text-decoration-color: var(--accent);
+}
+
 @media (max-width: 900px) {
   .modal { width: 100%; height: 100dvh; max-height: none; border-radius: 0; border: 0; }
   .about-btn { padding: 8px 12px; min-height: 40px; }
