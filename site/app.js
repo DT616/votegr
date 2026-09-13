@@ -1611,12 +1611,17 @@
     $('pinBtn').setAttribute('aria-pressed', 'true');
     $('map').classList.add('pin-armed');
     setHint('Tap the map where you want to start from. Esc cancels.');
-    $('mapNote').textContent = 'Tap anywhere in Kent County to start from that spot.';
+    // Above the map rather than under it. The instruction used to sit in the
+    // note below, which on a phone is off the bottom of the screen at the
+    // moment it is being given.
+    $('pinCue').textContent = 'Tap anywhere in Kent County to start from that spot.';
+    $('pinCue').hidden = false;
     scrollToResult('mapBlock');
   }
 
   function disarmPin() {
     if (pinArmed) $('mapNote').textContent = '';
+    $('pinCue').hidden = true;
     pinArmed = false;
     $('pinBtn').classList.remove('armed');
     $('pinBtn').setAttribute('aria-pressed', 'false');
@@ -1639,9 +1644,15 @@
     var place = P.pollingPlace(who.code);
     $('addr').value = ''; ac.close();
     setHint('Routing from your dropped pin. Type an address to switch back.');
+    // Land on the map, not on the voting info. A typed lookup is a request
+    // for the ward and precinct and ends there; a dropped pin is a tap on
+    // the map, and answering it by scrolling the map off the screen moves
+    // the thing under the finger that just used it. The voting info is
+    // filled in above either way, and the section pills still jump to it.
     show({ pin: true, lat: lat, lng: lng, code: who.code,
            precinct: who.precinct, ward: who.ward,
-           jurisdiction: who.jurisdiction, mcd: who.mcd, place: place });
+           jurisdiction: who.jurisdiction, mcd: who.mcd, place: place },
+         null, 'mapBlock');
   }
 
   // ---- the answer ------------------------------------------------------
@@ -1798,8 +1809,11 @@
     if (nav) { nav.hidden = false; requestAnimationFrame(syncSectionNav); }
     revealMap();
     // No standing caption: the header names the destination and the map shows
-    // it. The note is reserved for the one moment it carries an instruction,
-    // which is pin picking.
+    // it. The pin-picking instruction, which was this note's one writer, has
+    // its own cue above the map now, so nothing writes here any more. The
+    // element stays for the moment because .map-foot lays the legend out
+    // beside it and dropping it moves the legend up 14px, which is a change
+    // to make on its own rather than inside this one.
     $('mapNote').textContent = '';
     var place = r.place;
     $('resultBlock').hidden = false;

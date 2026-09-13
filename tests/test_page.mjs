@@ -1146,6 +1146,92 @@ for (const w of WIDTHS) {
   await ctx.close();
 }
 
+// --- dropping a pin -------------------------------------------------
+// The feature had no test at all, which is how both of these shipped: the
+// only cue that the map was waiting for a tap was a crosshair cursor, which
+// a finger never sees, and the drop then scrolled the map off the screen to
+// land on the voting info, moving the thing the reader had just used.
+//
+// Both widths, because the phone is where the note that used to carry the
+// instruction sat below the fold and where the scroll was worst.
+for (const w of [390, 1280]) {
+  console.log('\ndropping a pin, ' + w + 'px');
+  const ctx = await browser.newContext({ viewport: { width: w, height: 844 } });
+  const page = await ctx.newPage();
+  await page.goto(URL_, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => !document.getElementById('addr').disabled, null, { timeout: 60000 });
+
+  await page.click('#pinBtn');
+  await page.waitForSelector('.basemap-canvas', { timeout: 30000 });
+  await page.waitForTimeout(800);                   // the smooth scroll to the map
+  const armed = await page.evaluate(() => {
+    const cue = document.getElementById('pinCue'), map = document.getElementById('map');
+    const cr = cue.getBoundingClientRect(), mr = map.getBoundingClientRect();
+    return {
+      cueShown: !cue.hidden && cr.height > 0,
+      cueSays: cue.textContent.trim(),
+      cueAboveMap: cr.bottom <= mr.top + 1,
+      cueOnScreen: cr.top >= 0 && cr.bottom <= 844,
+      mapMarked: map.classList.contains('pin-armed'),
+      // The edge, which is the half of the cue that survives being scrolled
+      // past. Any ring at all, rather than a colour this test would pin.
+      mapRing: getComputedStyle(map).boxShadow !== 'none',
+      pressed: document.getElementById('pinBtn').getAttribute('aria-pressed'),
+    };
+  });
+  ok('arming the pin says so above the map', armed.cueShown && /tap/i.test(armed.cueSays));
+  ok('the cue is above the map, not under it', armed.cueAboveMap);
+  ok('and it is on the screen when it is given', armed.cueOnScreen);
+  ok('the map itself is marked as armed', armed.mapMarked && armed.mapRing);
+  ok('the button reads as pressed', armed.pressed === 'true');
+
+  // A tap on the basemap, not on a control, a marker or an open popup: those
+  // are consumed by what they belong to and drop nothing, which is most of
+  // what reads as the map being finicky.
+  const box = await page.locator('#map').boundingBox();
+  const spot = await page.evaluate(b => {
+    for (let fy = 0.3; fy <= 0.75; fy += 0.15) for (let fx = 0.25; fx <= 0.75; fx += 0.25) {
+      const x = b.x + b.width * fx, y = b.y + b.height * fy;
+      const el = document.elementFromPoint(x, y);
+      if (el && el.classList && el.classList.contains('basemap-canvas')) return { x, y };
+    }
+    return null;
+  }, box);
+  ok('there is a spot on the basemap to tap', !!spot);
+  await page.mouse.click(spot.x, spot.y);
+  await page.waitForSelector('#resultBlock:not([hidden])', { timeout: 30000 });
+  await page.waitForTimeout(1200);                  // let every scroll settle
+  const after = await page.evaluate(() => {
+    const map = document.getElementById('map').getBoundingClientRect();
+    return {
+      cueGone: document.getElementById('pinCue').hidden,
+      disarmed: !document.getElementById('map').classList.contains('pin-armed'),
+      answered: /Precinct/i.test(document.getElementById('precinctInfo').innerText),
+      noError: !document.querySelector('#precinctInfo .err'),
+      hint: document.querySelector('.hint').textContent,
+      // The regression: the landing scrolled UP to the voting info, and
+      // filling that block pushed the map down past the bottom edge. At
+      // 390px its top sat at 910 in an 844 viewport.
+      mapVisible: map.top < window.innerHeight - 80 && map.bottom > 80,
+      mapUnderBar: map.top,
+    };
+  });
+  ok('the drop answers with a ward and precinct', after.answered && after.noError);
+  ok('the cue and the armed edge are given up', after.cueGone && after.disarmed);
+  ok('the hint says where the route starts', /dropped pin/i.test(after.hint));
+  ok('and the map you tapped is still on the screen', after.mapVisible);
+
+  // Esc backs out of a fresh arm without dropping anything.
+  await page.click('#pinBtn');
+  await page.waitForTimeout(400);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  ok('Escape gives the cue up too', await page.evaluate(() =>
+     document.getElementById('pinCue').hidden &&
+     !document.getElementById('map').classList.contains('pin-armed')));
+  await ctx.close();
+}
+
 // Plain load, no panel.
 {
   const ctx = await browser.newContext();

@@ -234,6 +234,14 @@ summary, .vi-dest, .pp-place, .box-open, .box-list li[data-pick],
 .map-note {
   margin-top: 8px; font-size: .82rem; color: var(--dim); line-height: 1.45;
 }
+/* The pin is armed and the map is waiting for a tap. Both halves of that are
+   visual: the instruction above the map, and the map's own edge. */
+.pin-cue {
+  margin: 0 0 10px; padding: 9px 12px; border-radius: 8px;
+  font-size: .92rem; line-height: 1.45; color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 12%, var(--raise));
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+}
 
 @media (max-width: 600px) {
   #map { height: 280px; }
@@ -1409,6 +1417,21 @@ ol.steps .scam {
   .about-btn { padding: 8px 12px; min-height: 40px; }
 }
 
+/* The field is the one control on the page, and at the full column width it
+   read as a banner rather than a box to type in. Capped above the phone
+   breakpoint only: a narrow screen needs every pixel, and the cap is on the
+   contents rather than on .searchbar itself, so the sticky bar's background
+   and its rule still span the column and the answer scrolls behind an
+   unbroken edge. */
+@media (min-width: 601px) {
+  .searchbar .field-label,
+  .searchbar .field-row,
+  .searchbar .hint {
+    max-width: 30rem;
+    margin-left: auto; margin-right: auto;
+  }
+}
+
 /* ---- pin-drop toggle beside the address field ---- */
 .field-row { display: flex; gap: 8px; align-items: stretch; }
 .field-row .field { flex: 1; }
@@ -1425,7 +1448,12 @@ ol.steps .scam {
   color: var(--accent); border-color: var(--accent); background: var(--panel);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
-#map.pin-armed { cursor: crosshair; }
+#map.pin-armed {
+  cursor: crosshair;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent),
+              0 0 0 5px color-mix(in srgb, var(--accent) 20%, transparent);
+}
 
 .src-list { margin: 0 0 14px; padding-left: 20px; }
 .src-list li { font-size: .9rem; line-height: 1.55; margin-bottom: 7px; color: var(--fg); }
