@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 .venv/
 .DS_Store
+
+# Ad-hoc probe scripts. Two of these were committed by accident and sat in
+# the repo pointing at a port nothing serves; the real tests live in tests/.
+_*.mjs
