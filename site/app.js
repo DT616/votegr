@@ -1607,6 +1607,10 @@
     var fresh = $('mapBlock').hidden;
     revealMap();
     if (fresh && map) map.setView(GR, 12);
+    // A popup left open is both clutter over the spot being chosen and a
+    // trap: armed, it no longer takes taps, so its own close button would
+    // drop a pin rather than close it.
+    if (map) map.closePopup();
     $('pinBtn').classList.add('armed');
     $('pinBtn').setAttribute('aria-pressed', 'true');
     $('map').classList.add('pin-armed');

@@ -1454,6 +1454,25 @@ ol.steps .scam {
   box-shadow: 0 0 0 2px var(--accent),
               0 0 0 5px color-mix(in srgb, var(--accent) 20%, transparent);
 }
+/* Armed, the whole map has one meaning: the spot you are starting from. A
+   browser gives a tap to the topmost element that will take it, so a marker
+   icon, an open popup or the scope readout used to swallow it and drop
+   nothing, with nothing on screen saying the tap had missed. While the pin
+   is armed those give their taps up and the map itself hears them.
+
+   Written against the elements rather than their panes: leaflet.css says
+   .leaflet-marker-icon.leaflet-interactive { pointer-events: auto }, and a
+   value set on the child beats one inherited from the pane. The #map id
+   carries this rule past it.
+
+   .leaflet-control is deliberately NOT in the list: zoom and the gear are
+   how you frame the spot before you pick it, and they keep working. */
+#map.pin-armed .leaflet-marker-icon,
+#map.pin-armed .leaflet-marker-shadow,
+#map.pin-armed .leaflet-popup,
+#map.pin-armed .leaflet-popup-tip,
+#map.pin-armed .leaflet-tooltip,
+#map.pin-armed .map-status { pointer-events: none; }
 
 .src-list { margin: 0 0 14px; padding-left: 20px; }
 .src-list li { font-size: .9rem; line-height: 1.55; margin-bottom: 7px; color: var(--fg); }

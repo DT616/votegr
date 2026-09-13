@@ -1229,6 +1229,136 @@ for (const w of [390, 1280]) {
   ok('Escape gives the cue up too', await page.evaluate(() =>
      document.getElementById('pinCue').hidden &&
      !document.getElementById('map').classList.contains('pin-armed')));
+
+  // --- the taps the map used to swallow -------------------------------
+  // Armed, only a tap on the basemap canvas dropped a pin. A tap on a marker
+  // icon or on an open popup went to that element instead, so nothing was
+  // dropped and nothing on screen said the tap had missed. The controls are
+  // the deliberate exception: framing the shot is part of choosing it.
+
+  // Tag the marker to tap while the pin is IDLE, which is the only state in
+  // which the check can be made: it has to be the topmost thing at its own
+  // centre, and once the fix is in nothing in the map takes a hit test. The
+  // element is tagged rather than its coordinates kept, so a later pan moves
+  // the target with the map instead of stranding the test on empty ground.
+  const tapped = await page.evaluate(() => {
+    const mr = document.getElementById('map').getBoundingClientRect();
+    const cx = (mr.left + mr.right) / 2, cy = (mr.top + mr.bottom) / 2;
+    const near = [...document.querySelectorAll('.leaflet-marker-icon')].map(el => {
+      const r = el.getBoundingClientRect();
+      return { el, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }).filter(m => m.x > mr.left + 24 && m.x < mr.right - 24 &&
+                   m.y > mr.top + 24 && m.y < mr.bottom - 24 &&
+                   m.y > 8 && m.y < window.innerHeight - 8)
+      .sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy));
+    for (const m of near) {
+      const hit = document.elementFromPoint(m.x, m.y);
+      if (hit && hit.closest('.leaflet-marker-icon')) {
+        m.el.dataset.tapTarget = '1';
+        return true;
+      }
+    }
+    return false;
+  });
+  ok('a marker is sitting on top of the map to tap', tapped);
+
+  await page.click('#pinBtn');
+  await page.waitForTimeout(900);
+  const overMark = await page.evaluate(() => {
+    const el = document.querySelector('[data-tap-target]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return { x, y, stillMarker: !!(hit && hit.closest('.leaflet-marker-icon')) };
+  });
+  ok('armed, the marker gives the tap up', overMark && !overMark.stillMarker);
+  await page.mouse.click(overMark.x, overMark.y);
+  await page.waitForTimeout(1400);
+  const dropped = await page.evaluate(() => ({
+    disarmed: !document.getElementById('map').classList.contains('pin-armed'),
+    cueGone: document.getElementById('pinCue').hidden,
+    noError: !document.querySelector('#precinctInfo .err'),
+    hint: document.querySelector('.hint').textContent,
+  }));
+  // Unfixed, the marker takes the click, the map never hears it and the pin
+  // stays armed. That is the whole bug, in one assertion.
+  ok('a tap on a marker drops the pin like any other tap',
+     dropped.disarmed && dropped.cueGone);
+  ok('and the drop answers rather than erroring',
+     dropped.noError && /dropped pin/i.test(dropped.hint));
+
+  // The controls keep their taps. The zoom is read from how far apart the
+  // markers are drawn, which is the map answering for itself rather than a
+  // handle the page would have to expose for the test.
+  const spread = () => page.evaluate(() => {
+    const r = [...document.querySelectorAll('.leaflet-marker-icon')]
+      .map(el => el.getBoundingClientRect());
+    if (r.length < 2) return 0;
+    const xs = r.map(b => b.left), ys = r.map(b => b.top);
+    return Math.max(...xs) - Math.min(...xs) + Math.max(...ys) - Math.min(...ys);
+  });
+  await page.click('#pinBtn');
+  await page.waitForTimeout(900);
+  const spreadBefore = await spread();
+  const zin = await page.locator('.leaflet-control-zoom-in').boundingBox();
+  await page.mouse.click(zin.x + zin.width / 2, zin.y + zin.height / 2);
+  await page.waitForTimeout(900);
+  ok('a tap on the zoom control still zooms while armed',
+     await spread() > spreadBefore * 1.1);
+  ok('and zooming drops no pin', await page.evaluate(() =>
+     document.getElementById('map').classList.contains('pin-armed') &&
+     !document.getElementById('pinCue').hidden));
+  const gear = await page.locator('.gear-btn').boundingBox();
+  await page.mouse.click(gear.x + gear.width / 2, gear.y + gear.height / 2);
+  await page.waitForTimeout(300);
+  ok('the gear still opens its panel while armed', await page.evaluate(() =>
+     document.querySelector('.gear-btn').getAttribute('aria-expanded') === 'true' &&
+     document.getElementById('map').classList.contains('pin-armed')));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+
+  // An open popup cannot be the thing that takes the tap either, because
+  // arming closes it. Inert and still open it would be worse than before:
+  // its own close button would drop a pin instead of closing it.
+  //
+  // Which markers carry a popup depends on what the answer drew and where
+  // the map is sitting, so the test asks the map rather than assuming: the
+  // markers standing on top, nearest the middle first, until one opens.
+  const cands = await page.evaluate(() => {
+    const mr = document.getElementById('map').getBoundingClientRect();
+    const cx = (mr.left + mr.right) / 2, cy = (mr.top + mr.bottom) / 2;
+    return [...document.querySelectorAll('.leaflet-marker-icon')].map(el => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }).filter(m => m.x > mr.left + 24 && m.x < mr.right - 24 &&
+                   m.y > mr.top + 24 && m.y < mr.bottom - 24 &&
+                   m.y > 8 && m.y < window.innerHeight - 8 &&
+                   (() => { const h = document.elementFromPoint(m.x, m.y);
+                            return !!(h && h.closest('.leaflet-marker-icon')); })())
+      .sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))
+      .slice(0, 8);
+  });
+  let opened = false;
+  for (const c of cands) {
+    await page.mouse.click(c.x, c.y);
+    await page.waitForTimeout(400);
+    opened = await page.evaluate(() => !!document.querySelector('.leaflet-popup'));
+    if (opened) break;
+  }
+  // The loud one: with nothing open there is no popup to close, and the
+  // check below would have nothing to say.
+  ok('a marker tap opens a popup while the pin is idle', opened);
+  if (opened) {
+    await page.click('#pinBtn');
+    await page.waitForTimeout(900);
+    ok('and arming the pin closes it',
+       await page.evaluate(() => !document.querySelector('.leaflet-popup') &&
+         document.getElementById('map').classList.contains('pin-armed')));
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+  }
+
   await ctx.close();
 }
 
