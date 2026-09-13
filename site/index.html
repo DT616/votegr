@@ -205,63 +205,63 @@
     </div>
     <div class="modal-body">
       <p class="modal-tagline">Privacy by design</p>
+
+      <h3>What this is</h3>
+      <p class="body">This is a tool that gives you your voting information and
+        the directions to get there, done in a way that maximizes your
+        anonymity.</p>
+      <p class="body">What it gives you is a best effort estimate, calculated
+        on your device from the address you entered against the available
+        public voting data, and in most cases it should be correct.</p>
+
       <h3>How it works</h3>
-      <p class="body">We built a routing engine in JavaScript that places your
-        address and routes you to your polling place right inside your web
-        browser. We then took public data from the state, the county and the
-        City of Grand Rapids and built the data files the page reads: streets,
-        precincts, polling places and cameras. It makes zero network requests
-        to perform any lookup. Once the page has loaded you can go offline,
-        and everything still works.</p>
+      <p class="body">We made a routing engine that looks up your address and
+        routes you to your polling place right inside your web browser. We then
+        took public data from the state, the county and the City of Grand
+        Rapids and built the data files the page reads: streets, precincts,
+        polling places and cameras. It makes zero network requests to perform
+        any lookup. Once the page has loaded you can even go offline, and
+        everything still works.</p>
 
       <h3>Why make this?</h3>
       <ol class="body why-list">
         <li><strong>Finding out where you vote should not require identifying
           yourself.</strong> The state's
           <a href="https://mvic.sos.state.mi.us/" target="_blank" rel="noopener">Michigan Voter Information Center</a>
-          is accurate and it is the official source, but it asks for your name, your birth month and year and your ZIP code
-          before it will show you your ward and precinct, and every lookup
-          runs on its servers. The notice you agree to on that form says,
-          in full:
+          is accurate and it is the official source, but it asks for your name,
+          your birth month and year and your ZIP code before it will show you
+          your ward and precinct, and every lookup runs on its servers. The
+          notice you agree to on that form says, in full:
           <blockquote>The information collected on this form is only what is needed to complete your transaction as authorized by MCL 168.509ii, MCL 168.759, MCL 168.759a, and MCL 168.764c. As a public body, MDOS is subject to the Michigan Freedom of Information Act (FOIA), MCL 15.231 et seq., and information such as a name or address may be disclosed in response to a FOIA request.</blockquote>
-          <strong>This site is a proof of concept that none of that has to
-          happen.</strong> Nothing about your registration needs to be
-          processed on the state's servers to show you where you vote, and the
-          state does not need to learn that you looked. Your voter record is
-          already a public record, disclosable under FOIA whether or not you
-          ever agree to that notice, so the notice is not protecting the
-          record. What it seems to have you acknowledge is that visiting their
-          site creates a new one: that you, from this address, on this day,
-          looked up your own information, a record that did not exist until
-          you asked and is disclosable in the same way. Why should finding out
-          where you vote create a new record about you, one you have to agree
-          to before the tool will work? Every answer here comes from public
-          records already on your device. There is no form to agree to, and no
-          record of the lookup exists anywhere, because it never left your
-          hands.</li>
-        <li><strong>Driving to perform a constitutionally protected activity
-          shouldn't be surveilled.</strong> Automated license plate readers on
-          traffic signals and utility poles photograph every passing vehicle,
-          perform OCR, and store it with the time and place, whether or not anyone
-          suspects you of anything, and can alert officers in realtime of a
-          flagged vehicle. The records are also searchable later, and many
-          systems let agencies search across each other's networks. Nobody
-          should have a reason to feel uneasy about being tracked to go vote.
-          While being pulled over because a camera read your license plate is
-          unlikely for most, it is a real possibility, as are false positives.
-          If this site helps one eligible voter find the polls and vote, and
-          results in the government having less data to collect, it was worth
-          it.</li>
+          This site is a proof of concept that none of that has to happen.
+          Nothing about your registration technically needs to be processed on
+          the state's servers to show you where you vote, and the state does
+          not need to learn that you looked. Your voter record is already a
+          public record, disclosable under FOIA whether or not you ever agree
+          to that notice. Between the way that form is built and what the
+          notice says, asking where you vote could create a second record:
+          that you, from this address, on this day, looked yourself up. Whether
+          that record is disclosable is a separate question. Query logs are
+          data, and if collecting them is not necessary, why collect them? This
+          site loads everything on your device, so there are no query logs of
+          any kind that could identify you.</li>
+        <li><strong>Getting to where you vote should not require identifying
+          yourself, including by your vehicle.</strong> Driving to take part in
+          a constitutionally protected activity should be free of surveillance.
+          Automated license plate readers on traffic signals and utility poles
+          track every passing vehicle, and can alert an officer in real time
+          when one of them is flagged. Nobody should have a reason to feel
+          uneasy about being tracked on the way to vote. Being pulled over
+          because a camera read your plate is unlikely for most people, and it
+          is a real possibility all the same, false positives included. So the
+          directions here lead to your polling place, an early voting site or a
+          ballot drop box by a route that goes around the cameras this project
+          knows about, and where every route passes one, it says so and takes
+          the way that passes the fewest.</li>
         <li><strong>Decentralized, privacy-preserving, free and open source
           software is available</strong>, if people demand it of their
           government.</li>
       </ol>
-
-      <h3>Licence and self-hosting</h3>
-      <p class="body">This page, all the code and data is hosted on
-        <a href="https://github.com/Cantica-Systems/votegr" target="_blank" rel="noopener">GitHub</a>.
-        It is public domain under the Unlicense and free to download, copy,
-        host and revise.</p>
 
       <h3>Learning more</h3>
       <ul class="src-list">
@@ -275,15 +275,12 @@
           does the same.</li>
       </ul>
 
-      <h3>What this is</h3>
-      <p class="body">A simple tool that gives you your voting information and
-        the directions to get there, done in a way that maximizes your
-        anonymity. No lookup here technically needs to be processed on the
-        state's servers to show you where you vote, and the state does not
-        need to learn that you looked.</p>
-      <p class="body">What it gives you is a best effort estimate, calculated
-        on your device from the address you entered against the available
-        public voting data, and in most cases it should be correct.</p>
+      <h3>Licence and self-hosting</h3>
+      <p class="body">This page, all the code and data is hosted on
+        <a href="https://github.com/Cantica-Systems/votegr" target="_blank" rel="noopener">GitHub</a>.
+        It is public domain under the Unlicense and free to download, copy,
+        host and revise.</p>
+
       <p class="modal-credit">An open source project of
         <a href="https://cantica.dev" target="_blank" rel="noopener">Cantica
         Systems</a>.</p>
